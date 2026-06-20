@@ -4,6 +4,10 @@
 
 var APP = {
   SPREADSHEET_PROP: "RENEWAL_LICENSE_SPREADSHEET_ID",
+  READ_SOURCE_URL_PROP: "READ_ONLY_SOURCE_SPREADSHEET_URL",
+  READ_SOURCE_URL: "https://docs.google.com/spreadsheets/d/1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30/edit?gid=307646994#gid=307646994",
+  READ_SOURCE_SPREADSHEET_ID: "1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30",
+  READ_SOURCE_GID: 307646994,
   SHEET_MAIN: "免許更新管理",
   SHEET_SETTINGS: "設定",
   SHEET_LOG: "アラート送信履歴",
@@ -12,6 +16,12 @@ var APP = {
   STATUSES: [
     "免許証確認待ち",
     "案内前",
+    "期限切れ",
+    "手続き不可ライン",
+    "更新証明期限注意",
+    "3か月以内",
+    "CDP講習・申請受付中",
+    "更新講習受講可能",
     "案内済",
     "講習申込受付",
     "日程調整中",
@@ -59,7 +69,8 @@ var APP = {
     ["CDP講習・申請受付（月前）", "6", "CDPでは6か月前から講習・申請対応。"],
     ["手続き停止ライン（月前）", "1", "免許有効期限の1か月前から手続き不可扱い。"],
     ["更新証明有効（月）", "3", "更新講習修了証明の期限を3か月で管理。"],
-    ["日次通知対象", "P1,P2", "日次メールに含めるリスク。例: P1,P2,P3"]
+    ["日次通知対象", "P1,P2", "日次メールに含めるリスク。例: P1,P2,P3"],
+    ["読み取り元スプレッドシートURL", "https://docs.google.com/spreadsheets/d/1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30/edit?gid=307646994#gid=307646994", "読み取り専用。ここには絶対に書き込みません。"]
   ]
 };
 
@@ -142,6 +153,66 @@ function apiGetDashboardData(filters) {
       dailyAlertHour: settings.dailyAlertHour,
       dailyRisks: settings.dailyRisks
     }
+  };
+}
+
+function apiReadSourceSpreadsheet(options) {
+  options = options || {};
+  var targetSs = getSpreadsheet_();
+  ensureWorkbook_(targetSs);
+  var targetSheet = targetSs.getSheetByName(APP.SHEET_MAIN);
+  var settings = getSettings_(targetSs);
+  var sourceUrl = normalize_(options.sourceUrl) || settings.sourceUrl || APP.READ_SOURCE_URL;
+  var sourceId = extractSpreadsheetId_(sourceUrl) || APP.READ_SOURCE_SPREADSHEET_ID;
+  var sourceGid = extractGid_(sourceUrl);
+  if (sourceGid == null) sourceGid = APP.READ_SOURCE_GID;
+
+  // READ ONLY: the source spreadsheet is opened only for reading.
+  // Do not call setValue/setValues/appendRow/clear/etc. on sourceSs or sourceSheet.
+  var sourceSs = SpreadsheetApp.openById(sourceId);
+  var sourceSheet = getSheetByGid_(sourceSs, sourceGid) || sourceSs.getSheets()[0];
+  if (!sourceSheet) return { success: false, error: "読み取り元シートが見つかりません。" };
+
+  var values = sourceSheet.getDataRange().getValues();
+  if (!values || values.length === 0) {
+    return { success: true, imported: 0, updated: 0, skipped: 0, sourceTitle: sourceSs.getName(), sourceSheetName: sourceSheet.getName() };
+  }
+
+  var headerInfo = detectSourceHeader_(values);
+  if (!headerInfo) {
+    return { success: false, error: "読み取り元のヘッダーを判定できません。氏名・免許期限などの見出し行が必要です。" };
+  }
+
+  var imported = 0;
+  var updated = 0;
+  var skipped = 0;
+  var now = new Date();
+  for (var r = headerInfo.rowIndex + 1; r < values.length; r++) {
+    var record = buildRecordFromSourceRow_(values[r], headerInfo.map, {
+      sourceSheetId: sourceSheet.getSheetId(),
+      sourceRowNumber: r + 1,
+      now: now
+    });
+    if (!record) {
+      skipped++;
+      continue;
+    }
+    var result = upsertImportedRecord_(targetSheet, record, now);
+    if (result.created) imported++;
+    else updated++;
+  }
+  formatMainSheet_(targetSheet);
+
+  return {
+    success: true,
+    imported: imported,
+    updated: updated,
+    skipped: skipped,
+    sourceTitle: sourceSs.getName(),
+    sourceSheetName: sourceSheet.getName(),
+    sourceUrl: sourceUrl,
+    sourceSpreadsheetId: sourceId,
+    sourceGid: sourceSheet.getSheetId()
   };
 }
 
@@ -409,8 +480,217 @@ function getSettings_(ss) {
     cdpStartMonths: Number(map["CDP講習・申請受付（月前）"] || 6),
     procedureStopMonths: Number(map["手続き停止ライン（月前）"] || 1),
     certificateValidMonths: Number(map["更新証明有効（月）"] || 3),
-    dailyRisks: (map["日次通知対象"] || "P1,P2").split(",").map(function(s) { return normalize_(s); }).filter(Boolean)
+    dailyRisks: (map["日次通知対象"] || "P1,P2").split(",").map(function(s) { return normalize_(s); }).filter(Boolean),
+    sourceUrl: map["読み取り元スプレッドシートURL"] || APP.READ_SOURCE_URL
   };
+}
+
+function detectSourceHeader_(values) {
+  var best = null;
+  var maxRows = Math.min(values.length, 12);
+  for (var r = 0; r < maxRows; r++) {
+    var map = buildSourceHeaderMap_(values[r]);
+    var score = Object.keys(map).length;
+    if (map.name != null) score += 3;
+    if (map.licenseExpiryDate != null) score += 3;
+    if (map.managementId != null || map.licenseNumber != null) score += 1;
+    if (!best || score > best.score) best = { rowIndex: r, map: map, score: score };
+  }
+  if (!best || best.score < 4 || best.map.name == null) return null;
+  return best;
+}
+
+function buildSourceHeaderMap_(headerRow) {
+  var aliases = getSourceAliases_();
+  var map = {};
+  var normalizedHeaders = headerRow.map(function(value) {
+    return normalizeHeader_(value);
+  });
+  Object.keys(aliases).forEach(function(field) {
+    var names = aliases[field].map(normalizeHeader_);
+    for (var c = 0; c < normalizedHeaders.length; c++) {
+      if (names.indexOf(normalizedHeaders[c]) >= 0) {
+        map[field] = c;
+        return;
+      }
+    }
+    for (var c2 = 0; c2 < normalizedHeaders.length; c2++) {
+      for (var n = 0; n < names.length; n++) {
+        if (normalizedHeaders[c2] && names[n] && normalizedHeaders[c2].indexOf(names[n]) >= 0) {
+          map[field] = c2;
+          return;
+        }
+      }
+    }
+  });
+  return map;
+}
+
+function getSourceAliases_() {
+  return {
+    managementId: ["管理ID", "ID", "受講生ID", "顧客ID", "更新ID", "免許管理ID"],
+    customerType: ["顧客区分", "区分", "顧客種別", "種別"],
+    name: ["氏名", "名前", "受講者", "受講者氏名", "受講生", "受講生氏名", "顧客名"],
+    kana: ["フリガナ", "ふりがな", "カナ"],
+    company: ["会社名", "法人名", "所属", "勤務先"],
+    email: ["メール", "メールアドレス", "email", "e-mail"],
+    phone: ["電話", "電話番号", "携帯", "携帯番号", "連絡先"],
+    licenseType: ["免許区分", "資格区分", "免許種別", "種別", "免許"],
+    licenseNumber: ["免許番号", "技能証明番号", "証明番号", "資格番号", "ライセンス番号"],
+    licenseIssueDate: ["免許交付日", "交付日", "発行日", "免許発行日"],
+    licenseExpiryDate: ["免許有効期限", "有効期限", "免許期限", "期限", "免許更新期限"],
+    licenseCheckedDate: ["免許確認日", "確認日", "免許証確認日"],
+    licenseCheckResult: ["免許確認結果", "確認結果", "確認", "免許証確認"],
+    renewalCourseDate: ["更新講習日", "講習日", "受講日", "更新受講日"],
+    certificateIssueDate: ["更新証明発行日", "証明発行日", "修了証明発行日", "更新証明日"],
+    status: ["ステータス", "状態", "対応状況"],
+    nextActionDate: ["次回対応日", "対応日", "次アクション", "次回連絡日"],
+    lastContactDate: ["最終連絡日", "連絡日", "最終対応日"],
+    owner: ["担当者", "担当"],
+    alertEmail: ["内部アラート宛先", "アラート宛先", "通知先"],
+    memo: ["メモ", "備考", "備考欄"]
+  };
+}
+
+function buildRecordFromSourceRow_(row, map, meta) {
+  function read(field) {
+    var index = map[field];
+    return index == null ? "" : row[index];
+  }
+
+  var nameInfo = splitSourceNameCell_(read("name"));
+  var name = nameInfo.name;
+  var licenseNumber = normalize_(read("licenseNumber"));
+  var expiry = parseDate_(read("licenseExpiryDate"));
+  if (!name && !licenseNumber && !expiry) return null;
+
+  var managementId = normalize_(read("managementId"));
+  if (!managementId && nameInfo.id) managementId = nameInfo.id;
+  if (!managementId) managementId = "SRC-" + meta.sourceSheetId + "-" + meta.sourceRowNumber;
+
+  var customerType = normalize_(read("customerType")) || "既存";
+  if (customerType === "新規（他講習）") customerType = "新規（他講習機関）";
+  if (customerType.indexOf("他講習") >= 0) customerType = "新規（他講習機関）";
+
+  var rawStatus = normalize_(read("status"));
+  var status = rawStatus;
+  var checkResult = normalize_(read("licenseCheckResult"));
+  if (!checkResult && expiry && daysBetween_(stripTime_(new Date()), expiry) < 0) checkResult = "期限切れ";
+  if (!status) status = "免許証確認待ち";
+
+  return {
+    managementId: managementId,
+    customerType: customerType,
+    name: name,
+    kana: normalize_(read("kana")),
+    company: normalize_(read("company")),
+    email: normalize_(read("email")),
+    phone: normalize_(read("phone")),
+    licenseType: normalize_(read("licenseType")),
+    licenseNumber: licenseNumber,
+    licenseIssueDate: parseDateOrBlank_(read("licenseIssueDate")),
+    licenseExpiryDate: expiry || "",
+    licenseCheckedDate: parseDateOrBlank_(read("licenseCheckedDate")),
+    licenseCheckResult: checkResult,
+    renewalCourseDate: parseDateOrBlank_(read("renewalCourseDate")),
+    certificateIssueDate: parseDateOrBlank_(read("certificateIssueDate")),
+    status: status,
+    nextActionDate: parseDateOrBlank_(read("nextActionDate")),
+    lastContactDate: parseDateOrBlank_(read("lastContactDate")),
+    owner: normalize_(read("owner")),
+    alertEmail: normalize_(read("alertEmail")),
+    memo: normalize_(read("memo")),
+    sourceRowNumber: meta.sourceRowNumber,
+    importedAt: meta.now,
+    sourceStatusProvided: !!rawStatus
+  };
+}
+
+function splitSourceNameCell_(value) {
+  var text = normalize_(value);
+  if (!text) return { name: "", id: "" };
+  var parts = text.split(/\r?\n/).map(function(part) { return normalize_(part); }).filter(Boolean);
+  if (parts.length <= 1) return { name: text, id: "" };
+  return {
+    name: parts[0],
+    id: parts.slice(1).find(function(part) { return /^[A-Za-z]{1,8}[-_][A-Za-z0-9-]+$/.test(part) || /\d/.test(part); }) || ""
+  };
+}
+
+function upsertImportedRecord_(sheet, record, now) {
+  var rowNumber = findImportedTargetRow_(sheet, record);
+  var created = rowNumber < 2;
+  var row = created
+    ? blankRow_()
+    : sheet.getRange(rowNumber, 1, 1, APP.HEADERS.length).getValues()[0];
+
+  setIfPresent_(row, "管理ID", record.managementId, true);
+  setIfPresent_(row, "顧客区分", record.customerType, true);
+  setIfPresent_(row, "氏名", record.name, true);
+  setIfPresent_(row, "フリガナ", record.kana);
+  setIfPresent_(row, "会社名", record.company);
+  setIfPresent_(row, "メール", record.email);
+  setIfPresent_(row, "電話", record.phone);
+  setIfPresent_(row, "免許区分", record.licenseType);
+  setIfPresent_(row, "免許番号", record.licenseNumber);
+  setIfPresent_(row, "免許交付日", record.licenseIssueDate);
+  setIfPresent_(row, "免許有効期限", record.licenseExpiryDate);
+  setIfPresent_(row, "免許確認日", record.licenseCheckedDate);
+  setIfPresent_(row, "免許確認結果", record.licenseCheckResult);
+  setIfPresent_(row, "更新講習日", record.renewalCourseDate);
+  setIfPresent_(row, "更新証明発行日", record.certificateIssueDate);
+  setIfPresent_(row, "ステータス", record.status, created || record.sourceStatusProvided);
+  setIfPresent_(row, "次回対応日", record.nextActionDate);
+  setIfPresent_(row, "最終連絡日", record.lastContactDate);
+  setIfPresent_(row, "担当者", record.owner);
+  setIfPresent_(row, "内部アラート宛先", record.alertEmail);
+  setIfPresent_(row, "メモ", record.memo);
+  if (!getRowValue_(row, "作成日")) setRowValue_(row, "作成日", now);
+  setRowValue_(row, "更新日", now);
+
+  if (created) {
+    sheet.appendRow(row);
+    rowNumber = sheet.getLastRow();
+  } else {
+    sheet.getRange(rowNumber, 1, 1, APP.HEADERS.length).setValues([row]);
+  }
+  return { created: created, rowNumber: rowNumber };
+}
+
+function findImportedTargetRow_(sheet, record) {
+  var rowNumber = findRowById_(sheet, record.managementId);
+  if (rowNumber >= 2) return rowNumber;
+  if (record.licenseNumber) {
+    rowNumber = findRowByColumnValue_(sheet, "免許番号", record.licenseNumber);
+    if (rowNumber >= 2) return rowNumber;
+  }
+  if (record.name && record.licenseExpiryDate) {
+    return findRowByNameAndExpiry_(sheet, record.name, record.licenseExpiryDate);
+  }
+  return -1;
+}
+
+function findRowByColumnValue_(sheet, header, value) {
+  if (!value || sheet.getLastRow() < 2) return -1;
+  var values = sheet.getRange(2, COL[header] + 1, sheet.getLastRow() - 1, 1).getValues();
+  var needle = normalize_(value);
+  for (var i = 0; i < values.length; i++) {
+    if (normalize_(values[i][0]) === needle) return i + 2;
+  }
+  return -1;
+}
+
+function findRowByNameAndExpiry_(sheet, name, expiry) {
+  if (!name || !expiry || sheet.getLastRow() < 2) return -1;
+  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, APP.HEADERS.length).getValues();
+  var targetName = normalize_(name);
+  var targetExpiry = formatDate_(expiry);
+  for (var i = 0; i < values.length; i++) {
+    var rowName = normalize_(values[i][COL["氏名"]]);
+    var rowExpiry = formatDate_(values[i][COL["免許有効期限"]]);
+    if (rowName === targetName && rowExpiry === targetExpiry) return i + 2;
+  }
+  return -1;
 }
 
 function readLicenseRows_(sheet) {
@@ -507,6 +787,8 @@ function evaluateRisk_(ctx) {
   if (status === "更新完了" || status === "対象外") {
     return { risk: "P5", phase: "完了・対象外", reason: "管理済み", action: "定期確認のみ" };
   }
+  var sourcePhase = sourcePhaseFromStatus_(status);
+  if (sourcePhase) return sourcePhase;
   if (!ctx.expiry) {
     return { risk: "P1", phase: "免許証確認待ち", reason: "ドローン免許証の有効期限が未登録", action: "免許証を確認し、有効期限内か記録" };
   }
@@ -535,6 +817,19 @@ function evaluateRisk_(ctx) {
     return { risk: "P3", phase: "更新講習受講可能", reason: "9か月前に入り講習受講可能", action: "早期案内、希望時期確認" };
   }
   return { risk: "P5", phase: "期限余裕あり", reason: "まだ9か月前ではありません", action: "定期確認" };
+}
+
+function sourcePhaseFromStatus_(status) {
+  var text = normalize_(status);
+  var map = {
+    "期限切れ": { risk: "P1", phase: "期限切れ", reason: "読み取り元の状態が期限切れ", action: "講習可否と再取得手続きを即確認" },
+    "手続き不可ライン": { risk: "P1", phase: "手続き不可ライン", reason: "読み取り元の状態が手続き不可ライン", action: "手続き可能か至急確認し、電話対応" },
+    "更新証明期限注意": { risk: "P2", phase: "更新証明期限注意", reason: "読み取り元の状態が更新証明期限注意", action: "申請完了まで進める" },
+    "3か月以内": { risk: "P2", phase: "3か月以内", reason: "読み取り元の状態が3か月以内", action: "講習日・申請状況を毎週確認" },
+    "CDP講習・申請受付中": { risk: "P2", phase: "CDP講習・申請受付中", reason: "読み取り元の状態がCDP講習・申請受付中", action: "案内送付、申込、日程確定" },
+    "更新講習受講可能": { risk: "P3", phase: "更新講習受講可能", reason: "読み取り元の状態が更新講習受講可能", action: "早期案内、希望時期確認" }
+  };
+  return map[text] || null;
 }
 
 function inferLicenseCheckResult_(expiry, checkedDate, today) {
@@ -616,12 +911,40 @@ function extractSpreadsheetId_(value) {
   return "";
 }
 
+function extractGid_(value) {
+  var text = normalize_(value);
+  if (!text) return null;
+  var m = text.match(/[?&#]gid=(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+function getSheetByGid_(ss, gid) {
+  if (gid == null || isNaN(Number(gid))) return null;
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getSheetId && sheets[i].getSheetId() === Number(gid)) return sheets[i];
+  }
+  return null;
+}
+
+function normalizeHeader_(value) {
+  return normalize_(value)
+    .replace(/[ 　\t\r\n]/g, "")
+    .replace(/[（）()［］\[\]【】]/g, "")
+    .toLowerCase();
+}
+
 function blankRow_() {
   return APP.HEADERS.map(function() { return ""; });
 }
 
 function setRowValue_(row, header, value) {
   row[COL[header]] = value == null ? "" : value;
+}
+
+function setIfPresent_(row, header, value, force) {
+  var hasValue = value instanceof Date || normalize_(value) !== "";
+  if (force || hasValue) setRowValue_(row, header, value);
 }
 
 function getRowValue_(row, header) {

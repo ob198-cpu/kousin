@@ -507,8 +507,9 @@
         <div class="actions">
           <button id="newBtn" class="btn" type="button">新規登録</button>
           <button id="refreshBtn" class="btn primary" type="button">更新</button>
+          <button id="readBtn" class="btn dark" type="button">読み取り</button>
           <button id="dailyBtn" class="btn warn" type="button">危険一覧メール</button>
-          <button id="triggerBtn" class="btn dark" type="button">日次通知設定</button>
+          <button id="triggerBtn" class="btn" type="button">日次通知設定</button>
         </div>
       </header>
 
@@ -632,6 +633,7 @@
       function mock(fn) {
         if (fn === "apiGetSetupState") return { success: true, configured: true, spreadsheetUrl: "#" };
         if (fn === "apiSetupSystem") return { success: true, spreadsheetUrl: "#" };
+        if (fn === "apiReadSourceSpreadsheet") return { success: true, imported: 4, updated: 0, skipped: 0, sourceSheetName: "読み取り元" };
         if (fn === "apiSaveRecord" || fn === "apiSendInternalAlert" || fn === "apiSendDailyAlertSummary" || fn === "apiInstallDailyAlertTrigger") return { success: true };
         return {
           success: true,
@@ -945,6 +947,18 @@
           .finally(function() { setBusy(false); });
       }
 
+      function readSource() {
+        setBusy(true);
+        gas("apiReadSourceSpreadsheet")
+          .then(function(result) {
+            if (!result || result.success === false) throw new Error((result && result.error) || "読み取りに失敗しました");
+            toast("読み取り完了: 追加 " + (result.imported || 0) + "件 / 更新 " + (result.updated || 0) + "件 / スキップ " + (result.skipped || 0) + "件");
+            load();
+          })
+          .catch(function(error) { toast(error.message); })
+          .finally(function() { setBusy(false); });
+      }
+
       function installTrigger() {
         setBusy(true);
         gas("apiInstallDailyAlertTrigger")
@@ -966,6 +980,7 @@
       $("setupBtn").addEventListener("click", setup);
       $("refreshBtn").addEventListener("click", load);
       $("newBtn").addEventListener("click", newRecord);
+      $("readBtn").addEventListener("click", readSource);
       $("dailyBtn").addEventListener("click", sendDaily);
       $("triggerBtn").addEventListener("click", installTrigger);
       $("allBtn").addEventListener("click", function() {
