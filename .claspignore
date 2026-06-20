@@ -1,3 +1,7 @@
 README.md
 *.md
 node_modules/**
+.git/**
+.gitignore
+.clasp.json
+_clasp_create_tmp/**
