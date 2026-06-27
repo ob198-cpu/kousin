@@ -224,6 +224,89 @@
     .metric.good strong { color: var(--green); }
     .metric.violet strong { color: var(--violet); }
 
+    .guide-band {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .guide-box {
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 12px;
+    }
+
+    .guide-box h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    .steps {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .steps li {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .step-no {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: #e6fffa;
+      color: var(--green);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .guide-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+      margin: 0;
+    }
+
+    .guide-note strong { color: var(--text); }
+
+    .button-help {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .button-help div {
+      border: 1px solid #e5edf5;
+      background: #fbfdff;
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .button-help strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
     .panel {
       background: var(--surface);
       border: 1px solid var(--line);
@@ -464,6 +547,8 @@
       .main { padding: 14px; }
       .topbar { display: grid; }
       .actions { justify-content: flex-start; }
+      .guide-band { grid-template-columns: 1fr; }
+      .button-help { grid-template-columns: 1fr; }
       .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .filters { grid-template-columns: 1fr; }
       .form { grid-template-columns: 1fr; }
@@ -523,6 +608,30 @@
         <div class="metric violet"><span>他講習機関</span><strong id="mExternal">0</strong></div>
       </section>
 
+      <section class="guide-band" aria-label="使い方">
+        <div class="guide-box">
+          <h2>初回の使い方</h2>
+          <ol class="steps">
+            <li><span class="step-no">1</span><span>まず「運用ファイル読込」で更新者一覧・案内文・講習記録簿を読み込みます。</span></li>
+            <li><span class="step-no">2</span><span>P1/P2の対象者を確認し、必要に応じて個別の詳細を開いて対応状況を更新します。</span></li>
+            <li><span class="step-no">3</span><span>講習修了後はDIPS申請日、新しい技能証明有効期限、更新完了確認日を別々に登録します。</span></li>
+          </ol>
+        </div>
+        <div class="guide-box">
+          <h2>重要ルール</h2>
+          <p class="guide-note"><strong>講習修了は更新完了ではありません。</strong><br>DIPSまたは新しい技能証明書で新有効期限を確認するまで、更新完了扱いにしません。フォロー期限は「申請期限」と「修了証明期限」の早い方で判定します。</p>
+        </div>
+      </section>
+
+      <section class="guide-box" aria-label="ボタン説明" style="margin-bottom:12px;">
+        <div class="button-help">
+          <div><strong>読み取り</strong>指定した読み取り元シートから基本データを取り込みます。</div>
+          <div><strong>運用ファイル読込</strong>担当共有の更新者一覧・案内文・講習記録簿をまとめて反映します。</div>
+          <div><strong>危険一覧メール</strong>P1/P2など要対応者を内部担当者へ通知します。</div>
+          <div><strong>日次通知設定</strong>毎日決まった時刻に要対応メールを送る設定を作ります。</div>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="filters">
           <div class="field">
@@ -572,7 +681,12 @@
       </section>
     </main>
 
-    <aside id="drawer" class="drawer empty">対象者を選択してください</aside>
+    <aside id="drawer" class="drawer empty">
+      <div>
+        <strong>対象者を選択してください</strong>
+        <p class="guide-note" style="max-width:280px;margin-top:8px;">右側の詳細では、講習日・DIPS申請日・更新完了確認日・新しい技能証明有効期限を別々に登録します。</p>
+      </div>
+    </aside>
   </div>
 
   <div id="toast" class="toast"></div>
