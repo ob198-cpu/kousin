@@ -16,20 +16,24 @@ var APP = {
   STATUSES: [
     "免許証確認待ち",
     "案内前",
+    "案内済",
+    "申込済み",
+    "日程調整中",
+    "講習申込受付",
+    "講習予定",
+    "講習修了",
+    "更新申請待ち",
+    "DIPS申請中",
+    "更新完了未確認",
+    "更新完了",
+    "期限超過・未確認",
+    "対象外",
     "期限切れ",
     "手続き不可ライン",
     "更新証明期限注意",
     "3か月以内",
     "CDP講習・申請受付中",
-    "更新講習受講可能",
-    "案内済",
-    "講習申込受付",
-    "日程調整中",
-    "講習予定",
-    "講習済・申請待ち",
-    "申請完了",
-    "更新完了",
-    "対象外"
+    "更新講習受講可能"
   ],
   CUSTOMER_TYPES: [
     "既存",
@@ -60,7 +64,20 @@ var APP = {
     "内部アラート宛先",
     "メモ",
     "作成日",
-    "更新日"
+    "更新日",
+    "更新講習申込日",
+    "更新講習受講日",
+    "更新講習修了日",
+    "修了証明書番号",
+    "修了証明書有効期限",
+    "更新申請開始可能日",
+    "更新申請期限",
+    "DIPS申請日",
+    "更新完了確認日",
+    "新しい技能証明有効期限",
+    "更新申請フォロー期限",
+    "身体適性確認日",
+    "身体適性確認結果"
   ],
   SETTINGS: [
     ["内部アラート宛先", "", "複数ある場合はカンマ区切り。危険対象の通知先。"],
@@ -69,6 +86,7 @@ var APP = {
     ["CDP講習・申請受付（月前）", "6", "CDPでは6か月前から講習・申請対応。"],
     ["手続き停止ライン（月前）", "1", "免許有効期限の1か月前から手続き不可扱い。"],
     ["更新証明有効（月）", "3", "更新講習修了証明の期限を3か月で管理。"],
+    ["DIPS申請後確認（日）", "14", "DIPS申請中の新有効期限確認タスク期限。"],
     ["日次通知対象", "P1,P2", "日次メールに含めるリスク。例: P1,P2,P3"],
     ["読み取り元スプレッドシートURL", "https://docs.google.com/spreadsheets/d/1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30/edit?gid=307646994#gid=307646994", "読み取り専用。ここには絶対に書き込みません。"]
   ]
@@ -197,7 +215,7 @@ function apiReadSourceSpreadsheet(options) {
       skipped++;
       continue;
     }
-    var result = upsertImportedRecord_(targetSheet, record, now);
+    var result = upsertImportedRecord_(targetSheet, record, now, settings);
     if (result.created) imported++;
     else updated++;
   }
@@ -221,6 +239,7 @@ function apiSaveRecord(record) {
   var ss = getSpreadsheet_();
   ensureWorkbook_(ss);
   var sheet = ss.getSheetByName(APP.SHEET_MAIN);
+  var settings = getSettings_(ss);
   var now = new Date();
   var id = normalize_(record.managementId);
   var rowNumber = id ? findRowById_(sheet, id) : -1;
@@ -243,9 +262,11 @@ function apiSaveRecord(record) {
   setRowValue_(current, "免許有効期限", parseDateOrBlank_(record.licenseExpiryDate));
   setRowValue_(current, "免許確認日", parseDateOrBlank_(record.licenseCheckedDate));
   setRowValue_(current, "免許確認結果", normalize_(record.licenseCheckResult));
-  setRowValue_(current, "更新講習日", parseDateOrBlank_(record.renewalCourseDate));
-  setRowValue_(current, "更新証明発行日", parseDateOrBlank_(record.certificateIssueDate));
-  setRowValue_(current, "ステータス", normalize_(record.status) || "免許証確認待ち");
+  var courseAttendedDate = parseDateOrBlank_(record.courseAttendedDate || record.renewalCourseDate);
+  var courseCompletionDate = parseDateOrBlank_(record.courseCompletionDate || record.certificateIssueDate);
+  setRowValue_(current, "更新講習日", courseAttendedDate);
+  setRowValue_(current, "更新証明発行日", courseCompletionDate);
+  setRowValue_(current, "ステータス", normalizeStatus_(record.status) || "免許証確認待ち");
   setRowValue_(current, "次回対応日", parseDateOrBlank_(record.nextActionDate));
   setRowValue_(current, "最終連絡日", parseDateOrBlank_(record.lastContactDate));
   setRowValue_(current, "担当者", normalize_(record.owner));
@@ -253,6 +274,16 @@ function apiSaveRecord(record) {
   setRowValue_(current, "メモ", normalize_(record.memo));
   if (!getRowValue_(current, "作成日")) setRowValue_(current, "作成日", now);
   setRowValue_(current, "更新日", now);
+  setRowValue_(current, "更新講習申込日", parseDateOrBlank_(record.courseApplicationDate));
+  setRowValue_(current, "更新講習受講日", courseAttendedDate);
+  setRowValue_(current, "更新講習修了日", courseCompletionDate);
+  setRowValue_(current, "修了証明書番号", normalize_(record.certificateNumber));
+  setRowValue_(current, "DIPS申請日", parseDateOrBlank_(record.dipsApplicationDate));
+  setRowValue_(current, "更新完了確認日", parseDateOrBlank_(record.renewalCompletedDate));
+  setRowValue_(current, "新しい技能証明有効期限", parseDateOrBlank_(record.newLicenseExpiryDate));
+  setRowValue_(current, "身体適性確認日", parseDateOrBlank_(record.medicalCheckDate));
+  setRowValue_(current, "身体適性確認結果", normalize_(record.medicalCheckResult));
+  applyDerivedDatesToRow_(current, settings);
 
   if (rowNumber >= 2) {
     sheet.getRange(rowNumber, 1, 1, APP.HEADERS.length).setValues([current]);
@@ -324,17 +355,19 @@ function sendDailyAlertSummary(toOverride) {
     "運用ルール:",
     "- 免許更新は3年に1度",
     "- 更新講習は9か月前から受講可能",
-    "- CDP講習・申請受付は6か月前から",
-    "- 更新証明は発行から3か月で期限管理",
-    "- 有効期限1か月前から手続き不可ライン",
+    "- 更新申請は有効期限6か月前から1か月前まで",
+    "- 講習修了は更新完了ではなく、DIPS申請と新有効期限確認が必要",
+    "- 修了証明書は修了日から3か月後の前日までで期限管理",
+    "- 講習後のフォロー期限は「有効期限1か月前」と「修了証明書期限」の早い方",
     "",
     "対象:"
   ];
   targets.forEach(function(record) {
     lines.push(
       record.risk + " | " + record.name + " | " + record.customerType +
-      " | 免許期限 " + (record.licenseExpiryDate || "未確認") +
+      " | 現期限 " + (record.currentLicenseExpiryDate || record.licenseExpiryDate || "未確認") +
       " | " + record.phase +
+      " | タスク " + (record.taskName || "-") +
       " | 次対応 " + (record.nextActionDate || "-")
     );
   });
@@ -451,9 +484,25 @@ function formatMainSheet_(sheet) {
     sheet.getRange(2, COL["更新証明発行日"] + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat("yyyy/mm/dd");
     sheet.getRange(2, COL["次回対応日"] + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat("yyyy/mm/dd");
     sheet.getRange(2, COL["最終連絡日"] + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat("yyyy/mm/dd");
+    [
+      "更新講習申込日",
+      "更新講習受講日",
+      "更新講習修了日",
+      "修了証明書有効期限",
+      "更新申請開始可能日",
+      "更新申請期限",
+      "DIPS申請日",
+      "更新完了確認日",
+      "新しい技能証明有効期限",
+      "更新申請フォロー期限",
+      "身体適性確認日"
+    ].forEach(function(header) {
+      sheet.getRange(2, COL[header] + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat("yyyy/mm/dd");
+    });
     applyValidation_(sheet, "顧客区分", APP.CUSTOMER_TYPES);
     applyValidation_(sheet, "ステータス", APP.STATUSES);
     applyValidation_(sheet, "免許確認結果", ["未確認", "有効", "期限切れ", "不備あり"]);
+    applyValidation_(sheet, "身体適性確認結果", ["未確認", "確認済み", "不備あり", "不要"]);
     sheet.autoResizeColumns(1, Math.min(APP.HEADERS.length, 12));
   } catch (e) {
     Logger.log("formatMainSheet skipped: " + e.message);
@@ -480,6 +529,7 @@ function getSettings_(ss) {
     cdpStartMonths: Number(map["CDP講習・申請受付（月前）"] || 6),
     procedureStopMonths: Number(map["手続き停止ライン（月前）"] || 1),
     certificateValidMonths: Number(map["更新証明有効（月）"] || 3),
+    dipsFollowDays: Number(map["DIPS申請後確認（日）"] || 14),
     dailyRisks: (map["日次通知対象"] || "P1,P2").split(",").map(function(s) { return normalize_(s); }).filter(Boolean),
     sourceUrl: map["読み取り元スプレッドシートURL"] || APP.READ_SOURCE_URL
   };
@@ -542,7 +592,18 @@ function getSourceAliases_() {
     licenseCheckedDate: ["免許確認日", "確認日", "免許証確認日"],
     licenseCheckResult: ["免許確認結果", "確認結果", "確認", "免許証確認"],
     renewalCourseDate: ["更新講習日", "講習日", "受講日", "更新受講日"],
+    courseApplicationDate: ["更新講習申込日", "講習申込日", "申込日", "受付日"],
+    courseAttendedDate: ["更新講習受講日", "受講日", "講習受講日", "更新受講日"],
+    courseCompletionDate: ["更新講習修了日", "講習修了日", "修了日", "修了証明発行日"],
     certificateIssueDate: ["更新証明発行日", "証明発行日", "修了証明発行日", "更新証明日"],
+    certificateNumber: ["修了証明書番号", "更新講習修了証明書番号", "証明書番号", "修了番号"],
+    certificateExpiryDate: ["修了証明書有効期限", "更新証明期限", "修了証明期限", "証明期限"],
+    dipsApplicationDate: ["DIPS申請日", "申請日", "更新申請日"],
+    renewalCompletedDate: ["更新完了確認日", "更新完了日", "DIPS更新完了日", "完了確認日"],
+    newLicenseExpiryDate: ["新しい技能証明有効期限", "新有効期限", "更新後有効期限", "次回有効期限"],
+    followDeadline: ["更新申請フォロー期限", "フォロー期限", "申請フォロー期限"],
+    medicalCheckDate: ["身体適性確認日", "身体検査確認日", "身体適性検査日"],
+    medicalCheckResult: ["身体適性確認結果", "身体適性結果", "身体検査結果"],
     status: ["ステータス", "状態", "対応状況"],
     nextActionDate: ["次回対応日", "対応日", "次アクション", "次回連絡日"],
     lastContactDate: ["最終連絡日", "連絡日", "最終対応日"],
@@ -573,10 +634,12 @@ function buildRecordFromSourceRow_(row, map, meta) {
   if (customerType.indexOf("他講習") >= 0) customerType = "新規（他講習機関）";
 
   var rawStatus = normalize_(read("status"));
-  var status = rawStatus;
+  var status = normalizeStatus_(rawStatus);
   var checkResult = normalize_(read("licenseCheckResult"));
   if (!checkResult && expiry && daysBetween_(stripTime_(new Date()), expiry) < 0) checkResult = "期限切れ";
   if (!status) status = "免許証確認待ち";
+  var courseAttendedDate = parseDateOrBlank_(read("courseAttendedDate") || read("renewalCourseDate"));
+  var courseCompletionDate = parseDateOrBlank_(read("courseCompletionDate") || read("certificateIssueDate"));
 
   return {
     managementId: managementId,
@@ -592,8 +655,19 @@ function buildRecordFromSourceRow_(row, map, meta) {
     licenseExpiryDate: expiry || "",
     licenseCheckedDate: parseDateOrBlank_(read("licenseCheckedDate")),
     licenseCheckResult: checkResult,
-    renewalCourseDate: parseDateOrBlank_(read("renewalCourseDate")),
-    certificateIssueDate: parseDateOrBlank_(read("certificateIssueDate")),
+    renewalCourseDate: courseAttendedDate,
+    courseApplicationDate: parseDateOrBlank_(read("courseApplicationDate")),
+    courseAttendedDate: courseAttendedDate,
+    courseCompletionDate: courseCompletionDate,
+    certificateIssueDate: courseCompletionDate,
+    certificateNumber: normalize_(read("certificateNumber")),
+    certificateExpiryDate: parseDateOrBlank_(read("certificateExpiryDate")),
+    dipsApplicationDate: parseDateOrBlank_(read("dipsApplicationDate")),
+    renewalCompletedDate: parseDateOrBlank_(read("renewalCompletedDate")),
+    newLicenseExpiryDate: parseDateOrBlank_(read("newLicenseExpiryDate")),
+    followDeadline: parseDateOrBlank_(read("followDeadline")),
+    medicalCheckDate: parseDateOrBlank_(read("medicalCheckDate")),
+    medicalCheckResult: normalize_(read("medicalCheckResult")),
     status: status,
     nextActionDate: parseDateOrBlank_(read("nextActionDate")),
     lastContactDate: parseDateOrBlank_(read("lastContactDate")),
@@ -617,7 +691,7 @@ function splitSourceNameCell_(value) {
   };
 }
 
-function upsertImportedRecord_(sheet, record, now) {
+function upsertImportedRecord_(sheet, record, now, settings) {
   var rowNumber = findImportedTargetRow_(sheet, record);
   var created = rowNumber < 2;
   var row = created
@@ -647,6 +721,18 @@ function upsertImportedRecord_(sheet, record, now) {
   setIfPresent_(row, "メモ", record.memo);
   if (!getRowValue_(row, "作成日")) setRowValue_(row, "作成日", now);
   setRowValue_(row, "更新日", now);
+  setIfPresent_(row, "更新講習申込日", record.courseApplicationDate);
+  setIfPresent_(row, "更新講習受講日", record.courseAttendedDate || record.renewalCourseDate);
+  setIfPresent_(row, "更新講習修了日", record.courseCompletionDate || record.certificateIssueDate);
+  setIfPresent_(row, "修了証明書番号", record.certificateNumber);
+  setIfPresent_(row, "修了証明書有効期限", record.certificateExpiryDate);
+  setIfPresent_(row, "DIPS申請日", record.dipsApplicationDate);
+  setIfPresent_(row, "更新完了確認日", record.renewalCompletedDate);
+  setIfPresent_(row, "新しい技能証明有効期限", record.newLicenseExpiryDate);
+  setIfPresent_(row, "更新申請フォロー期限", record.followDeadline);
+  setIfPresent_(row, "身体適性確認日", record.medicalCheckDate);
+  setIfPresent_(row, "身体適性確認結果", record.medicalCheckResult);
+  applyDerivedDatesToRow_(row, settings);
 
   if (created) {
     sheet.appendRow(row);
@@ -709,39 +795,86 @@ function rowToObject_(row) {
   return obj;
 }
 
+function applyDerivedDatesToRow_(row, settings) {
+  settings = settings || {};
+  var status = normalizeStatus_(getRowValue_(row, "ステータス"));
+  var currentExpiry = parseDate_(getRowValue_(row, "免許有効期限"));
+  var newExpiry = parseDate_(getRowValue_(row, "新しい技能証明有効期限"));
+  var baseExpiry = status === "更新完了" && newExpiry ? newExpiry : currentExpiry;
+  var completionDate = parseDate_(getRowValue_(row, "更新講習修了日")) || parseDate_(getRowValue_(row, "更新証明発行日"));
+  var storedCertificateExpiry = parseDate_(getRowValue_(row, "修了証明書有効期限"));
+  var storedFollowDeadline = parseDate_(getRowValue_(row, "更新申請フォロー期限"));
+  var certificateExpiry = completionDate
+    ? addDays_(addMonths_(completionDate, Number(settings.certificateValidMonths || 3)), -1)
+    : storedCertificateExpiry;
+  var applicationStart = baseExpiry ? addMonths_(baseExpiry, -Number(settings.cdpStartMonths || 6)) : null;
+  var applicationDeadline = baseExpiry ? addMonths_(baseExpiry, -Number(settings.procedureStopMonths || 1)) : null;
+  var followDeadline = certificateExpiry && applicationDeadline ? minDate_(certificateExpiry, applicationDeadline) : storedFollowDeadline;
+
+  setRowValue_(row, "修了証明書有効期限", certificateExpiry || "");
+  setRowValue_(row, "更新申請開始可能日", applicationStart || "");
+  setRowValue_(row, "更新申請期限", applicationDeadline || "");
+  setRowValue_(row, "更新申請フォロー期限", followDeadline || "");
+}
+
 function buildViewRecord_(row, settings, today) {
   var expiry = parseDate_(row["免許有効期限"]);
   var issueDate = parseDate_(row["免許交付日"]);
+  var status = normalizeStatus_(row["ステータス"]) || "免許証確認待ち";
   var expiryEstimated = false;
   if (!expiry && issueDate) {
     expiry = addYears_(issueDate, 3);
     expiryEstimated = true;
   }
 
-  var courseDate = parseDate_(row["更新講習日"]);
-  var certificateIssue = parseDate_(row["更新証明発行日"]) || courseDate;
-  var certificateExpiry = certificateIssue ? addMonths_(certificateIssue, settings.certificateValidMonths) : null;
-  var courseEligibleDate = expiry ? addMonths_(expiry, -settings.courseEligibleMonths) : null;
-  var cdpStartDate = expiry ? addMonths_(expiry, -settings.cdpStartMonths) : null;
-  var procedureStopDate = expiry ? addMonths_(expiry, -settings.procedureStopMonths) : null;
-  var daysToExpiry = expiry ? daysBetween_(today, expiry) : null;
+  var newExpiry = parseDate_(row["新しい技能証明有効期限"]);
+  var renewalCompletedDate = parseDate_(row["更新完了確認日"]);
+  var effectiveExpiry = status === "更新完了" && newExpiry ? newExpiry : expiry;
+  var windowExpiry = effectiveExpiry || expiry;
+  var courseApplicationDate = parseDate_(row["更新講習申込日"]);
+  var courseAttendedDate = parseDate_(row["更新講習受講日"]) || parseDate_(row["更新講習日"]);
+  var courseCompletionDate = parseDate_(row["更新講習修了日"]) || parseDate_(row["更新証明発行日"]);
+  var certificateIssue = courseCompletionDate;
+  var storedCertificateExpiry = parseDate_(row["修了証明書有効期限"]);
+  var certificateExpiry = storedCertificateExpiry || (certificateIssue ? addDays_(addMonths_(certificateIssue, settings.certificateValidMonths), -1) : null);
+  var applicationStartDate = windowExpiry ? addMonths_(windowExpiry, -settings.cdpStartMonths) : null;
+  var applicationDeadline = windowExpiry ? addMonths_(windowExpiry, -settings.procedureStopMonths) : null;
+  var followDeadline = parseDate_(row["更新申請フォロー期限"]) || (certificateExpiry && applicationDeadline ? minDate_(certificateExpiry, applicationDeadline) : null);
+  var dipsApplicationDate = parseDate_(row["DIPS申請日"]);
+  var dipsFollowDue = dipsApplicationDate ? addDays_(dipsApplicationDate, settings.dipsFollowDays) : null;
+  var courseEligibleDate = windowExpiry ? addMonths_(windowExpiry, -settings.courseEligibleMonths) : null;
+  var cdpStartDate = applicationStartDate;
+  var procedureStopDate = applicationDeadline;
+  var daysToExpiry = effectiveExpiry ? daysBetween_(today, effectiveExpiry) : null;
+  var daysToCurrentExpiry = expiry ? daysBetween_(today, expiry) : null;
   var certDays = certificateExpiry ? daysBetween_(today, certificateExpiry) : null;
-  var status = normalize_(row["ステータス"]) || "免許証確認待ち";
   var licenseCheckDate = parseDate_(row["免許確認日"]);
   var licenseCheckResult = normalize_(row["免許確認結果"]) || inferLicenseCheckResult_(expiry, licenseCheckDate, today);
   var riskInfo = evaluateRisk_({
     today: today,
-    expiry: expiry,
+    expiry: effectiveExpiry,
+    currentExpiry: expiry,
+    newExpiry: newExpiry,
     daysToExpiry: daysToExpiry,
+    daysToCurrentExpiry: daysToCurrentExpiry,
     licenseCheckDate: licenseCheckDate,
     licenseCheckResult: licenseCheckResult,
     courseEligibleDate: courseEligibleDate,
     cdpStartDate: cdpStartDate,
     procedureStopDate: procedureStopDate,
+    applicationDeadline: applicationDeadline,
+    courseAttendedDate: courseAttendedDate,
+    courseCompletionDate: courseCompletionDate,
     certificateExpiry: certificateExpiry,
     certDays: certDays,
+    followDeadline: followDeadline,
+    dipsApplicationDate: dipsApplicationDate,
+    dipsFollowDue: dipsFollowDue,
+    renewalCompletedDate: renewalCompletedDate,
     status: status
   });
+  var storedNextActionDate = parseDate_(row["次回対応日"]);
+  var computedNextActionDate = storedNextActionDate || riskInfo.nextActionDate || null;
 
   return {
     managementId: normalize_(row["管理ID"]),
@@ -754,25 +887,41 @@ function buildViewRecord_(row, settings, today) {
     licenseType: normalize_(row["免許区分"]),
     licenseNumber: normalize_(row["免許番号"]),
     licenseIssueDate: formatDate_(issueDate),
-    licenseExpiryDate: formatDate_(expiry),
+    licenseExpiryDate: formatDate_(effectiveExpiry),
+    currentLicenseExpiryDate: formatDate_(expiry),
+    effectiveLicenseExpiryDate: formatDate_(effectiveExpiry),
+    newLicenseExpiryDate: formatDate_(newExpiry),
     expiryEstimated: expiryEstimated,
     licenseCheckedDate: formatDate_(licenseCheckDate),
     licenseCheckResult: licenseCheckResult,
     courseEligibleDate: formatDate_(courseEligibleDate),
     cdpStartDate: formatDate_(cdpStartDate),
-    applicationStartDate: formatDate_(cdpStartDate),
+    applicationStartDate: formatDate_(applicationStartDate),
     procedureStopDate: formatDate_(procedureStopDate),
-    renewalCourseDate: formatDate_(courseDate),
+    applicationDeadlineDate: formatDate_(applicationDeadline),
+    renewalCourseDate: formatDate_(courseAttendedDate),
+    courseApplicationDate: formatDate_(courseApplicationDate),
+    courseAttendedDate: formatDate_(courseAttendedDate),
+    courseCompletionDate: formatDate_(courseCompletionDate),
     certificateIssueDate: formatDate_(certificateIssue),
+    certificateNumber: normalize_(row["修了証明書番号"]),
     certificateExpiryDate: formatDate_(certificateExpiry),
+    followDeadlineDate: formatDate_(followDeadline),
+    dipsApplicationDate: formatDate_(dipsApplicationDate),
+    dipsFollowDueDate: formatDate_(dipsFollowDue),
+    renewalCompletedDate: formatDate_(renewalCompletedDate),
+    medicalCheckDate: formatDate_(row["身体適性確認日"]),
+    medicalCheckResult: normalize_(row["身体適性確認結果"]),
     daysToExpiry: daysToExpiry,
+    daysToCurrentExpiry: daysToCurrentExpiry,
     certificateDaysLeft: certDays,
     status: status,
     risk: riskInfo.risk,
     phase: riskInfo.phase,
     alertReason: riskInfo.reason,
     recommendedAction: riskInfo.action,
-    nextActionDate: formatDate_(row["次回対応日"]),
+    taskName: riskInfo.taskName || "",
+    nextActionDate: formatDate_(computedNextActionDate),
     lastContactDate: formatDate_(row["最終連絡日"]),
     owner: normalize_(row["担当者"]),
     alertEmail: normalize_(row["内部アラート宛先"]),
@@ -784,49 +933,114 @@ function buildViewRecord_(row, settings, today) {
 
 function evaluateRisk_(ctx) {
   var status = ctx.status || "";
-  if (status === "更新完了" || status === "対象外") {
-    return { risk: "P5", phase: "完了・対象外", reason: "管理済み", action: "定期確認のみ" };
-  }
+  if (status === "対象外") return { risk: "P5", phase: "対象外", reason: "管理対象外", action: "定期確認のみ" };
   var sourcePhase = sourcePhaseFromStatus_(status);
   if (sourcePhase) return sourcePhase;
-  if (!ctx.expiry) {
+  if (status === "更新完了") {
+    if (!ctx.newExpiry || !ctx.renewalCompletedDate) {
+      return {
+        risk: "P1",
+        phase: "新有効期限確認タスク",
+        reason: "更新完了になっていますが、DIPSまたは新しい技能証明書の新有効期限・更新完了確認日が未入力です。",
+        action: "更新後の技能証明書に記載された新しい有効期限へ差し替えてください。",
+        taskName: "次回更新期限差し替え"
+      };
+    }
+    if (ctx.daysToExpiry != null && ctx.daysToExpiry < 0) {
+      return { risk: "P1", phase: "新有効期限超過", reason: "新しい技能証明有効期限を過ぎています", action: "DIPSで現在の有効期限を再確認", taskName: "新有効期限再確認" };
+    }
+    if (ctx.daysToExpiry != null && ctx.daysToExpiry <= 90) {
+      return { risk: "P2", phase: "次回更新3か月以内", reason: "更新後の新しい技能証明有効期限が3か月以内です", action: "次回更新案内を開始", taskName: "次回更新案内" };
+    }
+    if (ctx.today >= ctx.cdpStartDate) {
+      return { risk: "P2", phase: "次回CDP講習・申請受付中", reason: "更新後の新有効期限を基準に6か月前へ入りました", action: "次回更新の案内・申込状況を確認", taskName: "次回更新案内" };
+    }
+    if (ctx.today >= ctx.courseEligibleDate) {
+      return { risk: "P3", phase: "次回更新講習受講可能", reason: "更新後の新有効期限を基準に9か月前へ入りました", action: "次回講習の希望時期を確認", taskName: "次回講習案内" };
+    }
+    return { risk: "P5", phase: "更新完了", reason: "DIPSまたは新しい技能証明書で新有効期限を確認済み", action: "次回更新時期まで定期確認", taskName: "定期確認" };
+  }
+  if (!ctx.currentExpiry) {
     return { risk: "P1", phase: "免許証確認待ち", reason: "ドローン免許証の有効期限が未登録", action: "免許証を確認し、有効期限内か記録" };
   }
-  if (ctx.daysToExpiry < 0) {
-    return { risk: "P1", phase: "期限切れ", reason: "免許有効期限を過ぎています", action: "講習可否と再取得手続きを即確認" };
+  if (ctx.daysToCurrentExpiry < 0) {
+    return { risk: "P1", phase: "期限超過・未確認", reason: "現在の技能証明有効期限を過ぎていますが、更新完了が確認できていません。", action: "DIPSまたは新しい技能証明書で更新完了の有無を至急確認", taskName: "更新未完了疑い" };
   }
   if (!ctx.licenseCheckDate || ctx.licenseCheckResult !== "有効") {
     return { risk: "P1", phase: "免許証確認待ち", reason: "免許証の現物確認または有効判定が未完了", action: "免許証を確認し、有効期限内なら確認日を記録" };
   }
-  if (ctx.certificateExpiry && ctx.certDays < 0 && status !== "申請完了") {
-    return { risk: "P1", phase: "更新証明期限切れ", reason: "更新証明の3か月期限を過ぎています", action: "再講習または申請可否を確認" };
+  if ((status === "講習修了" || status === "更新申請待ち") && !ctx.courseCompletionDate) {
+    return { risk: "P1", phase: "講習修了日未確認", reason: "講習修了ステータスですが、更新講習修了日が未入力です。", action: "修了証明書の発行日を確認し、修了証明書有効期限を確定", taskName: "修了証明書確認" };
   }
-  if (ctx.today >= ctx.procedureStopDate) {
-    return { risk: "P1", phase: "手続き不可ライン", reason: "有効期限1か月前に入っています", action: "手続き可能か至急確認し、電話対応" };
+  if ((status === "講習修了" || status === "更新申請待ち") && ctx.followDeadline) {
+    var followDays = daysBetween_(ctx.today, ctx.followDeadline);
+    if (followDays < 0) {
+      return { risk: "P1", phase: "更新未完了疑い", reason: "更新申請フォロー期限を過ぎても新しい有効期限が未入力です。", action: "DIPSで更新申請が完了しているか確認してください。", taskName: "DIPS更新申請確認", nextActionDate: ctx.followDeadline };
+    }
+    if (followDays <= 30) {
+      return { risk: "P2", phase: "更新申請フォロー期限注意", reason: "更新申請期限または修了証明書の有効期限が30日以内です。", action: "DIPSで更新申請が完了しているか確認してください。", taskName: "DIPS更新申請確認", nextActionDate: ctx.followDeadline };
+    }
   }
-  if (ctx.certificateExpiry && ctx.certDays <= 30 && status !== "申請完了") {
-    return { risk: "P2", phase: "更新証明期限注意", reason: "更新証明の期限が30日以内", action: "申請完了まで進める" };
+  if (status === "DIPS申請中" || status === "更新完了未確認") {
+    if (!ctx.dipsApplicationDate) {
+      return { risk: "P2", phase: "DIPS申請日未確認", reason: "DIPS申請中ですが、申請日が未入力です。", action: "DIPS申請日を確認し、新有効期限確認タスクの期限を確定", taskName: "新有効期限確認" };
+    }
+    if (ctx.applicationDeadline && daysBetween_(ctx.today, ctx.applicationDeadline) < 0) {
+      return { risk: "P1", phase: "更新未完了疑い", reason: "更新申請期限を過ぎていますが、新有効期限が未確認です。", action: "DIPSや新しい技能証明書で更新完了を確認", taskName: "新有効期限確認", nextActionDate: ctx.applicationDeadline };
+    }
+    if (ctx.dipsFollowDue) {
+      var dipsDays = daysBetween_(ctx.today, ctx.dipsFollowDue);
+      if (dipsDays < 0) {
+        return { risk: "P1", phase: "新有効期限未確認", reason: "DIPS申請から確認期限を過ぎていますが、新しい技能証明有効期限が未入力です。", action: "DIPS申請状況または新しい技能証明書を確認", taskName: "新有効期限確認", nextActionDate: ctx.dipsFollowDue };
+      }
+      if (dipsDays <= 7) {
+        return { risk: "P2", phase: "更新完了未確認", reason: "DIPS申請後の新有効期限確認期限が近づいています。", action: "DIPS申請状況を確認", taskName: "新有効期限確認", nextActionDate: ctx.dipsFollowDue };
+      }
+    }
+    return { risk: "P2", phase: "更新完了未確認", reason: "DIPS申請中ですが、新しい技能証明有効期限は未確認です。", action: "DIPSまたは新証明書で新有効期限を確認", taskName: "新有効期限確認", nextActionDate: ctx.dipsFollowDue };
   }
-  if (ctx.daysToExpiry <= 90) {
-    return { risk: "P2", phase: "3か月以内", reason: "免許有効期限が3か月以内", action: "講習日・申請状況を毎週確認" };
+  if (ctx.certificateExpiry && ctx.certDays < 0) {
+    return { risk: "P1", phase: "修了証明書期限切れ", reason: "更新講習修了証明書の有効期限を過ぎています。", action: "再講習リスクを確認し、DIPS申請可否を判断", taskName: "更新未完了疑い", nextActionDate: ctx.certificateExpiry };
+  }
+  if (ctx.followDeadline) {
+    var generalFollowDays = daysBetween_(ctx.today, ctx.followDeadline);
+    if (generalFollowDays < 0) {
+      return { risk: "P1", phase: "更新未完了疑い", reason: "更新申請フォロー期限を過ぎても更新完了が確認できていません。", action: "DIPSで更新申請・更新完了状況を確認", taskName: "DIPS更新申請確認", nextActionDate: ctx.followDeadline };
+    }
+    if (generalFollowDays <= 30) {
+      return { risk: "P2", phase: "期限注意", reason: "更新申請期限または修了証明書の有効期限が30日以内です。", action: "DIPS更新申請の完了状況を確認", taskName: "DIPS更新申請確認", nextActionDate: ctx.followDeadline };
+    }
+  }
+  if (ctx.certificateExpiry && ctx.certDays <= 30) {
+    return { risk: "P2", phase: "修了証明書期限注意", reason: "更新講習修了証明書の有効期限が30日以内です。", action: "DIPS申請完了まで進める", taskName: "DIPS更新申請確認", nextActionDate: ctx.certificateExpiry };
+  }
+  if (ctx.applicationDeadline && ctx.today >= ctx.applicationDeadline) {
+    return { risk: "P1", phase: "更新申請期限", reason: "有効期限1か月前に入っています。", action: "手続き可能か至急確認し、電話対応", taskName: "DIPS更新申請確認", nextActionDate: ctx.applicationDeadline };
+  }
+  if (ctx.applicationDeadline && daysBetween_(ctx.today, ctx.applicationDeadline) <= 30) {
+    return { risk: "P2", phase: "更新申請期限注意", reason: "更新申請期限が30日以内です。", action: "申込・講習修了・DIPS申請状況を確認", taskName: "DIPS更新申請確認", nextActionDate: ctx.applicationDeadline };
+  }
+  if (ctx.daysToCurrentExpiry <= 90) {
+    return { risk: "P2", phase: "3か月以内", reason: "現在の技能証明有効期限が3か月以内", action: "講習日・DIPS申請状況を毎週確認", taskName: "更新状況確認" };
   }
   if (ctx.today >= ctx.cdpStartDate) {
-    return { risk: "P2", phase: "CDP講習・申請受付中", reason: "6か月前に入りCDP講習対象", action: "案内送付、申込、日程確定" };
+    return { risk: "P2", phase: "CDP講習・申請受付中", reason: "6か月前に入り更新申請可能期間です", action: "案内送付、申込、講習日程、DIPS申請準備を確認", taskName: "更新講習案内" };
   }
   if (ctx.today >= ctx.courseEligibleDate) {
-    return { risk: "P3", phase: "更新講習受講可能", reason: "9か月前に入り講習受講可能", action: "早期案内、希望時期確認" };
+    return { risk: "P3", phase: "更新講習受講可能", reason: "9か月前に入り講習受講可能", action: "早期案内、希望時期確認", taskName: "更新講習案内" };
   }
-  return { risk: "P5", phase: "期限余裕あり", reason: "まだ9か月前ではありません", action: "定期確認" };
+  return { risk: "P5", phase: "期限余裕あり", reason: "まだ9か月前ではありません", action: "定期確認", taskName: "定期確認" };
 }
 
 function sourcePhaseFromStatus_(status) {
   var text = normalize_(status);
   var map = {
-    "期限切れ": { risk: "P1", phase: "期限切れ", reason: "読み取り元の状態が期限切れ", action: "講習可否と再取得手続きを即確認" },
-    "手続き不可ライン": { risk: "P1", phase: "手続き不可ライン", reason: "読み取り元の状態が手続き不可ライン", action: "手続き可能か至急確認し、電話対応" },
-    "更新証明期限注意": { risk: "P2", phase: "更新証明期限注意", reason: "読み取り元の状態が更新証明期限注意", action: "申請完了まで進める" },
-    "3か月以内": { risk: "P2", phase: "3か月以内", reason: "読み取り元の状態が3か月以内", action: "講習日・申請状況を毎週確認" },
-    "CDP講習・申請受付中": { risk: "P2", phase: "CDP講習・申請受付中", reason: "読み取り元の状態がCDP講習・申請受付中", action: "案内送付、申込、日程確定" },
+    "期限超過・未確認": { risk: "P1", phase: "期限超過・未確認", reason: "更新完了が確認できていません。", action: "DIPSまたは新しい技能証明書で更新完了の有無を至急確認" },
+    "期限切れ": { risk: "P1", phase: "期限超過・未確認", reason: "読み取り元の状態が期限切れ", action: "DIPSまたは新しい技能証明書で更新完了の有無を至急確認" },
+    "手続き不可ライン": { risk: "P1", phase: "更新申請期限", reason: "読み取り元の状態が手続き不可ライン", action: "手続き可能か至急確認し、電話対応" },
+    "更新証明期限注意": { risk: "P2", phase: "修了証明書期限注意", reason: "読み取り元の状態が更新証明期限注意", action: "DIPS申請完了まで進める" },
+    "3か月以内": { risk: "P2", phase: "3か月以内", reason: "読み取り元の状態が3か月以内", action: "講習日・DIPS申請状況を毎週確認" },
+    "CDP講習・申請受付中": { risk: "P2", phase: "CDP講習・申請受付中", reason: "読み取り元の状態がCDP講習・申請受付中", action: "案内送付、申込、講習日程、DIPS申請準備を確認" },
     "更新講習受講可能": { risk: "P3", phase: "更新講習受講可能", reason: "読み取り元の状態が更新講習受講可能", action: "早期案内、希望時期確認" }
   };
   return map[text] || null;
@@ -878,16 +1092,26 @@ function buildAlertMailBody_(record, extraMessage) {
     "顧客区分: " + record.customerType,
     "免許区分: " + record.licenseType,
     "免許番号: " + record.licenseNumber,
-    "免許有効期限: " + (record.licenseExpiryDate || "未確認"),
+    "現在の技能証明有効期限: " + (record.currentLicenseExpiryDate || record.licenseExpiryDate || "未確認"),
+    "新しい技能証明有効期限: " + (record.newLicenseExpiryDate || "未確認"),
     "免許確認: " + record.licenseCheckResult + " / " + (record.licenseCheckedDate || "未確認"),
     "状態: " + record.phase,
     "リスク: " + record.risk,
+    "タスク: " + (record.taskName || "-"),
     "理由: " + record.alertReason,
     "推奨対応: " + record.recommendedAction,
     "更新講習受講可: " + (record.courseEligibleDate || "-"),
-    "CDP講習・申請受付: " + (record.cdpStartDate || "-"),
-    "手続き停止ライン: " + (record.procedureStopDate || "-"),
-    "更新証明期限: " + (record.certificateExpiryDate || "-"),
+    "更新申請開始可能日: " + (record.applicationStartDate || "-"),
+    "更新申請期限: " + (record.applicationDeadlineDate || record.procedureStopDate || "-"),
+    "更新講習申込日: " + (record.courseApplicationDate || "-"),
+    "更新講習受講日: " + (record.courseAttendedDate || "-"),
+    "更新講習修了日: " + (record.courseCompletionDate || "-"),
+    "修了証明書番号: " + (record.certificateNumber || "-"),
+    "修了証明書有効期限: " + (record.certificateExpiryDate || "-"),
+    "更新申請フォロー期限: " + (record.followDeadlineDate || "-"),
+    "DIPS申請日: " + (record.dipsApplicationDate || "-"),
+    "更新完了確認日: " + (record.renewalCompletedDate || "-"),
+    "身体適性確認: " + (record.medicalCheckResult || "-") + " / " + (record.medicalCheckDate || "-"),
     "連絡先: " + (record.email || record.phone || "-"),
     "メモ: " + (record.memo || "-"),
     "",
@@ -989,9 +1213,20 @@ function addMonths_(date, months) {
   return new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
 }
 
+function addDays_(date, days) {
+  if (!date) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
 function addYears_(date, years) {
   if (!date) return null;
   return new Date(date.getFullYear() + years, date.getMonth(), date.getDate());
+}
+
+function minDate_(a, b) {
+  if (!a) return b || null;
+  if (!b) return a || null;
+  return a.getTime() <= b.getTime() ? a : b;
 }
 
 function daysBetween_(from, to) {
@@ -1016,4 +1251,19 @@ function formatDateTimeOrBlank_(value) {
 
 function normalize_(value) {
   return String(value == null ? "" : value).trim();
+}
+
+function normalizeStatus_(value) {
+  var text = normalize_(value);
+  var map = {
+    "申込済": "申込済み",
+    "講習申込受付": "申込済み",
+    "講習済": "講習修了",
+    "講習済・申請待ち": "講習修了",
+    "申請待ち": "更新申請待ち",
+    "DIPS申請済": "DIPS申請中",
+    "申請完了": "DIPS申請中",
+    "更新完了確認待ち": "更新完了未確認"
+  };
+  return map[text] || text;
 }

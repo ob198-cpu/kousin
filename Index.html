@@ -555,14 +555,14 @@
                 <th>リスク</th>
                 <th>氏名</th>
                 <th>区分</th>
-                <th>免許期限</th>
+                <th>基準期限</th>
                 <th>状態</th>
-                <th>講習可</th>
-                <th>CDP受付</th>
-                <th>停止ライン</th>
-                <th>更新証明期限</th>
-                <th>次回対応</th>
-                <th>確認</th>
+                <th>タスク</th>
+                <th>申請開始</th>
+                <th>申請期限</th>
+                <th>修了証明期限</th>
+                <th>フォロー期限</th>
+                <th>新有効期限</th>
               </tr>
             </thead>
             <tbody id="rows"><tr><td class="loading" colspan="11">読み込み中</td></tr></tbody>
@@ -639,7 +639,7 @@
           success: true,
           spreadsheetUrl: "#",
           generatedAt: "2026/06/20 10:00",
-          statusOptions: ["免許証確認待ち", "案内前", "案内済", "講習予定", "講習済・申請待ち", "申請完了", "更新完了", "対象外"],
+          statusOptions: ["免許証確認待ち", "案内前", "案内済", "申込済み", "講習予定", "講習修了", "更新申請待ち", "DIPS申請中", "更新完了未確認", "更新完了", "期限超過・未確認", "対象外"],
           customerTypes: ["既存", "新規（他講習機関）", "新規", "法人"],
           summary: { total: 4, p1: 1, p2: 2, p3: 1, p5: 0, existing: 3, externalNew: 1 },
           settings: { alertEmails: "" },
@@ -672,11 +672,24 @@
           applicationStartDate: "2026/04/15",
           procedureStopDate: "2026/06/15",
           renewalCourseDate: "",
+          courseApplicationDate: "",
+          courseAttendedDate: "",
+          courseCompletionDate: "",
           certificateIssueDate: "",
+          certificateNumber: "",
           certificateExpiryDate: "",
+          applicationDeadlineDate: "2026/06/15",
+          followDeadlineDate: "",
+          dipsApplicationDate: "",
+          dipsFollowDueDate: "",
+          renewalCompletedDate: "",
+          newLicenseExpiryDate: "",
+          medicalCheckDate: "",
+          medicalCheckResult: "未確認",
           daysToExpiry: 25,
           certificateDaysLeft: "",
           status: "案内前",
+          taskName: "更新状況確認",
           risk: risk,
           phase: phase,
           alertReason: phase,
@@ -791,12 +804,12 @@
               '<td>' + esc(r.customerType || "-") + '</td>',
               '<td>' + esc(r.licenseExpiryDate || "-") + '</td>',
               '<td>' + esc(r.phase || "-") + '</td>',
-              '<td>' + esc(r.courseEligibleDate || "-") + '</td>',
-              '<td>' + esc(r.cdpStartDate || "-") + '</td>',
-              '<td>' + esc(r.procedureStopDate || "-") + '</td>',
+              '<td>' + esc(r.taskName || "-") + '</td>',
+              '<td>' + esc(r.applicationStartDate || r.cdpStartDate || "-") + '</td>',
+              '<td>' + esc(r.applicationDeadlineDate || r.procedureStopDate || "-") + '</td>',
               '<td>' + esc(r.certificateExpiryDate || "-") + '</td>',
-              '<td>' + esc(r.nextActionDate || "-") + '</td>',
-              '<td>' + esc(r.licenseCheckResult || "-") + '</td>',
+              '<td>' + esc(r.followDeadlineDate || r.nextActionDate || "-") + '</td>',
+              '<td>' + esc(r.newLicenseExpiryDate || "-") + '</td>',
             '</tr>'
           ].join("");
         }).join("");
@@ -818,7 +831,8 @@
           managementId: "",
           customerType: "既存",
           status: "免許証確認待ち",
-          licenseCheckResult: "未確認"
+          licenseCheckResult: "未確認",
+          medicalCheckResult: "未確認"
         });
       }
 
@@ -828,9 +842,13 @@
           '<div class="drawer-head"><h2>' + esc(r.name || "新規登録") + '</h2><p>' + esc(r.phase || "免許証を確認してください") + '</p></div>',
           '<div class="facts">',
             fact("リスク", r.risk || "-"),
+            fact("タスク", r.taskName || "-"),
             fact("理由", r.alertReason || "-"),
             fact("推奨対応", r.recommendedAction || "-"),
-            fact("3か月証明期限", r.certificateExpiryDate || "-"),
+            fact("現在の資格期限", r.currentLicenseExpiryDate || r.licenseExpiryDate || "-"),
+            fact("新しい資格期限", r.newLicenseExpiryDate || "-"),
+            fact("申請フォロー期限", r.followDeadlineDate || r.nextActionDate || "-"),
+            fact("修了証明期限", r.certificateExpiryDate || "-"),
           '</div>',
           '<div class="form">',
             hidden("managementId", r.managementId),
@@ -844,11 +862,18 @@
             field("licenseType", "免許区分", "text", r.licenseType),
             field("licenseNumber", "免許番号", "text", r.licenseNumber),
             field("licenseIssueDate", "免許交付日", "date", r.licenseIssueDate),
-            field("licenseExpiryDate", "免許有効期限", "date", r.licenseExpiryDate),
+            field("licenseExpiryDate", "現在の技能証明有効期限", "date", r.currentLicenseExpiryDate || r.licenseExpiryDate),
             field("licenseCheckedDate", "免許確認日", "date", r.licenseCheckedDate),
             field("licenseCheckResult", "免許確認結果", "select", r.licenseCheckResult, ["未確認", "有効", "期限切れ", "不備あり"]),
-            field("renewalCourseDate", "更新講習日", "date", r.renewalCourseDate),
-            field("certificateIssueDate", "更新証明発行日", "date", r.certificateIssueDate),
+            field("courseApplicationDate", "更新講習申込日", "date", r.courseApplicationDate),
+            field("courseAttendedDate", "更新講習受講日", "date", r.courseAttendedDate || r.renewalCourseDate),
+            field("courseCompletionDate", "更新講習修了日", "date", r.courseCompletionDate || r.certificateIssueDate),
+            field("certificateNumber", "修了証明書番号", "text", r.certificateNumber),
+            field("dipsApplicationDate", "DIPS申請日", "date", r.dipsApplicationDate),
+            field("renewalCompletedDate", "更新完了確認日", "date", r.renewalCompletedDate),
+            field("newLicenseExpiryDate", "新しい技能証明有効期限", "date", r.newLicenseExpiryDate),
+            field("medicalCheckDate", "身体適性確認日", "date", r.medicalCheckDate),
+            field("medicalCheckResult", "身体適性確認結果", "select", r.medicalCheckResult || "未確認", ["未確認", "確認済み", "不備あり", "不要"]),
             field("nextActionDate", "次回対応日", "date", r.nextActionDate),
             field("lastContactDate", "最終連絡日", "date", r.lastContactDate),
             field("owner", "担当者", "text", r.owner),
@@ -889,7 +914,7 @@
       }
 
       function collectForm() {
-        var ids = ["managementId", "customerType", "status", "name", "kana", "company", "email", "phone", "licenseType", "licenseNumber", "licenseIssueDate", "licenseExpiryDate", "licenseCheckedDate", "licenseCheckResult", "renewalCourseDate", "certificateIssueDate", "nextActionDate", "lastContactDate", "owner", "alertEmail", "memo"];
+        var ids = ["managementId", "customerType", "status", "name", "kana", "company", "email", "phone", "licenseType", "licenseNumber", "licenseIssueDate", "licenseExpiryDate", "licenseCheckedDate", "licenseCheckResult", "courseApplicationDate", "courseAttendedDate", "courseCompletionDate", "certificateNumber", "dipsApplicationDate", "renewalCompletedDate", "newLicenseExpiryDate", "medicalCheckDate", "medicalCheckResult", "nextActionDate", "lastContactDate", "owner", "alertEmail", "memo"];
         var record = {};
         ids.forEach(function(id) {
           var el = $("f_" + id);
