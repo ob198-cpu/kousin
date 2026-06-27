@@ -1,1167 +1,370 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <base target="_top">
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CDP免許更新管理</title>
   <style>
     :root {
-      --bg: #f5f7fa;
-      --nav: #102a43;
-      --nav-2: #183b56;
-      --surface: #ffffff;
-      --line: #d8e2ec;
-      --text: #1f2933;
-      --muted: #627d98;
-      --green: #0f766e;
-      --blue: #2563eb;
-      --amber: #b45309;
-      --red: #b91c1c;
-      --violet: #6d28d9;
-      --shadow: 0 14px 32px rgba(16, 42, 67, 0.08);
+      --bg: #f4f7fb;
+      --panel: #fff;
+      --ink: #111827;
+      --muted: #667085;
+      --line: #d5dfeb;
+      --red: #b42318;
+      --red-bg: #fff1f0;
+      --amber: #b54708;
+      --amber-bg: #fff7e6;
+      --blue: #175cd3;
+      --blue-bg: #eff6ff;
+      --green: #067647;
+      --green-bg: #ecfdf3;
     }
-
     * { box-sizing: border-box; }
-
     body {
       margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 14px;
-      letter-spacing: 0;
-    }
-
-    button, input, select, textarea {
-      font: inherit;
-      letter-spacing: 0;
-    }
-
-    button {
-      cursor: pointer;
-      border: 0;
-    }
-
-    .app {
       min-height: 100vh;
-      display: grid;
-      grid-template-columns: 220px minmax(0, 1fr) 380px;
+      font-family: "Yu Gothic", "Meiryo", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
     }
-
-    .sidebar {
-      background: var(--nav);
-      color: #d9e8f5;
-      padding: 18px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
     }
-
-    .brand {
-      padding: 4px 4px 14px;
-      border-bottom: 1px solid rgba(255,255,255,0.14);
-    }
-
-    .brand strong {
-      display: block;
-      color: #ffffff;
-      font-size: 17px;
-    }
-
-    .brand span {
-      color: #9fb3c8;
-      display: block;
-      font-size: 12px;
-      margin-top: 4px;
-    }
-
-    .nav-list {
-      display: grid;
-      gap: 8px;
-    }
-
-    .nav-item {
+    .top {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      min-height: 38px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      background: transparent;
-      color: #d9e8f5;
-    }
-
-    .nav-item.active {
-      background: var(--nav-2);
-      box-shadow: inset 3px 0 0 var(--green);
-      color: #ffffff;
-    }
-
-    .main {
-      padding: 20px;
-      min-width: 0;
-    }
-
-    .topbar {
-      display: flex;
       align-items: flex-start;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 14px;
+      gap: 18px;
+      margin-bottom: 16px;
     }
-
     h1 {
-      margin: 0;
-      font-size: 24px;
-      line-height: 1.25;
+      margin: 0 0 6px;
+      font-size: 28px;
+      letter-spacing: 0;
     }
-
+    h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
     .sub {
       color: var(--muted);
-      margin-top: 5px;
-      font-size: 13px;
+      font-size: 14px;
     }
-
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: flex-end;
-    }
-
-    .btn {
-      min-height: 38px;
-      border-radius: 8px;
-      padding: 8px 12px;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      color: var(--text);
+    .safe {
       display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
+      border: 1px solid #abefc6;
+      background: var(--green-bg);
+      color: var(--green);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-weight: 800;
       white-space: nowrap;
     }
-
-    .btn.primary {
-      background: var(--green);
-      border-color: var(--green);
-      color: #ffffff;
-    }
-
-    .btn.dark {
-      background: #1f2933;
-      border-color: #1f2933;
-      color: #ffffff;
-    }
-
-    .btn.warn {
-      background: var(--amber);
-      border-color: var(--amber);
-      color: #ffffff;
-    }
-
-    .btn:disabled {
-      opacity: .55;
-      cursor: wait;
-    }
-
-    .setup {
-      max-width: 760px;
-      margin: 56px auto;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-      padding: 22px;
-      display: none;
-      gap: 14px;
-    }
-
-    .setup.show {
-      display: grid;
-    }
-
-    .setup-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: end;
-    }
-
     .summary {
       display: grid;
-      grid-template-columns: repeat(6, minmax(110px, 1fr));
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-
-    .metric {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-      padding: 12px;
-      min-height: 80px;
-    }
-
-    .metric span {
-      display: block;
-      color: var(--muted);
-      font-size: 12px;
-      margin-bottom: 8px;
-    }
-
-    .metric strong {
-      font-size: 25px;
-      line-height: 1;
-    }
-
-    .metric.p1 strong { color: var(--red); }
-    .metric.p2 strong { color: var(--amber); }
-    .metric.p3 strong { color: var(--blue); }
-    .metric.good strong { color: var(--green); }
-    .metric.violet strong { color: var(--violet); }
-
-    .guide-band {
-      display: grid;
-      grid-template-columns: 1.15fr 1fr;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
-      margin-bottom: 12px;
+      margin-bottom: 16px;
     }
-
-    .guide-box {
-      background: #ffffff;
+    .card {
+      background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
-      box-shadow: var(--shadow);
-      padding: 12px;
+      padding: 16px;
+      box-shadow: 0 12px 24px rgba(16, 32, 51, .06);
     }
-
-    .guide-box h2 {
-      margin: 0 0 8px;
+    .metric {
+      min-height: 128px;
+    }
+    .metric .label {
       font-size: 15px;
-      line-height: 1.35;
+      font-weight: 900;
+      margin-bottom: 10px;
     }
-
-    .steps {
-      display: grid;
-      gap: 7px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .steps li {
-      display: grid;
-      grid-template-columns: 24px minmax(0, 1fr);
-      gap: 8px;
-      align-items: start;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .step-no {
-      width: 24px;
-      height: 24px;
-      border-radius: 999px;
-      background: #e6fffa;
-      color: var(--green);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 12px;
-    }
-
-    .guide-note {
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.55;
-      margin: 0;
-    }
-
-    .guide-note strong { color: var(--text); }
-
-    .button-help {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .button-help div {
-      border: 1px solid #e5edf5;
-      background: #fbfdff;
-      border-radius: 8px;
-      padding: 8px;
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.45;
-    }
-
-    .button-help strong {
+    .metric strong {
       display: block;
-      color: var(--text);
-      margin-bottom: 2px;
+      font-size: 42px;
+      line-height: 1;
+      margin-bottom: 10px;
     }
-
-    .panel {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-
-    .filters {
-      display: grid;
-      grid-template-columns: minmax(220px, 1fr) 140px 160px 170px auto;
-      gap: 10px;
-      padding: 12px;
-      border-bottom: 1px solid var(--line);
-      background: #fbfdff;
-      align-items: end;
-    }
-
-    .field { min-width: 0; }
-
-    .field label {
-      display: block;
-      margin-bottom: 5px;
+    .metric .note {
       color: var(--muted);
-      font-size: 12px;
+      font-size: 13px;
+      line-height: 1.5;
     }
-
-    .field input,
-    .field select,
-    .field textarea {
-      width: 100%;
-      min-height: 38px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      color: var(--text);
-      background: #ffffff;
-      outline: none;
-      padding: 8px 10px;
+    .danger {
+      background: var(--red-bg);
+      border-color: #fecdca;
     }
-
-    .field textarea {
-      min-height: 88px;
-      resize: vertical;
+    .danger .label,
+    .danger strong { color: var(--red); }
+    .warning {
+      background: var(--amber-bg);
+      border-color: #fedf89;
     }
-
-    .field input:focus,
-    .field select:focus,
-    .field textarea:focus {
-      border-color: var(--green);
-      box-shadow: 0 0 0 3px rgba(15, 118, 110, .12);
+    .warning .label,
+    .warning strong { color: var(--amber); }
+    .guide {
+      background: var(--blue-bg);
+      border-color: #bfdbfe;
     }
-
+    .guide .label,
+    .guide strong { color: var(--blue); }
+    .ok {
+      background: var(--green-bg);
+      border-color: #abefc6;
+    }
+    .ok .label,
+    .ok strong { color: var(--green); }
     .table-wrap {
-      max-height: calc(100vh - 296px);
-      overflow: auto;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      margin-bottom: 16px;
     }
-
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 1120px;
+      min-width: 980px;
     }
-
     th, td {
-      padding: 10px 12px;
       border-bottom: 1px solid var(--line);
+      padding: 13px 12px;
       text-align: left;
-      white-space: nowrap;
-      vertical-align: middle;
+      vertical-align: top;
+      font-size: 14px;
     }
-
     th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      background: #f1f5f9;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
+      background: #e8eff6;
+      color: #315674;
+      font-weight: 900;
+      white-space: nowrap;
     }
-
-    tbody tr {
-      transition: background 120ms ease;
-    }
-
-    tbody tr:hover,
-    tbody tr.selected {
-      background: #edf8f5;
-    }
-
-    .name {
-      display: grid;
-      gap: 2px;
-    }
-
-    .name strong { font-size: 14px; }
-    .name span { color: var(--muted); font-size: 12px; }
-
-    .badge {
+    tbody tr:last-child td { border-bottom: 0; }
+    .tag {
       display: inline-flex;
-      min-height: 24px;
-      align-items: center;
       justify-content: center;
-      padding: 2px 8px;
+      min-width: 58px;
       border-radius: 999px;
-      font-weight: 700;
-      font-size: 12px;
+      padding: 7px 10px;
+      font-weight: 900;
     }
-
-    .risk-P1 { color: var(--red); background: #ffe4e6; }
-    .risk-P2 { color: var(--amber); background: #fff2d7; }
-    .risk-P3 { color: var(--blue); background: #e7efff; }
-    .risk-P5 { color: var(--muted); background: #edf2f7; }
-
-    .drawer {
-      background: var(--surface);
-      border-left: 1px solid var(--line);
-      padding: 18px;
-      display: grid;
-      grid-template-rows: auto auto 1fr auto;
-      gap: 12px;
-      min-width: 0;
-    }
-
-    .drawer.empty {
-      align-content: center;
-      justify-content: center;
-      color: var(--muted);
-      text-align: center;
-    }
-
-    .drawer-head {
-      border-bottom: 1px solid var(--line);
-      padding-bottom: 10px;
-    }
-
-    .drawer-head h2 {
-      margin: 0;
+    .tag.danger { background: #fee4e2; color: var(--red); }
+    .tag.warning { background: #ffedcc; color: var(--amber); }
+    .tag.guide { background: #dbeafe; color: var(--blue); }
+    .due {
+      color: var(--red);
       font-size: 18px;
-      line-height: 1.3;
+      font-weight: 900;
+      white-space: nowrap;
     }
-
-    .drawer-head p {
-      margin: 4px 0 0;
+    .task {
+      font-size: 17px;
+      font-weight: 900;
+      color: var(--ink);
+    }
+    .basis-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-width: 460px;
+    }
+    .basis-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #f8fafc;
+      padding: 6px 9px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .basis-item span {
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .basis-item strong {
+      color: var(--ink);
+      font-weight: 900;
+    }
+    .basis-note {
+      flex-basis: 100%;
       color: var(--muted);
       font-size: 12px;
+      line-height: 1.45;
     }
-
-    .facts {
+    .rules {
       display: grid;
-      gap: 8px;
-      background: #f8fafc;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .rule-card {
+      background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 12px;
+      padding: 14px;
     }
-
-    .fact {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      color: var(--muted);
-      font-size: 12px;
+    .formula {
+      font-weight: 900;
+      line-height: 1.7;
     }
-
-    .fact strong {
-      color: var(--text);
-      text-align: right;
+    .compact {
+      min-width: 0;
+      margin: 0;
+    }
+    .compact th,
+    .compact td {
+      padding: 9px 8px;
       font-size: 13px;
     }
-
-    .form {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      align-content: start;
-      overflow: auto;
-      padding-right: 2px;
-    }
-
-    .form .full { grid-column: 1 / -1; }
-
-    .drawer-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      border-top: 1px solid var(--line);
-      padding-top: 12px;
-    }
-
-    .drawer-actions .full { grid-column: 1 / -1; }
-
-    .toast {
-      position: fixed;
-      left: 50%;
-      bottom: 18px;
-      transform: translateX(-50%);
-      background: #1f2933;
-      color: #ffffff;
-      padding: 10px 14px;
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 140ms ease, transform 140ms ease;
-      z-index: 20;
-    }
-
-    .toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(-4px);
-    }
-
-    .empty-row, .loading, .error {
-      padding: 30px 12px;
-      text-align: center;
-      color: var(--muted);
-    }
-
-    .error { color: var(--red); }
-
-    @media (max-width: 1200px) {
-      .app {
-        grid-template-columns: 196px minmax(0, 1fr);
-      }
-      .drawer {
-        grid-column: 1 / -1;
-        border-left: 0;
-        border-top: 1px solid var(--line);
-      }
-    }
-
-    @media (max-width: 860px) {
-      .app { display: block; }
-      .sidebar { padding: 12px; }
-      .nav-list { grid-template-columns: repeat(3, 1fr); }
-      .nav-item { justify-content: center; font-size: 12px; }
-      .main { padding: 14px; }
-      .topbar { display: grid; }
-      .actions { justify-content: flex-start; }
-      .guide-band { grid-template-columns: 1fr; }
-      .button-help { grid-template-columns: 1fr; }
-      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .filters { grid-template-columns: 1fr; }
-      .form { grid-template-columns: 1fr; }
+    @media (max-width: 900px) {
+      main { padding: 16px; }
+      .top { display: block; }
+      .safe { margin-top: 10px; }
+      .summary, .rules { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <div id="setup" class="setup">
-    <div>
-      <h1>CDP免許更新管理</h1>
-      <div class="sub">既存Webアプリとは別のスプレッドシートと別URLで運用します。</div>
-    </div>
-    <div class="setup-grid">
-      <div class="field">
-        <label for="setupSpreadsheet">専用スプレッドシートURLまたはID</label>
-        <input id="setupSpreadsheet" type="text" placeholder="空欄なら新規作成">
-      </div>
-      <button id="setupBtn" class="btn primary" type="button">初回セットアップ</button>
-    </div>
-  </div>
-
-  <div id="app" class="app" style="display:none;">
-    <aside class="sidebar">
-      <div class="brand">
-        <strong>免許更新</strong>
-        <span id="sheetLinkText">専用管理表</span>
-      </div>
-      <div class="nav-list">
-        <div class="nav-item active"><span>一覧</span><span id="navCount">0</span></div>
-        <div class="nav-item"><span>危険</span><span id="navDanger">0</span></div>
-        <div class="nav-item"><span>他講習</span><span id="navExternal">0</span></div>
-      </div>
-    </aside>
-
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <h1>免許更新アラート</h1>
-          <div id="updatedAt" class="sub">読み込み中</div>
-        </div>
-        <div class="actions">
-          <button id="newBtn" class="btn" type="button">新規登録</button>
-          <button id="refreshBtn" class="btn primary" type="button">更新</button>
-          <button id="readBtn" class="btn dark" type="button">読み取り</button>
-          <button id="operationReadBtn" class="btn dark" type="button">運用ファイル読込</button>
-          <button id="dailyBtn" class="btn warn" type="button">危険一覧メール</button>
-          <button id="triggerBtn" class="btn" type="button">日次通知設定</button>
-        </div>
-      </header>
-
-      <section class="summary">
-        <div class="metric p1"><span>P1 即対応</span><strong id="mP1">0</strong></div>
-        <div class="metric p2"><span>P2 要対応</span><strong id="mP2">0</strong></div>
-        <div class="metric p3"><span>P3 早期案内</span><strong id="mP3">0</strong></div>
-        <div class="metric good"><span>登録数</span><strong id="mTotal">0</strong></div>
-        <div class="metric"><span>既存</span><strong id="mExisting">0</strong></div>
-        <div class="metric violet"><span>他講習機関</span><strong id="mExternal">0</strong></div>
-      </section>
-
-      <section class="guide-band" aria-label="使い方">
-        <div class="guide-box">
-          <h2>初回の使い方</h2>
-          <ol class="steps">
-            <li><span class="step-no">1</span><span>まず「運用ファイル読込」で更新者一覧・案内文・講習記録簿を読み込みます。</span></li>
-            <li><span class="step-no">2</span><span>P1/P2の対象者を確認し、必要に応じて個別の詳細を開いて対応状況を更新します。</span></li>
-            <li><span class="step-no">3</span><span>講習修了後はDIPS申請日、新しい技能証明有効期限、更新完了確認日を別々に登録します。</span></li>
-          </ol>
-        </div>
-        <div class="guide-box">
-          <h2>重要ルール</h2>
-          <p class="guide-note"><strong>講習修了は更新完了ではありません。</strong><br>DIPSまたは新しい技能証明書で新有効期限を確認するまで、更新完了扱いにしません。フォロー期限は「申請期限」と「修了証明期限」の早い方で判定します。</p>
-        </div>
-      </section>
-
-      <section class="guide-box" aria-label="ボタン説明" style="margin-bottom:12px;">
-        <div class="button-help">
-          <div><strong>読み取り</strong>指定した読み取り元シートから基本データを取り込みます。</div>
-          <div><strong>運用ファイル読込</strong>担当共有の更新者一覧・案内文・講習記録簿をまとめて反映します。</div>
-          <div><strong>危険一覧メール</strong>P1/P2など要対応者を内部担当者へ通知します。</div>
-          <div><strong>日次通知設定</strong>毎日決まった時刻に要対応メールを送る設定を作ります。</div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="filters">
-          <div class="field">
-            <label for="query">検索</label>
-            <input id="query" type="search" placeholder="氏名・免許番号・会社名">
-          </div>
-          <div class="field">
-            <label for="risk">リスク</label>
-            <select id="risk">
-              <option value="">すべて</option>
-              <option value="P1">P1</option>
-              <option value="P2">P2</option>
-              <option value="P3">P3</option>
-              <option value="P5">P5</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="status">ステータス</label>
-            <select id="status"><option value="">すべて</option></select>
-          </div>
-          <div class="field">
-            <label for="customerType">顧客区分</label>
-            <select id="customerType"><option value="">すべて</option></select>
-          </div>
-          <button id="allBtn" class="btn" type="button">全件</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>リスク</th>
-                <th>氏名</th>
-                <th>区分</th>
-                <th>基準期限</th>
-                <th>状態</th>
-                <th>タスク</th>
-                <th>申請開始</th>
-                <th>申請期限</th>
-                <th>修了証明期限</th>
-                <th>フォロー期限</th>
-                <th>新有効期限</th>
-              </tr>
-            </thead>
-            <tbody id="rows"><tr><td class="loading" colspan="11">読み込み中</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-
-    <aside id="drawer" class="drawer empty">
+  <main>
+    <header class="top">
       <div>
-        <strong>対象者を選択してください</strong>
-        <p class="guide-note" style="max-width:280px;margin-top:8px;">右側の詳細では、講習日・DIPS申請日・更新完了確認日・新しい技能証明有効期限を別々に登録します。</p>
+        <h1>免許更新期限管理</h1>
       </div>
-    </aside>
-  </div>
+    </header>
 
-  <div id="toast" class="toast"></div>
+    <section class="summary" aria-label="リスク件数">
+      <div class="card metric danger">
+        <div class="label">危険</div>
+        <strong>1</strong>
+        <div class="note">今日確認。期限切れまたは更新未完了の恐れ。</div>
+      </div>
+      <div class="card metric warning">
+        <div class="label">注意</div>
+        <strong>2</strong>
+        <div class="note">30日以内に対応。放置すると危険。</div>
+      </div>
+      <div class="card metric guide">
+        <div class="label">案内</div>
+        <strong>3</strong>
+        <div class="note">更新講習の案内対象。</div>
+      </div>
+      <div class="card metric ok">
+        <div class="label">対応不要</div>
+        <strong>5</strong>
+        <div class="note">更新期限に余裕あり。</div>
+      </div>
+    </section>
 
-  <script>
-    (function() {
-      var state = {
-        configured: false,
-        data: null,
-        rows: [],
-        selectedId: "",
-        showAll: false,
-        saving: false
-      };
+    <section>
+      <h2>優先一覧</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>判定</th>
+              <th>対応期限</th>
+              <th>対象</th>
+              <th>必要な対応</th>
+              <th>期限の根拠</th>
+              <th>状態</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="tag danger">危険</span></td>
+              <td><div class="due">2026/06/30</div></td>
+              <td>サンプル受講者A</td>
+              <td><div class="task">DIPS更新完了と新有効期限を確認</div></td>
+              <td>
+                <div class="basis-line">
+                  <div class="basis-item"><span>免許期限</span><strong>2026/07/31</strong></div>
+                  <div class="basis-item"><span>申請期限</span><strong>2026/06/30</strong></div>
+                  <div class="basis-item"><span>計算</span><strong>免許期限 - 1か月</strong></div>
+                  <div class="basis-note">未確認: 新有効期限</div>
+                </div>
+              </td>
+              <td>講習修了 / 更新完了未確認</td>
+            </tr>
+            <tr>
+              <td><span class="tag warning">注意</span></td>
+              <td><div class="due">2026/09/09</div></td>
+              <td>サンプル受講者B</td>
+              <td><div class="task">DIPS申請を完了させる</div></td>
+              <td>
+                <div class="basis-line">
+                  <div class="basis-item"><span>講習修了</span><strong>2026/06/10</strong></div>
+                  <div class="basis-item"><span>証明期限</span><strong>2026/09/09</strong></div>
+                  <div class="basis-item"><span>計算</span><strong>修了日 + 3か月 - 1日</strong></div>
+                  <div class="basis-note">未確認: DIPS申請日</div>
+                </div>
+              </td>
+              <td>講習修了 / DIPS申請待ち</td>
+            </tr>
+            <tr>
+              <td><span class="tag guide">案内</span></td>
+              <td>2026/07/22</td>
+              <td>サンプル受講者C</td>
+              <td><div class="task">更新講習の案内</div></td>
+              <td>
+                <div class="basis-line">
+                  <div class="basis-item"><span>免許期限</span><strong>2027/04/22</strong></div>
+                  <div class="basis-item"><span>講習開始</span><strong>2026/07/22</strong></div>
+                  <div class="basis-item"><span>計算</span><strong>免許期限 - 9か月</strong></div>
+                </div>
+              </td>
+              <td>案内前</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-      function $(id) { return document.getElementById(id); }
-
-      function esc(value) {
-        return String(value == null ? "" : value)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-      }
-
-      function toast(message) {
-        var el = $("toast");
-        el.textContent = message;
-        el.classList.add("show");
-        clearTimeout(toast.timer);
-        toast.timer = setTimeout(function() { el.classList.remove("show"); }, 2300);
-      }
-
-      function toInputDate(value) {
-        var m = String(value || "").match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-        if (!m) return "";
-        return m[1] + "-" + String(Number(m[2])).padStart(2, "0") + "-" + String(Number(m[3])).padStart(2, "0");
-      }
-
-      function fromInputDate(value) {
-        return String(value || "").replace(/-/g, "/");
-      }
-
-      function gas(fn, args) {
-        args = args || [];
-        return new Promise(function(resolve, reject) {
-          var runner = window.google && google.script && google.script.run;
-          if (!runner || typeof runner[fn] !== "function") {
-            resolve(mock(fn));
-            return;
-          }
-          runner.withSuccessHandler(resolve).withFailureHandler(function(err) {
-            reject(new Error((err && err.message) || String(err)));
-          })[fn].apply(runner, args);
-        });
-      }
-
-      function mock(fn) {
-        if (fn === "apiGetSetupState") return { success: true, configured: true, spreadsheetUrl: "#" };
-        if (fn === "apiSetupSystem") return { success: true, spreadsheetUrl: "#" };
-        if (fn === "apiReadSourceSpreadsheet") return { success: true, imported: 4, updated: 0, skipped: 0, sourceSheetName: "読み取り元" };
-        if (fn === "apiReadOperationFiles") return { success: true, imported: 5, updated: 2, skipped: 1, summary: { guide: { read: true, dates: ["7月22日（水）", "7月25日（土）"], price: "11,440円（税込）" }, warnings: [] } };
-        if (fn === "apiSaveRecord" || fn === "apiSendInternalAlert" || fn === "apiSendDailyAlertSummary" || fn === "apiInstallDailyAlertTrigger") return { success: true };
-        return {
-          success: true,
-          spreadsheetUrl: "#",
-          generatedAt: "2026/06/20 10:00",
-          statusOptions: ["免許証確認待ち", "案内前", "案内済", "申込済み", "講習予定", "講習修了", "更新申請待ち", "DIPS申請中", "更新完了未確認", "更新完了", "期限超過・未確認", "対象外"],
-          customerTypes: ["既存", "新規（他講習機関）", "新規", "法人"],
-          summary: { total: 4, p1: 1, p2: 2, p3: 1, p5: 0, existing: 3, externalNew: 1 },
-          settings: { alertEmails: "" },
-          records: [
-            sample("REN-001", "山田 太郎", "既存", "P1", "手続き不可ライン", "2026/07/15", "有効"),
-            sample("REN-002", "佐藤 花子", "既存", "P2", "CDP講習・申請受付中", "2026/10/18", "有効"),
-            sample("REN-003", "高橋 健", "新規（他講習機関）", "P2", "更新証明期限注意", "2026/11/03", "有効"),
-            sample("REN-004", "鈴木 玲", "既存", "P3", "更新講習受講可能", "2027/01/22", "有効")
-          ]
-        };
-      }
-
-      function sample(id, name, type, risk, phase, expiry, check) {
-        return {
-          managementId: id,
-          customerType: type,
-          name: name,
-          kana: "",
-          company: "CDP北海道",
-          email: "sample@example.com",
-          phone: "090-0000-0000",
-          licenseType: "二等",
-          licenseNumber: "UA-" + id,
-          licenseIssueDate: "2023/07/15",
-          licenseExpiryDate: expiry,
-          licenseCheckedDate: "2026/06/20",
-          licenseCheckResult: check,
-          courseEligibleDate: "2026/01/15",
-          cdpStartDate: "2026/04/15",
-          applicationStartDate: "2026/04/15",
-          procedureStopDate: "2026/06/15",
-          renewalCourseDate: "",
-          courseApplicationDate: "",
-          courseAttendedDate: "",
-          courseCompletionDate: "",
-          certificateIssueDate: "",
-          certificateNumber: "",
-          certificateExpiryDate: "",
-          applicationDeadlineDate: "2026/06/15",
-          followDeadlineDate: "",
-          dipsApplicationDate: "",
-          dipsFollowDueDate: "",
-          renewalCompletedDate: "",
-          newLicenseExpiryDate: "",
-          medicalCheckDate: "",
-          medicalCheckResult: "未確認",
-          daysToExpiry: 25,
-          certificateDaysLeft: "",
-          status: "案内前",
-          taskName: "更新状況確認",
-          risk: risk,
-          phase: phase,
-          alertReason: phase,
-          recommendedAction: "案内送付、申込、日程確定",
-          nextActionDate: "",
-          lastContactDate: "",
-          owner: "",
-          alertEmail: "",
-          memo: ""
-        };
-      }
-
-      function init() {
-        gas("apiGetSetupState").then(function(result) {
-          if (!result || result.configured === false) {
-            $("setup").classList.add("show");
-            $("app").style.display = "none";
-            return;
-          }
-          state.configured = true;
-          $("setup").classList.remove("show");
-          $("app").style.display = "";
-          load();
-        }).catch(function(error) {
-          $("setup").classList.add("show");
-          toast(error.message);
-        });
-      }
-
-      function setup() {
-        setBusy(true);
-        gas("apiSetupSystem", [{ spreadsheetUrl: $("setupSpreadsheet").value }])
-          .then(function(result) {
-            if (!result || result.success === false) throw new Error((result && result.error) || "セットアップに失敗しました");
-            toast("専用管理表を準備しました");
-            state.configured = true;
-            $("setup").classList.remove("show");
-            $("app").style.display = "";
-            load();
-          })
-          .catch(function(error) { toast(error.message); })
-          .finally(function() { setBusy(false); });
-      }
-
-      function filterPayload() {
-        return {
-          query: $("query").value,
-          risk: $("risk").value,
-          status: $("status").value,
-          customerType: $("customerType").value,
-          showAll: state.showAll
-        };
-      }
-
-      function load() {
-        setBusy(true);
-        $("rows").innerHTML = '<tr><td class="loading" colspan="11">読み込み中</td></tr>';
-        gas("apiGetDashboardData", [filterPayload()])
-          .then(function(data) {
-            if (!data || data.success === false) throw new Error((data && data.error) || "読み込みに失敗しました");
-            state.data = data;
-            state.rows = data.records || [];
-            renderOptions(data);
-            renderSummary(data.summary || {});
-            renderTable();
-            $("updatedAt").textContent = "更新 " + (data.generatedAt || "-");
-            $("sheetLinkText").innerHTML = data.spreadsheetUrl ? '<a href="' + esc(data.spreadsheetUrl) + '" target="_blank" style="color:#d9e8f5;">専用管理表</a>' : "専用管理表";
-          })
-          .catch(function(error) {
-            $("rows").innerHTML = '<tr><td class="error" colspan="11">' + esc(error.message) + '</td></tr>';
-          })
-          .finally(function() { setBusy(false); });
-      }
-
-      function renderOptions(data) {
-        var statusValue = $("status").value;
-        $("status").innerHTML = '<option value="">すべて</option>' + (data.statusOptions || []).map(function(v) {
-          return '<option value="' + esc(v) + '">' + esc(v) + '</option>';
-        }).join("");
-        $("status").value = statusValue;
-
-        var customerValue = $("customerType").value;
-        $("customerType").innerHTML = '<option value="">すべて</option>' + (data.customerTypes || []).map(function(v) {
-          return '<option value="' + esc(v) + '">' + esc(v) + '</option>';
-        }).join("");
-        $("customerType").value = customerValue;
-      }
-
-      function renderSummary(s) {
-        $("mP1").textContent = s.p1 || 0;
-        $("mP2").textContent = s.p2 || 0;
-        $("mP3").textContent = s.p3 || 0;
-        $("mTotal").textContent = s.total || 0;
-        $("mExisting").textContent = s.existing || 0;
-        $("mExternal").textContent = s.externalNew || 0;
-        $("navCount").textContent = s.total || 0;
-        $("navDanger").textContent = (s.p1 || 0) + (s.p2 || 0);
-        $("navExternal").textContent = s.externalNew || 0;
-      }
-
-      function renderTable() {
-        if (!state.rows.length) {
-          $("rows").innerHTML = '<tr><td class="empty-row" colspan="11">該当する対象者はありません</td></tr>';
-          return;
-        }
-        $("rows").innerHTML = state.rows.map(function(r) {
-          var selected = r.managementId === state.selectedId ? " selected" : "";
-          return [
-            '<tr class="' + selected + '" data-id="' + esc(r.managementId) + '">',
-              '<td><span class="badge risk-' + esc(r.risk) + '">' + esc(r.risk) + '</span></td>',
-              '<td><div class="name"><strong>' + esc(r.name || "-") + '</strong><span>' + esc(r.licenseNumber || "") + '</span></div></td>',
-              '<td>' + esc(r.customerType || "-") + '</td>',
-              '<td>' + esc(r.licenseExpiryDate || "-") + '</td>',
-              '<td>' + esc(r.phase || "-") + '</td>',
-              '<td>' + esc(r.taskName || "-") + '</td>',
-              '<td>' + esc(r.applicationStartDate || r.cdpStartDate || "-") + '</td>',
-              '<td>' + esc(r.applicationDeadlineDate || r.procedureStopDate || "-") + '</td>',
-              '<td>' + esc(r.certificateExpiryDate || "-") + '</td>',
-              '<td>' + esc(r.followDeadlineDate || r.nextActionDate || "-") + '</td>',
-              '<td>' + esc(r.newLicenseExpiryDate || "-") + '</td>',
-            '</tr>'
-          ].join("");
-        }).join("");
-        Array.prototype.forEach.call($("rows").querySelectorAll("tr[data-id]"), function(tr) {
-          tr.addEventListener("click", function() {
-            var id = tr.getAttribute("data-id");
-            var record = state.rows.find(function(r) { return r.managementId === id; });
-            if (!record) return;
-            state.selectedId = id;
-            renderTable();
-            renderDrawer(record);
-          });
-        });
-      }
-
-      function newRecord() {
-        state.selectedId = "";
-        renderDrawer({
-          managementId: "",
-          customerType: "既存",
-          status: "免許証確認待ち",
-          licenseCheckResult: "未確認",
-          medicalCheckResult: "未確認"
-        });
-      }
-
-      function renderDrawer(r) {
-        $("drawer").className = "drawer";
-        $("drawer").innerHTML = [
-          '<div class="drawer-head"><h2>' + esc(r.name || "新規登録") + '</h2><p>' + esc(r.phase || "免許証を確認してください") + '</p></div>',
-          '<div class="facts">',
-            fact("リスク", r.risk || "-"),
-            fact("タスク", r.taskName || "-"),
-            fact("理由", r.alertReason || "-"),
-            fact("推奨対応", r.recommendedAction || "-"),
-            fact("現在の資格期限", r.currentLicenseExpiryDate || r.licenseExpiryDate || "-"),
-            fact("新しい資格期限", r.newLicenseExpiryDate || "-"),
-            fact("申請フォロー期限", r.followDeadlineDate || r.nextActionDate || "-"),
-            fact("修了証明期限", r.certificateExpiryDate || "-"),
-          '</div>',
-          '<div class="form">',
-            hidden("managementId", r.managementId),
-            field("customerType", "顧客区分", "select", r.customerType, ["既存", "新規（他講習機関）", "新規", "法人"]),
-            field("status", "ステータス", "select", r.status, (state.data && state.data.statusOptions) || []),
-            field("name", "氏名", "text", r.name),
-            field("kana", "フリガナ", "text", r.kana),
-            field("company", "会社名", "text", r.company),
-            field("email", "メール", "email", r.email),
-            field("phone", "電話", "text", r.phone),
-            field("licenseType", "免許区分", "text", r.licenseType),
-            field("licenseNumber", "免許番号", "text", r.licenseNumber),
-            field("licenseIssueDate", "免許交付日", "date", r.licenseIssueDate),
-            field("licenseExpiryDate", "現在の技能証明有効期限", "date", r.currentLicenseExpiryDate || r.licenseExpiryDate),
-            field("licenseCheckedDate", "免許確認日", "date", r.licenseCheckedDate),
-            field("licenseCheckResult", "免許確認結果", "select", r.licenseCheckResult, ["未確認", "有効", "期限切れ", "不備あり"]),
-            field("courseApplicationDate", "更新講習申込日", "date", r.courseApplicationDate),
-            field("courseAttendedDate", "更新講習受講日", "date", r.courseAttendedDate || r.renewalCourseDate),
-            field("courseCompletionDate", "更新講習修了日", "date", r.courseCompletionDate || r.certificateIssueDate),
-            field("certificateNumber", "修了証明書番号", "text", r.certificateNumber),
-            field("dipsApplicationDate", "DIPS申請日", "date", r.dipsApplicationDate),
-            field("renewalCompletedDate", "更新完了確認日", "date", r.renewalCompletedDate),
-            field("newLicenseExpiryDate", "新しい技能証明有効期限", "date", r.newLicenseExpiryDate),
-            field("medicalCheckDate", "身体適性確認日", "date", r.medicalCheckDate),
-            field("medicalCheckResult", "身体適性確認結果", "select", r.medicalCheckResult || "未確認", ["未確認", "確認済み", "不備あり", "不要"]),
-            field("nextActionDate", "次回対応日", "date", r.nextActionDate),
-            field("lastContactDate", "最終連絡日", "date", r.lastContactDate),
-            field("owner", "担当者", "text", r.owner),
-            field("alertEmail", "内部アラート宛先", "email", r.alertEmail),
-            field("memo", "メモ", "textarea", r.memo, null, "full"),
-          '</div>',
-          '<div class="drawer-actions">',
-            '<button id="saveBtn" class="btn primary" type="button">保存</button>',
-            '<button id="sendBtn" class="btn warn" type="button">メール送信</button>',
-            '<button id="validBtn" class="btn full" type="button">免許証確認済みにする</button>',
-          '</div>'
-        ].join("");
-        $("saveBtn").addEventListener("click", save);
-        $("sendBtn").addEventListener("click", sendOne);
-        $("validBtn").addEventListener("click", markValid);
-      }
-
-      function fact(label, value) {
-        return '<div class="fact"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>';
-      }
-
-      function hidden(id, value) {
-        return '<input id="f_' + id + '" type="hidden" value="' + esc(value || "") + '">';
-      }
-
-      function field(id, label, type, value, options, cls) {
-        cls = cls ? " " + cls : "";
-        if (type === "select") {
-          return '<div class="field' + cls + '"><label for="f_' + id + '">' + esc(label) + '</label><select id="f_' + id + '">' +
-            (options || []).map(function(v) { return '<option value="' + esc(v) + '"' + (v === value ? " selected" : "") + '>' + esc(v) + '</option>'; }).join("") +
-            '</select></div>';
-        }
-        if (type === "textarea") {
-          return '<div class="field' + cls + '"><label for="f_' + id + '">' + esc(label) + '</label><textarea id="f_' + id + '">' + esc(value || "") + '</textarea></div>';
-        }
-        var inputValue = type === "date" ? toInputDate(value) : (value || "");
-        return '<div class="field' + cls + '"><label for="f_' + id + '">' + esc(label) + '</label><input id="f_' + id + '" type="' + type + '" value="' + esc(inputValue) + '"></div>';
-      }
-
-      function collectForm() {
-        var ids = ["managementId", "customerType", "status", "name", "kana", "company", "email", "phone", "licenseType", "licenseNumber", "licenseIssueDate", "licenseExpiryDate", "licenseCheckedDate", "licenseCheckResult", "courseApplicationDate", "courseAttendedDate", "courseCompletionDate", "certificateNumber", "dipsApplicationDate", "renewalCompletedDate", "newLicenseExpiryDate", "medicalCheckDate", "medicalCheckResult", "nextActionDate", "lastContactDate", "owner", "alertEmail", "memo"];
-        var record = {};
-        ids.forEach(function(id) {
-          var el = $("f_" + id);
-          var val = el ? el.value : "";
-          if (el && el.type === "date") val = fromInputDate(val);
-          record[id] = val;
-        });
-        return record;
-      }
-
-      function save() {
-        setBusy(true);
-        gas("apiSaveRecord", [collectForm()])
-          .then(function(result) {
-            if (!result || result.success === false) throw new Error((result && result.error) || "保存に失敗しました");
-            state.selectedId = result.managementId;
-            toast("保存しました");
-            load();
-          })
-          .catch(function(error) { toast(error.message); })
-          .finally(function() { setBusy(false); });
-      }
-
-      function sendOne() {
-        var record = collectForm();
-        if (!record.managementId) {
-          toast("先に保存してください");
-          return;
-        }
-        setBusy(true);
-        gas("apiSendInternalAlert", [{ managementId: record.managementId, to: record.alertEmail }])
-          .then(function(result) {
-            if (!result || result.success === false) throw new Error((result && result.error) || "送信に失敗しました");
-            toast("メールを送信しました");
-            load();
-          })
-          .catch(function(error) { toast(error.message); })
-          .finally(function() { setBusy(false); });
-      }
-
-      function markValid() {
-        var today = new Date();
-        $("f_licenseCheckedDate").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-        $("f_licenseCheckResult").value = "有効";
-      }
-
-      function sendDaily() {
-        setBusy(true);
-        gas("apiSendDailyAlertSummary")
-          .then(function(result) {
-            if (!result || result.success === false) throw new Error((result && result.error) || "送信に失敗しました");
-            toast(result.skipped ? "通知対象はありません" : "危険一覧メールを送信しました");
-          })
-          .catch(function(error) { toast(error.message); })
-          .finally(function() { setBusy(false); });
-      }
-
-      function readSource() {
-        setBusy(true);
-        gas("apiReadSourceSpreadsheet")
-          .then(function(result) {
-            if (!result || result.success === false) throw new Error((result && result.error) || "読み取りに失敗しました");
-            toast("読み取り完了: 追加 " + (result.imported || 0) + "件 / 更新 " + (result.updated || 0) + "件 / スキップ " + (result.skipped || 0) + "件");
-            load();
-          })
-          .catch(function(error) { toast(error.message); })
-          .finally(function() { setBusy(false); });
-      }
-
-      function readOperationFiles() {
-        setBusy(true);
-        gas("apiReadOperationFiles")
-          .then(function(result) {
-            if (!result || result.success === false) {
-              var warnings = result && result.summary && result.summary.warnings ? result.summary.warnings.join(" / ") : "";
-              throw new Error((result && result.error) || warnings || "運用ファイル読込に失敗しました");
-            }
-            var guide = result.summary && result.summary.guide;
-            var guideText = guide && guide.read ? " / 案内文 " + ((guide.dates && guide.dates.length) || 0) + "日程" : "";
-            var warningText = result.summary && result.summary.warnings && result.summary.warnings.length ? " / 注意 " + result.summary.warnings.length + "件" : "";
-            toast("運用ファイル読込完了: 追加 " + (result.imported || 0) + "件 / 更新 " + (result.updated || 0) + "件 / スキップ " + (result.skipped || 0) + "件" + guideText + warningText);
-            load();
-          })
-          .catch(function(error) { toast(error.message); })
-          .finally(function() { setBusy(false); });
-      }
-
-      function installTrigger() {
-        setBusy(true);
-        gas("apiInstallDailyAlertTrigger")
-          .then(function(result) {
-            if (!result || result.success === false) throw new Error((result && result.error) || "設定に失敗しました");
-            toast("日次通知を設定しました");
-          })
-          .catch(function(error) { toast(error.message); })
-          .finally(function() { setBusy(false); });
-      }
-
-      function setBusy(busy) {
-        state.saving = busy;
-        Array.prototype.forEach.call(document.querySelectorAll("button"), function(btn) {
-          btn.disabled = busy;
-        });
-      }
-
-      $("setupBtn").addEventListener("click", setup);
-      $("refreshBtn").addEventListener("click", load);
-      $("newBtn").addEventListener("click", newRecord);
-      $("readBtn").addEventListener("click", readSource);
-      $("operationReadBtn").addEventListener("click", readOperationFiles);
-      $("dailyBtn").addEventListener("click", sendDaily);
-      $("triggerBtn").addEventListener("click", installTrigger);
-      $("allBtn").addEventListener("click", function() {
-        state.showAll = !state.showAll;
-        $("allBtn").classList.toggle("dark", state.showAll);
-        load();
-      });
-      ["query", "risk", "status", "customerType"].forEach(function(id) {
-        $(id).addEventListener(id === "query" ? "input" : "change", debounce(load, 220));
-      });
-
-      function debounce(fn, wait) {
-        var t;
-        return function() {
-          clearTimeout(t);
-          t = setTimeout(fn, wait);
-        };
-      }
-
-      init();
-    })();
-  </script>
+    <section class="rules" aria-label="期限計算">
+      <div class="rule-card">
+        <h2>更新確認期限</h2>
+        <div class="formula">
+          早い方を採用<br>
+          1. 免許期限の1か月前<br>
+          2. 講習修了日 + 3か月 - 1日
+        </div>
+      </div>
+      <div class="rule-card">
+        <h2>基準日</h2>
+        <table class="compact">
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>基準</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>講習開始</td>
+              <td>免許期限の9か月前</td>
+            </tr>
+            <tr>
+              <td>DIPS申請開始</td>
+              <td>免許期限の6か月前</td>
+            </tr>
+            <tr>
+              <td>申請期限</td>
+              <td>免許期限の1か月前</td>
+            </tr>
+            <tr>
+              <td>講習証明期限</td>
+              <td>講習修了日 + 3か月 - 1日</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
 </body>
 </html>
