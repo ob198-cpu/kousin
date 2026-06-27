@@ -508,6 +508,7 @@
           <button id="newBtn" class="btn" type="button">新規登録</button>
           <button id="refreshBtn" class="btn primary" type="button">更新</button>
           <button id="readBtn" class="btn dark" type="button">読み取り</button>
+          <button id="operationReadBtn" class="btn dark" type="button">運用ファイル読込</button>
           <button id="dailyBtn" class="btn warn" type="button">危険一覧メール</button>
           <button id="triggerBtn" class="btn" type="button">日次通知設定</button>
         </div>
@@ -634,6 +635,7 @@
         if (fn === "apiGetSetupState") return { success: true, configured: true, spreadsheetUrl: "#" };
         if (fn === "apiSetupSystem") return { success: true, spreadsheetUrl: "#" };
         if (fn === "apiReadSourceSpreadsheet") return { success: true, imported: 4, updated: 0, skipped: 0, sourceSheetName: "読み取り元" };
+        if (fn === "apiReadOperationFiles") return { success: true, imported: 5, updated: 2, skipped: 1, summary: { guide: { read: true, dates: ["7月22日（水）", "7月25日（土）"], price: "11,440円（税込）" }, warnings: [] } };
         if (fn === "apiSaveRecord" || fn === "apiSendInternalAlert" || fn === "apiSendDailyAlertSummary" || fn === "apiInstallDailyAlertTrigger") return { success: true };
         return {
           success: true,
@@ -984,6 +986,24 @@
           .finally(function() { setBusy(false); });
       }
 
+      function readOperationFiles() {
+        setBusy(true);
+        gas("apiReadOperationFiles")
+          .then(function(result) {
+            if (!result || result.success === false) {
+              var warnings = result && result.summary && result.summary.warnings ? result.summary.warnings.join(" / ") : "";
+              throw new Error((result && result.error) || warnings || "運用ファイル読込に失敗しました");
+            }
+            var guide = result.summary && result.summary.guide;
+            var guideText = guide && guide.read ? " / 案内文 " + ((guide.dates && guide.dates.length) || 0) + "日程" : "";
+            var warningText = result.summary && result.summary.warnings && result.summary.warnings.length ? " / 注意 " + result.summary.warnings.length + "件" : "";
+            toast("運用ファイル読込完了: 追加 " + (result.imported || 0) + "件 / 更新 " + (result.updated || 0) + "件 / スキップ " + (result.skipped || 0) + "件" + guideText + warningText);
+            load();
+          })
+          .catch(function(error) { toast(error.message); })
+          .finally(function() { setBusy(false); });
+      }
+
       function installTrigger() {
         setBusy(true);
         gas("apiInstallDailyAlertTrigger")
@@ -1006,6 +1026,7 @@
       $("refreshBtn").addEventListener("click", load);
       $("newBtn").addEventListener("click", newRecord);
       $("readBtn").addEventListener("click", readSource);
+      $("operationReadBtn").addEventListener("click", readOperationFiles);
       $("dailyBtn").addEventListener("click", sendDaily);
       $("triggerBtn").addEventListener("click", installTrigger);
       $("allBtn").addEventListener("click", function() {

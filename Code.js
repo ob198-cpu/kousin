@@ -8,6 +8,9 @@ var APP = {
   READ_SOURCE_URL: "https://docs.google.com/spreadsheets/d/1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30/edit?gid=307646994#gid=307646994",
   READ_SOURCE_SPREADSHEET_ID: "1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30",
   READ_SOURCE_GID: 307646994,
+  OPERATION_ROSTER_URL: "https://docs.google.com/spreadsheets/d/14bzaYZ_9dz4BMHNVDx7AfpKFN-3pStoWjKdKOMVeiv0/edit?usp=drive_link",
+  OPERATION_GUIDE_DOC_URL: "https://docs.google.com/document/d/1jmjiJCrmqi_yWNp_hPLfAFmjVctaVqUZDguhRZ-HRks/edit?usp=drive_link",
+  OPERATION_TRAINING_LOG_URL: "https://docs.google.com/spreadsheets/d/1b2gjUL0I2vfK-XOvbDhg8oXg36EdADajamivX7wfgC4/edit?usp=drive_link",
   SHEET_MAIN: "免許更新管理",
   SHEET_SETTINGS: "設定",
   SHEET_LOG: "アラート送信履歴",
@@ -88,7 +91,10 @@ var APP = {
     ["更新証明有効（月）", "3", "更新講習修了証明の期限を3か月で管理。"],
     ["DIPS申請後確認（日）", "14", "DIPS申請中の新有効期限確認タスク期限。"],
     ["日次通知対象", "P1,P2", "日次メールに含めるリスク。例: P1,P2,P3"],
-    ["読み取り元スプレッドシートURL", "https://docs.google.com/spreadsheets/d/1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30/edit?gid=307646994#gid=307646994", "読み取り専用。ここには絶対に書き込みません。"]
+    ["読み取り元スプレッドシートURL", "https://docs.google.com/spreadsheets/d/1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30/edit?gid=307646994#gid=307646994", "読み取り専用。ここには絶対に書き込みません。"],
+    ["運用ファイル_更新者一覧URL", "https://docs.google.com/spreadsheets/d/14bzaYZ_9dz4BMHNVDx7AfpKFN-3pStoWjKdKOMVeiv0/edit?usp=drive_link", "担当共有予定の更新者一覧。読み取り専用。"],
+    ["運用ファイル_案内文テンプレートURL", "https://docs.google.com/document/d/1jmjiJCrmqi_yWNp_hPLfAFmjVctaVqUZDguhRZ-HRks/edit?usp=drive_link", "案内文テンプレート。読み取り専用。"],
+    ["運用ファイル_講習記録簿URL", "https://docs.google.com/spreadsheets/d/1b2gjUL0I2vfK-XOvbDhg8oXg36EdADajamivX7wfgC4/edit?usp=drive_link", "講習記録簿。読み取り専用。"]
   ]
 };
 
@@ -231,6 +237,60 @@ function apiReadSourceSpreadsheet(options) {
     sourceUrl: sourceUrl,
     sourceSpreadsheetId: sourceId,
     sourceGid: sourceSheet.getSheetId()
+  };
+}
+
+function apiReadOperationFiles(options) {
+  options = options || {};
+  var targetSs = getSpreadsheet_();
+  ensureWorkbook_(targetSs);
+  var targetSheet = targetSs.getSheetByName(APP.SHEET_MAIN);
+  var settings = getSettings_(targetSs);
+  var now = new Date();
+  var summary = {
+    roster: { imported: 0, updated: 0, skipped: 0, sheets: 0 },
+    trainingLog: { imported: 0, updated: 0, skipped: 0, sheets: 0 },
+    guide: { read: false, dates: [], price: "", phone: "", email: "" },
+    warnings: []
+  };
+
+  var rosterUrl = normalize_(options.rosterUrl) || settings.operationRosterUrl;
+  var guideDocUrl = normalize_(options.guideDocUrl) || settings.operationGuideDocUrl;
+  var trainingLogUrl = normalize_(options.trainingLogUrl) || settings.operationTrainingLogUrl;
+
+  if (rosterUrl) {
+    try {
+      var rosterResult = importOperationRoster_(targetSheet, rosterUrl, settings, now);
+      summary.roster = rosterResult;
+    } catch (e) {
+      summary.warnings.push("更新者一覧を読み取れませんでした: " + e.message);
+    }
+  }
+
+  if (trainingLogUrl) {
+    try {
+      var logResult = importTrainingLog_(targetSheet, trainingLogUrl, settings, now);
+      summary.trainingLog = logResult;
+    } catch (e2) {
+      summary.warnings.push("講習記録簿を読み取れませんでした: " + e2.message);
+    }
+  }
+
+  if (guideDocUrl) {
+    try {
+      summary.guide = readGuideDocument_(guideDocUrl);
+    } catch (e3) {
+      summary.warnings.push("案内文テンプレートを読み取れませんでした: " + e3.message);
+    }
+  }
+
+  formatMainSheet_(targetSheet);
+  return {
+    success: summary.warnings.length < 3,
+    imported: summary.roster.imported + summary.trainingLog.imported,
+    updated: summary.roster.updated + summary.trainingLog.updated,
+    skipped: summary.roster.skipped + summary.trainingLog.skipped,
+    summary: summary
   };
 }
 
@@ -531,7 +591,156 @@ function getSettings_(ss) {
     certificateValidMonths: Number(map["更新証明有効（月）"] || 3),
     dipsFollowDays: Number(map["DIPS申請後確認（日）"] || 14),
     dailyRisks: (map["日次通知対象"] || "P1,P2").split(",").map(function(s) { return normalize_(s); }).filter(Boolean),
-    sourceUrl: map["読み取り元スプレッドシートURL"] || APP.READ_SOURCE_URL
+    sourceUrl: map["読み取り元スプレッドシートURL"] || APP.READ_SOURCE_URL,
+    operationRosterUrl: map["運用ファイル_更新者一覧URL"] || APP.OPERATION_ROSTER_URL,
+    operationGuideDocUrl: map["運用ファイル_案内文テンプレートURL"] || APP.OPERATION_GUIDE_DOC_URL,
+    operationTrainingLogUrl: map["運用ファイル_講習記録簿URL"] || APP.OPERATION_TRAINING_LOG_URL
+  };
+}
+
+function importOperationRoster_(targetSheet, rosterUrl, settings, now) {
+  var sourceId = extractSpreadsheetId_(rosterUrl);
+  if (!sourceId) throw new Error("URLからスプレッドシートIDを取得できません。");
+  // READ ONLY: SpreadsheetApp is used only with getValues() on the operation file.
+  var sourceSs = SpreadsheetApp.openById(sourceId);
+  var sheets = sourceSs.getSheets();
+  var result = { imported: 0, updated: 0, skipped: 0, sheets: 0, sourceTitle: sourceSs.getName() };
+  sheets.forEach(function(sheet) {
+    var sheetName = sheet.getName();
+    if (!/更新者一覧/.test(sheetName)) return;
+    var values = sheet.getDataRange().getValues();
+    result.sheets++;
+    for (var r = 3; r < values.length; r++) {
+      var record = buildRecordFromOperationRosterRow_(values[r], {
+        sourceSheetId: sheet.getSheetId(),
+        sourceRowNumber: r + 1,
+        sheetName: sheetName,
+        now: now
+      });
+      if (!record) {
+        result.skipped++;
+        continue;
+      }
+      var upsert = upsertImportedRecord_(targetSheet, record, now, settings);
+      if (upsert.created) result.imported++;
+      else result.updated++;
+    }
+  });
+  return result;
+}
+
+function buildRecordFromOperationRosterRow_(row, meta) {
+  var number = normalize_(row[0]);
+  var name = normalize_(row[1]);
+  var email = normalize_(row[2]);
+  var expiry = parseDate_(row[3]);
+  if (!name || !expiry) return null;
+
+  var guideSent = toBoolean_(row[7]) || toBoolean_(row[9]) || normalize_(row[10]) !== "" || normalize_(row[11]) !== "";
+  var courseDate = parseOperationCourseDate_(row[13], expiry);
+  var venue = normalize_(row[14]);
+  var memoParts = [];
+  if (normalize_(row[16])) memoParts.push(normalize_(row[16]));
+  if (normalize_(row[15]) && !/^\d+(\.\d+)?$/.test(normalize_(row[15]))) memoParts.push(normalize_(row[15]));
+  memoParts.push("運用更新者一覧: " + meta.sheetName + " " + (number || meta.sourceRowNumber));
+
+  var status = "案内前";
+  if (courseDate) status = "講習予定";
+  else if (guideSent) status = "案内済";
+
+  return {
+    managementId: "OPS-" + meta.sourceSheetId + "-" + meta.sourceRowNumber,
+    customerType: "既存",
+    name: name,
+    email: email,
+    licenseExpiryDate: expiry,
+    licenseCheckResult: "未確認",
+    courseAttendedDate: courseDate || "",
+    renewalCourseDate: courseDate || "",
+    status: status,
+    lastContactDate: guideSent ? stripTime_(meta.now) : "",
+    memo: memoParts.filter(Boolean).join(" / "),
+    sourceStatusProvided: true
+  };
+}
+
+function importTrainingLog_(targetSheet, trainingLogUrl, settings, now) {
+  var sourceId = extractSpreadsheetId_(trainingLogUrl);
+  if (!sourceId) throw new Error("URLからスプレッドシートIDを取得できません。");
+  // READ ONLY: the training log is opened only for reading.
+  var sourceSs = SpreadsheetApp.openById(sourceId);
+  var sheets = sourceSs.getSheets();
+  var result = { imported: 0, updated: 0, skipped: 0, sheets: 0, sourceTitle: sourceSs.getName() };
+  sheets.forEach(function(sheet) {
+    var record = buildRecordFromTrainingLogSheet_(sheet, now);
+    if (!record) {
+      result.skipped++;
+      return;
+    }
+    result.sheets++;
+    var upsert = upsertImportedRecord_(targetSheet, record, now, settings);
+    if (upsert.created) result.imported++;
+    else result.updated++;
+  });
+  return result;
+}
+
+function buildRecordFromTrainingLogSheet_(sheet, now) {
+  var sheetName = sheet.getName();
+  var values = sheet.getDataRange().getValues();
+  var titleText = normalize_(sheetName + " " + ((values[0] && values[0][0]) || ""));
+  var nameMatch = titleText.match(/受講者氏名[（(]([^）)]+)[）)]/);
+  var name = nameMatch ? normalize_(nameMatch[1]).replace(/[　\s]+/g, " ") : "";
+  if (!name || /^[＿_\s　]+$/.test(name)) return null;
+
+  var courseDate = null;
+  var venue = "";
+  for (var r = 0; r < Math.min(values.length, 12); r++) {
+    for (var c = 0; c < Math.min(values[r].length, 8); c++) {
+      var text = normalize_(values[r][c]);
+      if (!courseDate && text.indexOf("受講日") >= 0) courseDate = parseDateFromText_(text);
+      if (!venue && text.indexOf("場所") >= 0) venue = extractParenthesizedText_(text);
+    }
+  }
+  if (!courseDate) return null;
+
+  return {
+    managementId: "LOG-" + sheet.getSheetId(),
+    customerType: "既存",
+    name: name,
+    courseAttendedDate: courseDate,
+    courseCompletionDate: courseDate,
+    renewalCourseDate: courseDate,
+    certificateIssueDate: courseDate,
+    status: "講習修了",
+    memo: "講習記録簿反映: " + formatDate_(courseDate) + (venue ? " / 会場 " + venue : ""),
+    sourceStatusProvided: true
+  };
+}
+
+function readGuideDocument_(guideDocUrl) {
+  var docId = extractDocumentId_(guideDocUrl);
+  if (!docId) throw new Error("URLからドキュメントIDを取得できません。");
+  // READ ONLY: the guide document is opened only to extract template metadata.
+  var doc = DocumentApp.openById(docId);
+  var text = doc.getBody().getText();
+  var dates = [];
+  var dateRegex = /(\d{1,2}月\d{1,2}日[^\n\r\t]*)/g;
+  var m;
+  while ((m = dateRegex.exec(text)) && dates.length < 20) {
+    var item = normalize_(m[1]);
+    if (dates.indexOf(item) < 0) dates.push(item);
+  }
+  var priceMatch = text.match(/([0-9,]+円（税込）?)/);
+  var phoneMatch = text.match(/電話番号：([^\n\r]+)/);
+  var emailMatch = text.match(/メールアドレス：([^\s\n\r]+)/);
+  return {
+    read: true,
+    title: doc.getName(),
+    dates: dates,
+    price: priceMatch ? normalize_(priceMatch[1]) : "",
+    phone: phoneMatch ? normalize_(phoneMatch[1]) : "",
+    email: emailMatch ? normalize_(emailMatch[1]) : ""
   };
 }
 
@@ -752,6 +961,10 @@ function findImportedTargetRow_(sheet, record) {
   }
   if (record.name && record.licenseExpiryDate) {
     return findRowByNameAndExpiry_(sheet, record.name, record.licenseExpiryDate);
+  }
+  if (record.name) {
+    rowNumber = findRowByColumnValue_(sheet, "氏名", record.name);
+    if (rowNumber >= 2) return rowNumber;
   }
   return -1;
 }
@@ -1135,6 +1348,15 @@ function extractSpreadsheetId_(value) {
   return "";
 }
 
+function extractDocumentId_(value) {
+  var text = normalize_(value);
+  if (!text) return "";
+  var m = text.match(/\/document\/d\/([a-zA-Z0-9-_]+)/);
+  if (m) return m[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(text)) return text;
+  return "";
+}
+
 function extractGid_(value) {
   var text = normalize_(value);
   if (!text) return null;
@@ -1193,7 +1415,7 @@ function parseDateOrBlank_(value) {
 }
 
 function parseDate_(value) {
-  if (value instanceof Date && !isNaN(value.getTime())) return stripTime_(value);
+  if (value && typeof value.getTime === "function" && !isNaN(value.getTime())) return stripTime_(value);
   var text = normalize_(value);
   if (!text) return null;
   text = text.replace(/[年月.-]/g, "/").replace(/日/g, "").replace(/\s+/g, "");
@@ -1202,6 +1424,40 @@ function parseDate_(value) {
   var date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   if (isNaN(date.getTime())) return null;
   return stripTime_(date);
+}
+
+function parseDateFromText_(value) {
+  var text = normalize_(value);
+  if (!text) return null;
+  var m = text.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (m) return stripTime_(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return parseDate_(text);
+}
+
+function parseOperationCourseDate_(value, expiry) {
+  var full = parseDateFromText_(value);
+  if (full) return full;
+  var text = normalize_(value);
+  if (!text) return null;
+  var m = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (!m || !expiry) return null;
+  var month = Number(m[1]);
+  var day = Number(m[2]);
+  var year = expiry.getFullYear();
+  if (month > expiry.getMonth() + 1) year--;
+  return stripTime_(new Date(year, month - 1, day));
+}
+
+function extractParenthesizedText_(value) {
+  var text = normalize_(value);
+  var m = text.match(/[（(]([^）)]+)[）)]/);
+  return m ? normalize_(m[1]) : "";
+}
+
+function toBoolean_(value) {
+  if (value === true) return true;
+  var text = normalize_(value).toLowerCase();
+  return text === "true" || text === "yes" || text === "1" || text === "済" || text === "送付済";
 }
 
 function stripTime_(date) {
