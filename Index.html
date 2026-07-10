@@ -163,7 +163,7 @@
     }
     table {
       width: 100%;
-      min-width: 1500px;
+      min-width: 1780px;
       border-collapse: collapse;
     }
     th,
@@ -363,7 +363,8 @@
           <span><b>CDP講習受付</b> 免許期限の6か月前</span>
           <span><b>制度上の講習可能</b> 免許期限の9か月前</span>
           <span><b>DIPS申請</b> 免許期限の6か月前から1か月前まで</span>
-          <span><b>更新確認期限</b> 免許期限-1か月 / 講習証明期限の早い方</span>
+          <span><b>講習証明期限</b> 講習証明取得日+3か月-1日</span>
+          <span><b>参照資料</b> 国交省 技能証明等 / 登録更新講習機関資料</span>
         </div>
         <div class="table-wrap">
           <table>
@@ -375,9 +376,11 @@
                 <th>区分</th>
                 <th>必要な対応</th>
                 <th>期限の根拠</th>
+                <th>重要日</th>
                 <th>免許確認</th>
                 <th>年度/回数</th>
                 <th>状態</th>
+                <th>引用元</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -418,6 +421,10 @@
               <input id="licenseNo" placeholder="任意">
             </div>
             <div class="field">
+              <label for="licenseIssuedDate">免許取得日</label>
+              <input id="licenseIssuedDate" type="date">
+            </div>
+            <div class="field">
               <label for="licenseChecked">免許証確認</label>
               <select id="licenseChecked">
                 <option>未確認</option>
@@ -446,6 +453,10 @@
               <input id="courseDate" type="date">
             </div>
             <div class="field">
+              <label for="certificateIssuedDate">講習証明取得日</label>
+              <input id="certificateIssuedDate" type="date">
+            </div>
+            <div class="field">
               <label for="certificateNo">講習修了証明書番号</label>
               <input id="certificateNo" placeholder="他機関受講者は手入力">
             </div>
@@ -460,6 +471,17 @@
             <div class="field">
               <label for="newExpiry">新しい免許期限</label>
               <input id="newExpiry" type="date">
+            </div>
+            <div class="field full">
+              <label for="referenceSource">引用元資料</label>
+              <select id="referenceSource">
+                <option>手入力</option>
+                <option>技能証明書</option>
+                <option>更新講習修了証明書</option>
+                <option>DIPS画面</option>
+                <option>Google Drive資料コピー</option>
+                <option>国交省制度資料</option>
+              </select>
             </div>
             <div class="field full">
               <label for="sourceMemo">資料引用メモ</label>
@@ -478,9 +500,9 @@
           <div class="quote-tools">
             <div class="field">
               <label for="quoteText">資料のテキストを貼り付け</label>
-              <textarea id="quoteText" placeholder="例: 技能証明 有効期限 2026/07/31"></textarea>
+              <textarea id="quoteText" placeholder="例: 免許取得日 2023/07/31 有効期限 2026/07/31 講習証明取得日 2026/06/10"></textarea>
             </div>
-            <button type="button" id="extractExpiry">日付を免許期限へ入れる</button>
+            <button type="button" id="extractExpiry">日付を抽出して反映</button>
           </div>
         </div>
       </section>
@@ -497,16 +519,19 @@
         customerType: "既存",
         courseProvider: "CDP",
         licenseNo: "",
+        licenseIssuedDate: "2023-07-31",
         licenseChecked: "有効確認済み",
         fiscalYear: "2026",
         sessionNo: "1",
         licenseExpiry: "2026-07-31",
         applicationDate: "2026-06-27",
         courseDate: "2026-06-10",
+        certificateIssuedDate: "2026-06-10",
         certificateNo: "SAMPLE-001",
         dipsDate: "",
         confirmedDate: "",
         newExpiry: "",
+        referenceSource: "技能証明書",
         sourceMemo: "サンプル"
       },
       {
@@ -515,16 +540,19 @@
         customerType: "新規",
         courseProvider: "他機関",
         licenseNo: "",
+        licenseIssuedDate: "2023-10-10",
         licenseChecked: "有効確認済み",
         fiscalYear: "2026",
         sessionNo: "2",
         licenseExpiry: "2026-10-10",
         applicationDate: "2026-06-12",
         courseDate: "2026-06-10",
+        certificateIssuedDate: "2026-06-10",
         certificateNo: "",
         dipsDate: "2026-06-20",
         confirmedDate: "",
         newExpiry: "",
+        referenceSource: "更新講習修了証明書",
         sourceMemo: "他機関受講の手入力サンプル"
       },
       {
@@ -533,16 +561,19 @@
         customerType: "既存",
         courseProvider: "CDP",
         licenseNo: "",
+        licenseIssuedDate: "2024-01-15",
         licenseChecked: "未確認",
         fiscalYear: "2026",
         sessionNo: "3",
         licenseExpiry: "2027-01-15",
         applicationDate: "",
         courseDate: "",
+        certificateIssuedDate: "",
         certificateNo: "",
         dipsDate: "",
         confirmedDate: "",
         newExpiry: "",
+        referenceSource: "技能証明書",
         sourceMemo: "免許証確認待ち"
       },
       {
@@ -551,16 +582,19 @@
         customerType: "既存",
         courseProvider: "CDP",
         licenseNo: "",
+        licenseIssuedDate: "2023-08-31",
         licenseChecked: "有効確認済み",
         fiscalYear: "2026",
         sessionNo: "4",
         licenseExpiry: "2026-08-31",
         applicationDate: "2026-06-01",
         courseDate: "2026-06-05",
+        certificateIssuedDate: "2026-06-05",
         certificateNo: "SAMPLE-004",
         dipsDate: "2026-06-18",
         confirmedDate: "2026-07-08",
         newExpiry: "",
+        referenceSource: "DIPS画面",
         sourceMemo: "更新完了後の新有効期限入力待ち"
       }
     ];
@@ -570,16 +604,19 @@
       "customerType",
       "courseProvider",
       "licenseNo",
+      "licenseIssuedDate",
       "licenseChecked",
       "fiscalYear",
       "sessionNo",
       "licenseExpiry",
       "applicationDate",
       "courseDate",
+      "certificateIssuedDate",
       "certificateNo",
       "dipsDate",
       "confirmedDate",
       "newExpiry",
+      "referenceSource",
       "sourceMemo"
     ];
 
@@ -653,8 +690,11 @@
     }
 
     function analyze(record) {
-      const licenseExpiry = toDate(record.licenseExpiry);
+      const licenseIssuedDate = toDate(record.licenseIssuedDate);
+      const enteredLicenseExpiry = toDate(record.licenseExpiry);
+      const licenseExpiry = enteredLicenseExpiry || (licenseIssuedDate ? addMonths(licenseIssuedDate, 36) : null);
       const courseDate = toDate(record.courseDate);
+      const certificateIssuedDate = toDate(record.certificateIssuedDate) || courseDate;
       const dipsDate = toDate(record.dipsDate);
       const confirmedDate = toDate(record.confirmedDate);
       const newExpiry = toDate(record.newExpiry);
@@ -662,8 +702,8 @@
       const cdpCourseStart = addMonths(licenseExpiry, -6);
       const applicationStart = addMonths(licenseExpiry, -6);
       const applicationDeadline = addMonths(licenseExpiry, -1);
-      const certificateDeadline = courseDate ? addDays(addMonths(courseDate, 3), -1) : null;
-      const followDeadline = courseDate ? minDate(applicationDeadline, certificateDeadline) : cdpCourseStart;
+      const certificateDeadline = certificateIssuedDate ? addDays(addMonths(certificateIssuedDate, 3), -1) : null;
+      const followDeadline = certificateIssuedDate ? minDate(applicationDeadline, certificateDeadline) : cdpCourseStart;
       const nextCourseStart = newExpiry ? addMonths(newExpiry, -6) : null;
       const dueDate = confirmedDate && newExpiry ? nextCourseStart : followDeadline;
       const dueDays = dueDate ? daysUntil(dueDate) : 9999;
@@ -690,7 +730,7 @@
           level = "warning";
           label = "注意";
         }
-      } else if (courseDate) {
+      } else if (certificateIssuedDate || courseDate) {
         if (record.courseProvider === "他機関" && !record.certificateNo) {
           level = "warning";
           label = "注意";
@@ -755,6 +795,7 @@
     function basisHtml(record, result) {
       const items = [];
       if (result.licenseExpiry) items.push(["免許期限", fmt(result.licenseExpiry)]);
+      if (record.licenseIssuedDate) items.push(["免許取得", fmt(toDate(record.licenseIssuedDate))]);
       if (result.cdpCourseStart) items.push(["CDP受付", fmt(result.cdpCourseStart)]);
       if (result.applicationStart) items.push(["申請開始", fmt(result.applicationStart)]);
       if (result.applicationDeadline) items.push(["申請期限", fmt(result.applicationDeadline)]);
@@ -809,9 +850,17 @@
           </td>
           <td><div class="task">${escapeHtml(result.task)}</div></td>
           <td><div class="basis-line">${basisHtml(record, result)}</div></td>
+          <td>
+            免許取得 ${escapeHtml(record.licenseIssuedDate ? fmt(toDate(record.licenseIssuedDate)) : "-")}<br>
+            講習証明取得 ${escapeHtml(record.certificateIssuedDate ? fmt(toDate(record.certificateIssuedDate)) : "-")}
+          </td>
           <td>${escapeHtml(record.licenseChecked || "未確認")}</td>
           <td>${escapeHtml(record.fiscalYear || "-")}年度<br><span class="muted">${escapeHtml(record.sessionNo || "-")}回目</span></td>
           <td>${escapeHtml(result.status)}</td>
+          <td>
+            ${escapeHtml(record.referenceSource || "手入力")}<br>
+            <span class="muted">${escapeHtml(record.sourceMemo || "")}</span>
+          </td>
           <td>
             <div class="row-actions">
               <button type="button" class="small-button" data-edit="${escapeHtml(record.id)}">編集</button>
@@ -831,16 +880,19 @@
         customerType: data.customerType,
         courseProvider: data.courseProvider,
         licenseNo: data.licenseNo,
+        licenseIssuedDate: data.licenseIssuedDate,
         licenseChecked: data.licenseChecked,
         fiscalYear: data.fiscalYear,
         sessionNo: data.sessionNo,
         licenseExpiry: data.licenseExpiry,
         applicationDate: data.applicationDate,
         courseDate: data.courseDate,
+        certificateIssuedDate: data.certificateIssuedDate,
         certificateNo: data.certificateNo,
         dipsDate: data.dipsDate,
         confirmedDate: data.confirmedDate,
         newExpiry: data.newExpiry,
+        referenceSource: data.referenceSource,
         sourceMemo: data.sourceMemo
       };
     }
@@ -853,6 +905,7 @@
       document.getElementById("customerType").value = record.customerType || "既存";
       document.getElementById("courseProvider").value = record.courseProvider || "CDP";
       document.getElementById("licenseChecked").value = record.licenseChecked || "未確認";
+      document.getElementById("referenceSource").value = record.referenceSource || "手入力";
       document.getElementById("formTitle").textContent = "対象者を編集";
       showScreen("entry");
     }
@@ -863,6 +916,7 @@
       document.getElementById("customerType").value = "既存";
       document.getElementById("courseProvider").value = "CDP";
       document.getElementById("licenseChecked").value = "未確認";
+      document.getElementById("referenceSource").value = "手入力";
       document.getElementById("formTitle").textContent = "対象者を登録";
     }
 
@@ -909,6 +963,16 @@
       return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     }
 
+    function extractLabeledDate(text, labels) {
+      const source = String(text).replace(/\s+/g, " ");
+      for (const label of labels) {
+        const pattern = new RegExp(`${label}[^0-9]{0,20}(20\\d{2}[\\/\\-.年]\\d{1,2}[\\/\\-.月]\\d{1,2})`);
+        const match = source.match(pattern);
+        if (match) return normalizeDateText(match[1]);
+      }
+      return "";
+    }
+
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       const record = readForm();
@@ -953,13 +1017,26 @@
       render();
     });
     document.getElementById("extractExpiry").addEventListener("click", () => {
-      const extracted = normalizeDateText(document.getElementById("quoteText").value);
-      if (!extracted) {
-        alert("日付を見つけられませんでした。例: 2026/07/31");
+      const text = document.getElementById("quoteText").value;
+      const licenseIssued = extractLabeledDate(text, ["免許取得日", "技能証明取得日", "交付日", "発行日"]);
+      const licenseExpiry = extractLabeledDate(text, ["免許期限", "有効期限", "有効期間満了日", "満了日"]);
+      const certificateIssued = extractLabeledDate(text, ["講習証明取得日", "講習修了証明書発行日", "修了証明書発行日", "講習修了日"]);
+      if (!licenseIssued && !licenseExpiry && !certificateIssued) {
+        alert("日付を見つけられませんでした。例: 免許取得日 2023/07/31 有効期限 2026/07/31 講習証明取得日 2026/06/10");
         return;
       }
-      document.getElementById("licenseExpiry").value = extracted;
-      document.getElementById("sourceMemo").value = "資料テキストから免許期限を引用";
+      if (licenseIssued) document.getElementById("licenseIssuedDate").value = licenseIssued;
+      if (licenseExpiry) document.getElementById("licenseExpiry").value = licenseExpiry;
+      if (certificateIssued) {
+        document.getElementById("certificateIssuedDate").value = certificateIssued;
+        if (!document.getElementById("courseDate").value) document.getElementById("courseDate").value = certificateIssued;
+      }
+      const parts = [];
+      if (licenseIssued) parts.push("免許取得日");
+      if (licenseExpiry) parts.push("免許期限");
+      if (certificateIssued) parts.push("講習証明取得日");
+      document.getElementById("referenceSource").value = "Google Drive資料コピー";
+      document.getElementById("sourceMemo").value = `資料テキストから${parts.join("・")}を引用`;
     });
     document.getElementById("listBody").addEventListener("click", (event) => {
       const editId = event.target.dataset.edit;
