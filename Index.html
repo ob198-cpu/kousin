@@ -96,7 +96,7 @@
     }
     .summary {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
       margin-bottom: 8px;
     }
@@ -135,26 +135,16 @@
     .ok .label, .ok strong { color: var(--green); }
     .neutral { background: var(--slate-bg); border-color: #d0d5dd; }
     .neutral .label, .neutral strong { color: var(--slate); }
-    .rule-strip {
+    .list-heading {
       display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
-      margin: 7px 0;
+      align-items: baseline;
+      gap: 12px;
     }
-    .rule-strip span {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      min-height: 30px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: #fff;
-      padding: 5px 9px;
-      color: #17324d;
-      font-size: 13px;
-      font-weight: 900;
+    .record-totals {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
     }
-    .rule-strip b { color: #315674; }
     .table-wrap {
       overflow-x: auto;
       background: var(--panel);
@@ -163,17 +153,18 @@
     }
     table {
       width: 100%;
-      min-width: 1780px;
+      min-width: 1230px;
       border-collapse: collapse;
+      table-layout: fixed;
     }
     th,
     td {
       border-bottom: 1px solid var(--line);
-      padding: 8px 9px;
+      padding: 10px 12px;
       text-align: left;
       vertical-align: top;
-      font-size: 15px;
-      line-height: 1.35;
+      font-size: 16px;
+      line-height: 1.45;
     }
     th {
       background: var(--head);
@@ -185,9 +176,9 @@
     .tag {
       display: inline-flex;
       justify-content: center;
-      min-width: 72px;
+      min-width: 78px;
       border-radius: 999px;
-      padding: 6px 9px;
+      padding: 7px 10px;
       font-weight: 900;
       white-space: nowrap;
     }
@@ -198,13 +189,13 @@
     .tag.neutral { background: #e4e7ec; color: #344054; }
     .due {
       color: var(--red);
-      font-size: 18px;
+      font-size: 20px;
       font-weight: 900;
       white-space: nowrap;
     }
     .task {
-      max-width: 360px;
-      font-size: 16px;
+      max-width: 440px;
+      font-size: 17px;
       font-weight: 900;
       line-height: 1.45;
     }
@@ -213,21 +204,15 @@
       font-size: 13px;
     }
     .basis-line {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      max-width: none;
+      display: grid;
+      gap: 4px;
+      min-width: 0;
     }
     .basis-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: #f8fafc;
-      padding: 5px 8px;
-      font-size: 13px;
-      white-space: nowrap;
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+      gap: 6px;
+      font-size: 14px;
     }
     .basis-item span {
       color: var(--muted);
@@ -237,16 +222,34 @@
       color: var(--ink);
       font-weight: 900;
     }
-    .small-button {
-      min-height: 31px;
-      padding: 5px 8px;
+    .person-name {
+      display: block;
+      font-size: 17px;
+      font-weight: 900;
+      line-height: 1.3;
+    }
+    .status-text {
+      max-width: 300px;
+      font-weight: 900;
+      line-height: 1.45;
+    }
+    .sub-info {
+      margin-top: 4px;
+      color: var(--muted);
       font-size: 13px;
+      line-height: 1.45;
+    }
+    .small-button {
+      min-height: 34px;
+      padding: 6px 9px;
+      font-size: 14px;
     }
     .status-button {
-      color: #175cd3;
-      border-color: #bfdbfe;
-      background: #eff6ff;
+      color: #fff;
+      border-color: #175cd3;
+      background: #175cd3;
     }
+    td .row-actions { flex-wrap: nowrap; }
     .modal {
       position: fixed;
       inset: 0;
@@ -415,19 +418,14 @@
           <div class="label">対応不要</div>
           <strong id="okCount">0</strong><span class="note">期限に余裕</span>
         </div>
-        <div class="metric neutral">
-          <div class="label">総人数</div>
-          <strong id="peopleCount">0</strong><span class="note">重複除外</span>
-        </div>
-        <div class="metric neutral">
-          <div class="label">総回数</div>
-          <strong id="sessionCount">0</strong><span class="note">年度記録</span>
-        </div>
       </section>
 
       <section>
         <div class="toolbar">
-          <h2>優先一覧</h2>
+          <div class="list-heading">
+            <h2>優先一覧</h2>
+            <span class="record-totals">総人数 <b id="peopleCount">0</b>人 / 記録 <b id="sessionCount">0</b>件</span>
+          </div>
           <div class="toolbar-actions">
             <button type="button" class="primary" data-screen="entry">新規登録</button>
             <button type="button" id="exportCsv">CSV出力</button>
@@ -436,28 +434,25 @@
             <input id="importCsv" class="hidden" type="file" accept=".csv,text/csv">
           </div>
         </div>
-        <div class="rule-strip" aria-label="期限計算">
-          <span><b>CDP講習受付</b> 免許期限の6か月前</span>
-          <span><b>制度上の講習可能</b> 免許期限の9か月前</span>
-          <span><b>DIPS申請</b> 免許期限の6か月前から1か月前まで</span>
-          <span><b>講習証明期限</b> 講習証明取得日+3か月-1日</span>
-          <span><b>参照資料</b> 国交省 技能証明等 / 登録更新講習機関資料</span>
-        </div>
         <div class="table-wrap">
           <table>
+            <colgroup>
+              <col style="width: 90px">
+              <col style="width: 140px">
+              <col style="width: 205px">
+              <col style="width: 255px">
+              <col style="width: 205px">
+              <col style="width: 220px">
+              <col style="width: 170px">
+            </colgroup>
             <thead>
               <tr>
                 <th>判定</th>
                 <th>対応期限</th>
                 <th>対象</th>
-                <th>区分</th>
-                <th>必要な対応</th>
-                <th>期限の根拠</th>
-                <th>重要日</th>
-                <th>免許確認</th>
-                <th>年度/回数</th>
+                <th>次にやること</th>
                 <th>状態</th>
-                <th>引用元</th>
+                <th>期限の根拠</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -882,14 +877,20 @@
     function basisHtml(record, result) {
       const items = [];
       if (result.licenseExpiry) items.push(["免許期限", fmt(result.licenseExpiry)]);
-      if (record.licenseIssuedDate) items.push(["免許取得", fmt(toDate(record.licenseIssuedDate))]);
-      if (result.cdpCourseStart) items.push(["CDP受付", fmt(result.cdpCourseStart)]);
-      if (result.applicationStart) items.push(["申請開始", fmt(result.applicationStart)]);
       if (result.applicationDeadline) items.push(["申請期限", fmt(result.applicationDeadline)]);
       if (result.certificateDeadline) items.push(["講習証明期限", fmt(result.certificateDeadline)]);
+      if (!result.certificateDeadline && result.cdpCourseStart) items.push(["CDP受付", fmt(result.cdpCourseStart)]);
       return items.map(([name, value]) => (
         `<div class="basis-item"><span>${escapeHtml(name)}</span><strong>${escapeHtml(value)}</strong></div>`
       )).join("");
+    }
+
+    function rowSubInfo(record) {
+      const parts = [
+        record.customerType || "",
+        record.courseProvider || ""
+      ].filter(Boolean);
+      return parts.join(" / ");
     }
 
     function taskState(done, current, blocked) {
@@ -991,26 +992,14 @@
           <td><span class="tag ${result.level}">${escapeHtml(result.label)}</span></td>
           <td><div class="${result.level === "danger" || result.level === "warning" ? "due" : ""}">${fmt(result.dueDate)}</div></td>
           <td>
-            <strong>${escapeHtml(record.targetName)}</strong><br>
-            <span class="muted">${escapeHtml(record.licenseNo || record.sourceMemo || "")}</span>
-          </td>
-          <td>
-            <strong>${escapeHtml(record.customerType || "")}</strong><br>
-            <span class="muted">${escapeHtml(record.courseProvider || "")}</span>
+            <span class="person-name">${escapeHtml(record.targetName)}</span>
+            <div class="sub-info">${escapeHtml(rowSubInfo(record))}</div>
           </td>
           <td><div class="task">${escapeHtml(result.task)}</div></td>
+          <td>
+            <div class="status-text">${escapeHtml(result.status)}</div>
+          </td>
           <td><div class="basis-line">${basisHtml(record, result)}</div></td>
-          <td>
-            免許取得 ${escapeHtml(record.licenseIssuedDate ? fmt(toDate(record.licenseIssuedDate)) : "-")}<br>
-            講習証明取得 ${escapeHtml(record.certificateIssuedDate ? fmt(toDate(record.certificateIssuedDate)) : "-")}
-          </td>
-          <td>${escapeHtml(record.licenseChecked || "未確認")}</td>
-          <td>${escapeHtml(record.fiscalYear || "-")}年度<br><span class="muted">${escapeHtml(record.sessionNo || "-")}回目</span></td>
-          <td>${escapeHtml(result.status)}</td>
-          <td>
-            ${escapeHtml(record.referenceSource || "手入力")}<br>
-            <span class="muted">${escapeHtml(record.sourceMemo || "")}</span>
-          </td>
           <td>
             <div class="row-actions">
               <button type="button" class="small-button status-button" data-status="${escapeHtml(record.id)}">状態</button>
