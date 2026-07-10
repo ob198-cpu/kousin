@@ -153,7 +153,7 @@
     }
     table {
       width: 100%;
-      min-width: 1230px;
+      min-width: 1120px;
       border-collapse: collapse;
       table-layout: fixed;
     }
@@ -438,12 +438,12 @@
           <table>
             <colgroup>
               <col style="width: 90px">
+              <col style="width: 125px">
+              <col style="width: 190px">
+              <col style="width: 240px">
+              <col style="width: 210px">
+              <col style="width: 185px">
               <col style="width: 140px">
-              <col style="width: 205px">
-              <col style="width: 255px">
-              <col style="width: 205px">
-              <col style="width: 220px">
-              <col style="width: 170px">
             </colgroup>
             <thead>
               <tr>
@@ -875,12 +875,19 @@
     }
 
     function basisHtml(record, result) {
-      const items = [];
-      if (result.licenseExpiry) items.push(["免許期限", fmt(result.licenseExpiry)]);
-      if (result.applicationDeadline) items.push(["申請期限", fmt(result.applicationDeadline)]);
-      if (result.certificateDeadline) items.push(["講習証明期限", fmt(result.certificateDeadline)]);
-      if (!result.certificateDeadline && result.cdpCourseStart) items.push(["CDP受付", fmt(result.cdpCourseStart)]);
-      return items.map(([name, value]) => (
+      let basis = "免許期限";
+      let calculation = "登録された免許期限";
+      if (result.applicationDeadline && result.dueDate && result.dueDate.getTime() === result.applicationDeadline.getTime()) {
+        basis = "申請期限";
+        calculation = "免許期限 - 1か月";
+      } else if (result.certificateDeadline && result.dueDate && result.dueDate.getTime() === result.certificateDeadline.getTime()) {
+        basis = "講習証明期限";
+        calculation = "修了日 + 3か月 - 1日";
+      } else if (result.cdpCourseStart && result.dueDate && result.dueDate.getTime() === result.cdpCourseStart.getTime()) {
+        basis = "CDP受付開始";
+        calculation = "免許期限 - 6か月";
+      }
+      return [["基準", basis], ["計算", calculation]].map(([name, value]) => (
         `<div class="basis-item"><span>${escapeHtml(name)}</span><strong>${escapeHtml(value)}</strong></div>`
       )).join("");
     }
