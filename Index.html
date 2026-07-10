@@ -21,6 +21,8 @@
       --blue-bg: #eff6ff;
       --green: #067647;
       --green-bg: #ecfdf3;
+      --slate: #475467;
+      --slate-bg: #f2f4f7;
     }
     * { box-sizing: border-box; }
     body {
@@ -35,35 +37,34 @@
       margin: 0 auto;
       padding: 10px 14px 14px;
     }
-    .top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-    h1 {
-      margin: 0;
-      font-size: 27px;
-      letter-spacing: 0;
-      color: var(--navy);
-    }
-    h2 {
-      margin: 0;
-      font-size: 19px;
-      letter-spacing: 0;
-      color: var(--navy);
-    }
+    .top,
+    .toolbar,
+    .form-actions,
     .tabs,
     .toolbar-actions,
     .row-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
       align-items: center;
+      gap: 8px;
+    }
+    .top,
+    .toolbar { justify-content: space-between; }
+    .top { margin-bottom: 8px; }
+    h1 {
+      margin: 0;
+      color: var(--navy);
+      font-size: 27px;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0;
+      color: var(--navy);
+      font-size: 19px;
+      letter-spacing: 0;
     }
     button {
-      min-height: 38px;
+      min-height: 36px;
       border: 1px solid #bfd0e3;
       border-radius: 7px;
       background: #fff;
@@ -72,7 +73,7 @@
       font: inherit;
       font-size: 14px;
       font-weight: 900;
-      padding: 8px 12px;
+      padding: 7px 11px;
     }
     button.primary,
     button.active {
@@ -85,6 +86,8 @@
       border-color: #fecdca;
       background: #fff7f6;
     }
+    .screen { display: none; }
+    .screen.active { display: block; }
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -93,76 +96,65 @@
     }
     .summary {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 8px;
       margin-bottom: 8px;
     }
     .metric {
       border-radius: 8px;
       border: 1px solid var(--line);
-      padding: 8px 12px;
+      padding: 8px 11px;
       min-height: 64px;
     }
     .metric .label {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 900;
       margin-bottom: 2px;
     }
     .metric strong {
       display: inline-block;
-      min-width: 40px;
-      font-size: 34px;
+      min-width: 32px;
+      font-size: 32px;
       line-height: 1;
-      margin-right: 8px;
+      margin-right: 7px;
       vertical-align: middle;
     }
     .metric .note {
       display: inline;
       color: var(--muted);
-      font-size: 13px;
-      line-height: 1.35;
+      font-size: 12px;
+      line-height: 1.25;
     }
     .danger { background: var(--red-bg); border-color: #fecdca; }
-    .danger .label,
-    .danger strong { color: var(--red); }
+    .danger .label, .danger strong { color: var(--red); }
     .warning { background: var(--amber-bg); border-color: #fedf89; }
-    .warning .label,
-    .warning strong { color: var(--amber); }
+    .warning .label, .warning strong { color: var(--amber); }
     .guide { background: var(--blue-bg); border-color: #bfdbfe; }
-    .guide .label,
-    .guide strong { color: var(--blue); }
+    .guide .label, .guide strong { color: var(--blue); }
     .ok { background: var(--green-bg); border-color: #abefc6; }
-    .ok .label,
-    .ok strong { color: var(--green); }
-    .toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 6px;
-    }
+    .ok .label, .ok strong { color: var(--green); }
+    .neutral { background: var(--slate-bg); border-color: #d0d5dd; }
+    .neutral .label, .neutral strong { color: var(--slate); }
     .rule-strip {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 8px;
+      gap: 7px;
+      margin: 7px 0;
     }
     .rule-strip span {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      min-height: 32px;
+      gap: 5px;
+      min-height: 30px;
       border: 1px solid var(--line);
       border-radius: 999px;
       background: #fff;
-      padding: 5px 10px;
+      padding: 5px 9px;
+      color: #17324d;
       font-size: 13px;
       font-weight: 900;
-      color: #17324d;
     }
-    .rule-strip b {
-      color: #315674;
-    }
+    .rule-strip b { color: #315674; }
     .table-wrap {
       overflow-x: auto;
       background: var(--panel);
@@ -171,17 +163,17 @@
     }
     table {
       width: 100%;
-      min-width: 1280px;
+      min-width: 1500px;
       border-collapse: collapse;
     }
     th,
     td {
       border-bottom: 1px solid var(--line);
-      padding: 8px 10px;
+      padding: 8px 9px;
       text-align: left;
       vertical-align: top;
       font-size: 15px;
-      line-height: 1.38;
+      line-height: 1.35;
     }
     th {
       background: var(--head);
@@ -193,15 +185,17 @@
     .tag {
       display: inline-flex;
       justify-content: center;
-      min-width: 70px;
+      min-width: 72px;
       border-radius: 999px;
-      padding: 7px 10px;
+      padding: 6px 9px;
       font-weight: 900;
+      white-space: nowrap;
     }
     .tag.danger { background: #fee4e2; color: var(--red); }
     .tag.warning { background: #ffedcc; color: var(--amber); }
     .tag.guide { background: #dbeafe; color: var(--blue); }
     .tag.ok { background: #d1fadf; color: var(--green); }
+    .tag.neutral { background: #e4e7ec; color: #344054; }
     .due {
       color: var(--red);
       font-size: 18px;
@@ -210,7 +204,7 @@
     }
     .task {
       max-width: 360px;
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 900;
       line-height: 1.45;
     }
@@ -244,19 +238,17 @@
       font-weight: 900;
     }
     .small-button {
-      min-height: 32px;
+      min-height: 31px;
       padding: 5px 8px;
       font-size: 13px;
     }
-    .screen { display: none; }
-    .screen.active { display: block; }
     .form-panel {
-      max-width: 980px;
-      padding: 16px;
+      max-width: 1180px;
+      padding: 14px;
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
       margin-top: 12px;
     }
@@ -266,40 +258,55 @@
       gap: 5px;
     }
     .field.wide { grid-column: span 2; }
+    .field.full { grid-column: 1 / -1; }
     label {
       color: #315674;
       font-size: 14px;
       font-weight: 900;
     }
     input,
-    select {
+    select,
+    textarea {
       width: 100%;
-      min-height: 42px;
+      min-height: 40px;
       border: 1px solid #c8d5e4;
       border-radius: 7px;
       background: #fff;
       color: var(--ink);
       font: inherit;
-      font-size: 16px;
+      font-size: 15px;
       padding: 8px 10px;
     }
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+    }
     input:focus,
-    select:focus {
+    select:focus,
+    textarea:focus {
       outline: 3px solid #dbeafe;
       border-color: #60a5fa;
     }
-    .form-actions {
-      display: flex;
-      gap: 8px;
+    .quote-panel {
       margin-top: 12px;
+      padding: 12px;
+    }
+    .quote-tools {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: end;
     }
     .hidden { display: none; }
-    @media (max-width: 980px) {
-      .top,
-      .toolbar { align-items: stretch; flex-direction: column; }
-      .summary,
-      .grid { grid-template-columns: 1fr; }
+    @media (max-width: 1180px) {
+      .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .top, .toolbar, .form-actions { align-items: stretch; flex-direction: column; }
+      .summary, .grid { grid-template-columns: 1fr; }
       .field.wide { grid-column: auto; }
+      .quote-tools { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -314,7 +321,7 @@
     </header>
 
     <section id="homeScreen" class="screen active">
-      <section class="summary" aria-label="リスク件数">
+      <section class="summary" aria-label="集計">
         <div class="metric danger">
           <div class="label">危険</div>
           <strong id="dangerCount">0</strong><span class="note">今日確認</span>
@@ -325,11 +332,19 @@
         </div>
         <div class="metric guide">
           <div class="label">案内</div>
-          <strong id="guideCount">0</strong><span class="note">講習案内</span>
+          <strong id="guideCount">0</strong><span class="note">CDP受付</span>
         </div>
         <div class="metric ok">
           <div class="label">対応不要</div>
           <strong id="okCount">0</strong><span class="note">期限に余裕</span>
+        </div>
+        <div class="metric neutral">
+          <div class="label">総人数</div>
+          <strong id="peopleCount">0</strong><span class="note">重複除外</span>
+        </div>
+        <div class="metric neutral">
+          <div class="label">総回数</div>
+          <strong id="sessionCount">0</strong><span class="note">年度記録</span>
         </div>
       </section>
 
@@ -345,9 +360,10 @@
           </div>
         </div>
         <div class="rule-strip" aria-label="期限計算">
-          <span><b>更新確認期限</b> 免許期限の1か月前 / 講習修了日+3か月-1日の早い方</span>
-          <span><b>講習開始</b> 免許期限の9か月前</span>
-          <span><b>DIPS申請開始</b> 免許期限の6か月前</span>
+          <span><b>CDP講習受付</b> 免許期限の6か月前</span>
+          <span><b>制度上の講習可能</b> 免許期限の9か月前</span>
+          <span><b>DIPS申請</b> 免許期限の6か月前から1か月前まで</span>
+          <span><b>更新確認期限</b> 免許期限-1か月 / 講習証明期限の早い方</span>
         </div>
         <div class="table-wrap">
           <table>
@@ -356,8 +372,11 @@
                 <th>判定</th>
                 <th>対応期限</th>
                 <th>対象</th>
+                <th>区分</th>
                 <th>必要な対応</th>
                 <th>期限の根拠</th>
+                <th>免許確認</th>
+                <th>年度/回数</th>
                 <th>状態</th>
                 <th>操作</th>
               </tr>
@@ -366,7 +385,6 @@
           </table>
         </div>
       </section>
-
     </section>
 
     <section id="entryScreen" class="screen">
@@ -388,8 +406,32 @@
               </select>
             </div>
             <div class="field">
+              <label for="courseProvider">受講機関</label>
+              <select id="courseProvider">
+                <option>CDP</option>
+                <option>他機関</option>
+                <option>未確認</option>
+              </select>
+            </div>
+            <div class="field">
               <label for="licenseNo">免許番号</label>
               <input id="licenseNo" placeholder="任意">
+            </div>
+            <div class="field">
+              <label for="licenseChecked">免許証確認</label>
+              <select id="licenseChecked">
+                <option>未確認</option>
+                <option>有効確認済み</option>
+                <option>期限切れ疑い</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="fiscalYear">年度</label>
+              <input id="fiscalYear" inputmode="numeric" placeholder="2026">
+            </div>
+            <div class="field">
+              <label for="sessionNo">回数</label>
+              <input id="sessionNo" inputmode="numeric" placeholder="1">
             </div>
             <div class="field">
               <label for="licenseExpiry">免許期限</label>
@@ -405,7 +447,7 @@
             </div>
             <div class="field">
               <label for="certificateNo">講習修了証明書番号</label>
-              <input id="certificateNo" placeholder="任意">
+              <input id="certificateNo" placeholder="他機関受講者は手入力">
             </div>
             <div class="field">
               <label for="dipsDate">DIPS申請日</label>
@@ -419,6 +461,10 @@
               <label for="newExpiry">新しい免許期限</label>
               <input id="newExpiry" type="date">
             </div>
+            <div class="field full">
+              <label for="sourceMemo">資料引用メモ</label>
+              <input id="sourceMemo" placeholder="例: 免許証PDF、Google Drive資料、本人提出スクリーンショット">
+            </div>
           </div>
           <div class="form-actions">
             <button type="submit" class="primary">登録する</button>
@@ -426,66 +472,115 @@
             <button type="button" data-screen="home">一覧へ戻る</button>
           </div>
         </form>
+
+        <div class="panel quote-panel">
+          <h2>資料から期限を引用するサンプル</h2>
+          <div class="quote-tools">
+            <div class="field">
+              <label for="quoteText">資料のテキストを貼り付け</label>
+              <textarea id="quoteText" placeholder="例: 技能証明 有効期限 2026/07/31"></textarea>
+            </div>
+            <button type="button" id="extractExpiry">日付を免許期限へ入れる</button>
+          </div>
+        </div>
       </section>
     </section>
   </main>
 
   <script>
-    const STORAGE_KEY = "cdp-renewal-license-records-v2";
+    const STORAGE_KEY = "cdp-renewal-license-records-v3";
     const form = document.getElementById("entryForm");
     const SAMPLE_RECORDS = [
       {
         id: "sample-a",
         targetName: "サンプル受講者A",
         customerType: "既存",
+        courseProvider: "CDP",
         licenseNo: "",
+        licenseChecked: "有効確認済み",
+        fiscalYear: "2026",
+        sessionNo: "1",
         licenseExpiry: "2026-07-31",
-        applicationDate: "2026-06-01",
+        applicationDate: "2026-06-27",
         courseDate: "2026-06-10",
-        certificateNo: "",
+        certificateNo: "SAMPLE-001",
         dipsDate: "",
         confirmedDate: "",
-        newExpiry: ""
+        newExpiry: "",
+        sourceMemo: "サンプル"
       },
       {
         id: "sample-b",
         targetName: "サンプル受講者B",
-        customerType: "既存",
+        customerType: "新規",
+        courseProvider: "他機関",
         licenseNo: "",
+        licenseChecked: "有効確認済み",
+        fiscalYear: "2026",
+        sessionNo: "2",
         licenseExpiry: "2026-10-10",
         applicationDate: "2026-06-12",
         courseDate: "2026-06-10",
         certificateNo: "",
         dipsDate: "2026-06-20",
         confirmedDate: "",
-        newExpiry: ""
+        newExpiry: "",
+        sourceMemo: "他機関受講の手入力サンプル"
       },
       {
         id: "sample-c",
         targetName: "サンプル受講者C",
-        customerType: "新規",
+        customerType: "既存",
+        courseProvider: "CDP",
         licenseNo: "",
-        licenseExpiry: "2027-04-22",
+        licenseChecked: "未確認",
+        fiscalYear: "2026",
+        sessionNo: "3",
+        licenseExpiry: "2027-01-15",
         applicationDate: "",
         courseDate: "",
         certificateNo: "",
         dipsDate: "",
         confirmedDate: "",
-        newExpiry: ""
+        newExpiry: "",
+        sourceMemo: "免許証確認待ち"
+      },
+      {
+        id: "sample-d",
+        targetName: "サンプル受講者D",
+        customerType: "既存",
+        courseProvider: "CDP",
+        licenseNo: "",
+        licenseChecked: "有効確認済み",
+        fiscalYear: "2026",
+        sessionNo: "4",
+        licenseExpiry: "2026-08-31",
+        applicationDate: "2026-06-01",
+        courseDate: "2026-06-05",
+        certificateNo: "SAMPLE-004",
+        dipsDate: "2026-06-18",
+        confirmedDate: "2026-07-08",
+        newExpiry: "",
+        sourceMemo: "更新完了後の新有効期限入力待ち"
       }
     ];
     const fields = [
       "recordId",
       "targetName",
       "customerType",
+      "courseProvider",
       "licenseNo",
+      "licenseChecked",
+      "fiscalYear",
+      "sessionNo",
       "licenseExpiry",
       "applicationDate",
       "courseDate",
       "certificateNo",
       "dipsDate",
       "confirmedDate",
-      "newExpiry"
+      "newExpiry",
+      "sourceMemo"
     ];
 
     function sampleCopy() {
@@ -563,11 +658,13 @@
       const dipsDate = toDate(record.dipsDate);
       const confirmedDate = toDate(record.confirmedDate);
       const newExpiry = toDate(record.newExpiry);
-      const courseStart = addMonths(licenseExpiry, -9);
+      const legalCourseStart = addMonths(licenseExpiry, -9);
+      const cdpCourseStart = addMonths(licenseExpiry, -6);
+      const applicationStart = addMonths(licenseExpiry, -6);
       const applicationDeadline = addMonths(licenseExpiry, -1);
       const certificateDeadline = courseDate ? addDays(addMonths(courseDate, 3), -1) : null;
-      const followDeadline = courseDate ? minDate(applicationDeadline, certificateDeadline) : courseStart;
-      const nextCourseStart = newExpiry ? addMonths(newExpiry, -9) : null;
+      const followDeadline = courseDate ? minDate(applicationDeadline, certificateDeadline) : cdpCourseStart;
+      const nextCourseStart = newExpiry ? addMonths(newExpiry, -6) : null;
       const dueDate = confirmedDate && newExpiry ? nextCourseStart : followDeadline;
       const dueDays = dueDate ? daysUntil(dueDate) : 9999;
 
@@ -576,28 +673,58 @@
       let task = "現時点では対応不要";
       let status = "期限に余裕あり";
 
-      if (confirmedDate && newExpiry) {
+      if (licenseExpiry && daysUntil(licenseExpiry) < 0 && !newExpiry) {
+        level = "danger";
+        label = "危険";
+        task = "免許期限切れの可能性を確認";
+        status = "免許期限超過 / 更新未確認";
+      } else if (confirmedDate && !newExpiry) {
+        level = "danger";
+        label = "危険";
+        task = "更新後の新しい免許期限へ差し替える";
+        status = "更新完了確認済み / 新有効期限未入力";
+      } else if (confirmedDate && newExpiry) {
         task = "次回更新時期まで保管";
-        status = "更新完了";
+        status = "更新完了 / 次回管理";
         if (dueDays <= 30) {
           level = "warning";
           label = "注意";
         }
       } else if (courseDate) {
-        task = dipsDate ? "新有効期限を確認" : "DIPS申請を完了させる";
-        status = dipsDate ? "DIPS申請中 / 更新完了未確認" : "講習修了 / DIPS申請待ち";
-        if (dueDays <= 0) {
-          level = "danger";
-          label = "危険";
-        } else if (dueDays <= 30) {
+        if (record.courseProvider === "他機関" && !record.certificateNo) {
+          level = "warning";
+          label = "注意";
+          task = "他機関の講習修了証明書番号を手入力";
+          status = "他機関受講 / 証明情報未入力";
+        } else {
+          task = dipsDate ? "更新完了と新有効期限を確認" : "DIPS申請を完了させる";
+          status = dipsDate ? "DIPS申請中 / 更新完了未確認" : "講習修了 / DIPS申請待ち";
+          if (dueDays <= 0) {
+            level = "danger";
+            label = "危険";
+          } else if (dueDays <= 30) {
+            level = "warning";
+            label = "注意";
+          }
+        }
+      } else if (licenseExpiry && cdpCourseStart && daysUntil(cdpCourseStart) <= 30) {
+        task = "CDP更新講習の案内";
+        status = "CDP受付対象";
+        level = daysUntil(cdpCourseStart) <= 0 ? "guide" : "warning";
+        label = daysUntil(cdpCourseStart) <= 0 ? "案内" : "注意";
+      } else if (licenseExpiry && legalCourseStart && daysUntil(legalCourseStart) <= 0) {
+        task = "制度上は受講可能、CDP受付時期を確認";
+        status = "制度上受講可能 / CDP受付前";
+        level = "ok";
+      }
+
+      if (record.licenseChecked !== "有効確認済み" && !newExpiry) {
+        if (level === "ok") {
           level = "warning";
           label = "注意";
         }
-      } else if (licenseExpiry && courseStart && daysUntil(courseStart) <= 30) {
-        task = "更新講習の案内";
-        status = "案内対象";
-        level = daysUntil(courseStart) <= 0 ? "guide" : "warning";
-        label = daysUntil(courseStart) <= 0 ? "案内" : "注意";
+        if (!task.includes("免許")) task = "ドローン免許証の有効期限を確認";
+        status = `${status} / 免許証未確認`;
       }
 
       return {
@@ -607,7 +734,9 @@
         task,
         status,
         licenseExpiry,
-        courseStart,
+        legalCourseStart,
+        cdpCourseStart,
+        applicationStart,
         applicationDeadline,
         certificateDeadline
       };
@@ -626,12 +755,17 @@
     function basisHtml(record, result) {
       const items = [];
       if (result.licenseExpiry) items.push(["免許期限", fmt(result.licenseExpiry)]);
+      if (result.cdpCourseStart) items.push(["CDP受付", fmt(result.cdpCourseStart)]);
+      if (result.applicationStart) items.push(["申請開始", fmt(result.applicationStart)]);
       if (result.applicationDeadline) items.push(["申請期限", fmt(result.applicationDeadline)]);
       if (result.certificateDeadline) items.push(["講習証明期限", fmt(result.certificateDeadline)]);
-      if (result.courseStart && !record.courseDate) items.push(["講習開始", fmt(result.courseStart)]);
       return items.map(([name, value]) => (
         `<div class="basis-item"><span>${escapeHtml(name)}</span><strong>${escapeHtml(value)}</strong></div>`
       )).join("");
+    }
+
+    function personKey(record) {
+      return `${record.targetName || ""}|${record.licenseNo || ""}`.trim();
     }
 
     function showScreen(name) {
@@ -658,6 +792,8 @@
       document.getElementById("warningCount").textContent = counts.warning;
       document.getElementById("guideCount").textContent = counts.guide;
       document.getElementById("okCount").textContent = counts.ok;
+      document.getElementById("peopleCount").textContent = new Set(records.map(personKey)).size;
+      document.getElementById("sessionCount").textContent = records.length;
 
       document.getElementById("listBody").innerHTML = rows.map(({ record, result }) => `
         <tr>
@@ -665,10 +801,16 @@
           <td><div class="${result.level === "danger" || result.level === "warning" ? "due" : ""}">${fmt(result.dueDate)}</div></td>
           <td>
             <strong>${escapeHtml(record.targetName)}</strong><br>
-            <span class="muted">${escapeHtml(record.customerType || "")}${record.licenseNo ? " / " + escapeHtml(record.licenseNo) : ""}</span>
+            <span class="muted">${escapeHtml(record.licenseNo || record.sourceMemo || "")}</span>
+          </td>
+          <td>
+            <strong>${escapeHtml(record.customerType || "")}</strong><br>
+            <span class="muted">${escapeHtml(record.courseProvider || "")}</span>
           </td>
           <td><div class="task">${escapeHtml(result.task)}</div></td>
           <td><div class="basis-line">${basisHtml(record, result)}</div></td>
+          <td>${escapeHtml(record.licenseChecked || "未確認")}</td>
+          <td>${escapeHtml(record.fiscalYear || "-")}年度<br><span class="muted">${escapeHtml(record.sessionNo || "-")}回目</span></td>
           <td>${escapeHtml(result.status)}</td>
           <td>
             <div class="row-actions">
@@ -687,29 +829,30 @@
         id: data.recordId || makeId(),
         targetName: data.targetName,
         customerType: data.customerType,
+        courseProvider: data.courseProvider,
         licenseNo: data.licenseNo,
+        licenseChecked: data.licenseChecked,
+        fiscalYear: data.fiscalYear,
+        sessionNo: data.sessionNo,
         licenseExpiry: data.licenseExpiry,
         applicationDate: data.applicationDate,
         courseDate: data.courseDate,
         certificateNo: data.certificateNo,
         dipsDate: data.dipsDate,
         confirmedDate: data.confirmedDate,
-        newExpiry: data.newExpiry
+        newExpiry: data.newExpiry,
+        sourceMemo: data.sourceMemo
       };
     }
 
     function fillForm(record) {
-      document.getElementById("recordId").value = record.id || "";
-      document.getElementById("targetName").value = record.targetName || "";
+      fields.forEach((field) => {
+        const id = field === "recordId" ? "recordId" : field;
+        document.getElementById(id).value = field === "recordId" ? record.id || "" : record[field] || "";
+      });
       document.getElementById("customerType").value = record.customerType || "既存";
-      document.getElementById("licenseNo").value = record.licenseNo || "";
-      document.getElementById("licenseExpiry").value = record.licenseExpiry || "";
-      document.getElementById("applicationDate").value = record.applicationDate || "";
-      document.getElementById("courseDate").value = record.courseDate || "";
-      document.getElementById("certificateNo").value = record.certificateNo || "";
-      document.getElementById("dipsDate").value = record.dipsDate || "";
-      document.getElementById("confirmedDate").value = record.confirmedDate || "";
-      document.getElementById("newExpiry").value = record.newExpiry || "";
+      document.getElementById("courseProvider").value = record.courseProvider || "CDP";
+      document.getElementById("licenseChecked").value = record.licenseChecked || "未確認";
       document.getElementById("formTitle").textContent = "対象者を編集";
       showScreen("entry");
     }
@@ -718,12 +861,14 @@
       form.reset();
       document.getElementById("recordId").value = "";
       document.getElementById("customerType").value = "既存";
+      document.getElementById("courseProvider").value = "CDP";
+      document.getElementById("licenseChecked").value = "未確認";
       document.getElementById("formTitle").textContent = "対象者を登録";
     }
 
     function exportCsv() {
       const records = loadRecords();
-      const headers = ["targetName", "customerType", "licenseNo", "licenseExpiry", "applicationDate", "courseDate", "certificateNo", "dipsDate", "confirmedDate", "newExpiry"];
+      const headers = fields.filter((field) => field !== "recordId");
       const csv = [headers.join(",")].concat(records.map((record) => (
         headers.map((key) => `"${String(record[key] || "").replace(/"/g, '""')}"`).join(",")
       ))).join("\n");
@@ -757,12 +902,22 @@
       return result;
     }
 
+    function normalizeDateText(value) {
+      const match = String(value).match(/(20\d{2})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);
+      if (!match) return "";
+      const [, y, m, d] = match;
+      return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       const record = readForm();
       const records = loadRecords();
-      const index = records.findIndex((item) => item.id === record.id);
-      if (index >= 0) records[index] = record;
+      const existingIndex = records.findIndex((item) => (
+        item.id === record.id ||
+        (personKey(item) === personKey(record) && item.fiscalYear === record.fiscalYear)
+      ));
+      if (existingIndex >= 0) records[existingIndex] = { ...records[existingIndex], ...record, id: records[existingIndex].id };
       else records.push(record);
       saveRecords(records);
       clearForm();
@@ -796,6 +951,15 @@
       saveRecords(sampleCopy());
       clearForm();
       render();
+    });
+    document.getElementById("extractExpiry").addEventListener("click", () => {
+      const extracted = normalizeDateText(document.getElementById("quoteText").value);
+      if (!extracted) {
+        alert("日付を見つけられませんでした。例: 2026/07/31");
+        return;
+      }
+      document.getElementById("licenseExpiry").value = extracted;
+      document.getElementById("sourceMemo").value = "資料テキストから免許期限を引用";
     });
     document.getElementById("listBody").addEventListener("click", (event) => {
       const editId = event.target.dataset.edit;
