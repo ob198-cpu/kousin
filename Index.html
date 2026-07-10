@@ -242,6 +242,83 @@
       padding: 5px 8px;
       font-size: 13px;
     }
+    .status-button {
+      color: #175cd3;
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(16, 24, 40, .42);
+    }
+    .modal.active { display: flex; }
+    .modal-card {
+      width: min(980px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      box-shadow: 0 24px 48px rgba(16, 24, 40, .22);
+    }
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fafc;
+    }
+    .modal-body { padding: 14px 15px 16px; }
+    .stage-now {
+      display: inline-flex;
+      margin: 0 0 10px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #175cd3;
+      font-weight: 900;
+    }
+    .task-list {
+      display: grid;
+      gap: 8px;
+    }
+    .task-row {
+      display: grid;
+      grid-template-columns: 98px minmax(0, 1fr) 145px;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+    }
+    .task-row.done { background: #f0fdf4; border-color: #abefc6; }
+    .task-row.current { background: #fff7e6; border-color: #fedf89; }
+    .task-row.blocked { background: #fff1f0; border-color: #fecdca; }
+    .task-status {
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .task-row.done .task-status { color: var(--green); }
+    .task-row.current .task-status { color: var(--amber); }
+    .task-row.blocked .task-status { color: var(--red); }
+    .task-title {
+      font-weight: 900;
+      margin-bottom: 3px;
+    }
+    .task-deadline {
+      color: var(--navy);
+      font-weight: 900;
+      white-space: nowrap;
+    }
     .form-panel {
       max-width: 1180px;
       padding: 14px;
@@ -508,6 +585,16 @@
       </section>
     </section>
   </main>
+
+  <div id="statusModal" class="modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="statusTitle">
+      <div class="modal-head">
+        <h2 id="statusTitle">更新タスク</h2>
+        <button type="button" id="closeStatus">閉じる</button>
+      </div>
+      <div class="modal-body" id="statusBody"></div>
+    </div>
+  </div>
 
   <script>
     const STORAGE_KEY = "cdp-renewal-license-records-v3";
@@ -805,6 +892,69 @@
       )).join("");
     }
 
+    function taskState(done, current, blocked) {
+      if (done) return { label: "完了", className: "done" };
+      if (blocked) return { label: "要確認", className: "blocked" };
+      if (current) return { label: "今やる", className: "current" };
+      return { label: "未着手", className: "" };
+    }
+
+    function renewalTasks(record, result) {
+      const licenseExpiry = result.licenseExpiry;
+      const cdpCourseStart = result.cdpCourseStart;
+      const applicationDeadline = result.applicationDeadline;
+      const certificateDeadline = result.certificateDeadline;
+      const followDeadline = certificateDeadline ? minDate(applicationDeadline, certificateDeadline) : applicationDeadline;
+      const licenseChecked = record.licenseChecked === "有効確認済み";
+      const hasCertificate = Boolean(record.certificateIssuedDate || record.courseDate);
+      const hasDips = Boolean(record.dipsDate);
+      const hasConfirmed = Boolean(record.confirmedDate);
+      const hasNewExpiry = Boolean(record.newExpiry);
+      const needsManualCertificate = record.courseProvider === "他機関" && !record.certificateNo;
+      const todayPastFollow = followDeadline ? daysUntil(followDeadline) <= 0 : false;
+
+      const tasks = [
+        {
+          title: "ドローン免許証を確認",
+          detail: "技能証明の有効期限内か、免許取得日・免許期限を確認する。",
+          deadline: licenseExpiry,
+          state: taskState(licenseChecked, !licenseChecked, !licenseChecked && licenseExpiry && daysUntil(licenseExpiry) <= 30)
+        },
+        {
+          title: "CDP講習受付・案内",
+          detail: "CDPでは免許期限6か月前から更新講習の案内・受付対象にする。",
+          deadline: cdpCourseStart,
+          state: taskState(hasCertificate, licenseChecked && !hasCertificate, false)
+        },
+        {
+          title: "講習証明取得を確認",
+          detail: "講習証明取得日、修了証明書番号、他機関受講の場合の証明情報を入力する。",
+          deadline: certificateDeadline,
+          state: taskState(hasCertificate && !needsManualCertificate, licenseChecked && !hasCertificate, needsManualCertificate)
+        },
+        {
+          title: "DIPS更新申請",
+          detail: "DIPS申請日を入力する。期限は免許期限1か月前と講習証明期限の早い方。",
+          deadline: followDeadline,
+          state: taskState(hasDips, hasCertificate && !hasDips, !hasDips && todayPastFollow)
+        },
+        {
+          title: "更新完了確認",
+          detail: "DIPSまたは新しい技能証明書で更新完了確認日を入力する。",
+          deadline: followDeadline,
+          state: taskState(hasConfirmed, hasDips && !hasConfirmed, !hasConfirmed && todayPastFollow)
+        },
+        {
+          title: "新しい免許期限へ差し替え",
+          detail: "更新後の技能証明書に記載された新しい免許期限を登録する。",
+          deadline: null,
+          state: taskState(hasNewExpiry, hasConfirmed && !hasNewExpiry, hasConfirmed && !hasNewExpiry)
+        }
+      ];
+      const current = tasks.find((task) => task.state.className === "blocked") || tasks.find((task) => task.state.className === "current") || tasks[tasks.length - 1];
+      return { tasks, current };
+    }
+
     function personKey(record) {
       return `${record.targetName || ""}|${record.licenseNo || ""}`.trim();
     }
@@ -863,12 +1013,36 @@
           </td>
           <td>
             <div class="row-actions">
+              <button type="button" class="small-button status-button" data-status="${escapeHtml(record.id)}">状態</button>
               <button type="button" class="small-button" data-edit="${escapeHtml(record.id)}">編集</button>
               <button type="button" class="small-button danger-button" data-delete="${escapeHtml(record.id)}">削除</button>
             </div>
           </td>
         </tr>
       `).join("");
+    }
+
+    function showStatus(record) {
+      const result = analyze(record);
+      const { tasks, current } = renewalTasks(record, result);
+      document.getElementById("statusTitle").textContent = `${record.targetName} の更新タスク`;
+      document.getElementById("statusBody").innerHTML = `
+        <div class="stage-now">現在の段階: ${escapeHtml(current.title)}</div>
+        <div class="task-list">
+          ${tasks.map((task) => `
+            <div class="task-row ${task.state.className}">
+              <div class="task-status">${escapeHtml(task.state.label)}</div>
+              <div>
+                <div class="task-title">${escapeHtml(task.title)}</div>
+                <div class="muted">${escapeHtml(task.detail)}</div>
+              </div>
+              <div class="task-deadline">${task.deadline ? fmt(task.deadline) : "-"}</div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+      document.getElementById("statusModal").classList.add("active");
+      document.getElementById("statusModal").setAttribute("aria-hidden", "false");
     }
 
     function readForm() {
@@ -1039,9 +1213,14 @@
       document.getElementById("sourceMemo").value = `資料テキストから${parts.join("・")}を引用`;
     });
     document.getElementById("listBody").addEventListener("click", (event) => {
+      const statusId = event.target.dataset.status;
       const editId = event.target.dataset.edit;
       const deleteId = event.target.dataset.delete;
       const records = loadRecords();
+      if (statusId) {
+        const record = records.find((item) => item.id === statusId);
+        if (record) showStatus(record);
+      }
       if (editId) {
         const record = records.find((item) => item.id === editId);
         if (record) fillForm(record);
@@ -1051,6 +1230,13 @@
         saveRecords(next.length ? next : sampleCopy());
         render();
       }
+    });
+    document.getElementById("closeStatus").addEventListener("click", () => {
+      document.getElementById("statusModal").classList.remove("active");
+      document.getElementById("statusModal").setAttribute("aria-hidden", "true");
+    });
+    document.getElementById("statusModal").addEventListener("click", (event) => {
+      if (event.target.id === "statusModal") document.getElementById("closeStatus").click();
     });
 
     render();
