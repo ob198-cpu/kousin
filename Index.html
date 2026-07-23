@@ -1449,7 +1449,9 @@
           </div>
         </div>
         <p class="operation-note"><strong>担当部署に確認が必要：</strong>DIPSの「発行後5営業日以内」は公開資料だけでは起算日と閉庁日の扱いを確定できません。画面は発行日の翌営業日を1日目として暫定計算し、確認日・確認者がない場合は確定日を表示しません。切替年月に既存番号がある場合は、その月の最新番号を上に入力してから確定します。</p>
+        <p class="operation-note">初回は「専用原本を自動準備」を実行してください。My Drive直下に制限付きの専用原本フォルダを作成し、個人情報を含まない証明書・発行台帳原本のIDを上欄へ自動設定します。既に清浄なIDが設定済みの場合は検査だけを行い、重複作成しません。</p>
         <div class="actions" style="margin-top:10px">
+          <button type="button" id="provisionArtifactTemplates">専用原本を自動準備</button>
           <button type="button" id="saveArtifactSettings" class="primary">事業者設定を保存</button>
           <button type="button" id="reloadArtifactSettings">再読込</button>
         </div>
@@ -3409,7 +3411,7 @@
       }
     }
 
-    function setArtifactSettingsStatus(message, isError, outputFolderUrl) {
+    function setArtifactSettingsStatus(message, isError, outputFolderUrl, templateFolderUrl) {
       const status = document.getElementById("artifactSettingsStatus");
       status.textContent = message;
       status.style.color = isError ? "#b42318" : "";
@@ -3420,6 +3422,14 @@
         link.rel = "noopener noreferrer";
         link.textContent = " 出力先を開く";
         status.appendChild(link);
+      }
+      if (templateFolderUrl && /^https:\/\/(drive|docs)\.google\.com\//.test(templateFolderUrl)) {
+        const templateLink = document.createElement("a");
+        templateLink.href = templateFolderUrl;
+        templateLink.target = "_blank";
+        templateLink.rel = "noopener noreferrer";
+        templateLink.textContent = " 専用原本を開く";
+        status.appendChild(templateLink);
       }
     }
 
@@ -3483,11 +3493,42 @@
             "／自動採番: " + (settings.numberingInitialized ? "切替済み" : "未切替") +
             (scheduleMigrationPending ? "／案内日程: 旧端末保存あり（『日程マスタを保存』で共有設定へ移行）" : ""),
           false,
-          response.outputFolderUrl || settings.outputFolderUrl || ""
+          response.outputFolderUrl || settings.outputFolderUrl || "",
+          response.templateFolderUrl || settings.templateFolderUrl || ""
         );
       } catch (error) {
         artifactSettingsLoaded = false;
         setArtifactSettingsStatus(error.message, true);
+      }
+    }
+
+    async function provisionArtifactTemplates() {
+      if (!window.confirm("制限付きの専用原本フォルダと、無個人情報の修了証明書・発行台帳原本をGoogle Driveへ準備します。よろしいですか？")) return;
+      const button = document.getElementById("provisionArtifactTemplates");
+      button.disabled = true;
+      setArtifactSettingsStatus("専用原本を準備しています。元資料は変更しません。", false);
+      try {
+        const response = await serverCall("apiProvisionArtifactTemplates");
+        if (!response || response.success === false) {
+          throw new Error(response && (response.message || response.error) ? (response.message || response.error) : "専用原本を準備できませんでした。");
+        }
+        const settings = response.settings || {};
+        applyArtifactSettings(settings);
+        artifactSettingsLoaded = true;
+        artifactPreflightState = null;
+        document.getElementById("createArtifacts").disabled = true;
+        setArtifactSettingsStatus(
+          response.message || "専用原本を準備しました。",
+          false,
+          response.outputFolderUrl || "",
+          response.templateFolderUrl || ""
+        );
+        appendAudit(response.created ? "成果物専用原本作成" : "成果物専用原本検査", null);
+        showToast(response.created ? "専用原本を作成しました。" : "専用原本を検査しました。");
+      } catch (error) {
+        setArtifactSettingsStatus(error.message, true);
+      } finally {
+        button.disabled = false;
       }
     }
 
@@ -3568,7 +3609,8 @@
           "事業者設定を保存しました。振込先: " + (settings.bankAccountConfigured ? "設定済み" : (payload.bankAccountText ? "設定済み" : "未設定")) +
             "／自動採番: " + (settings.numberingInitialized ? "切替済み" : "未切替"),
           false,
-          response.outputFolderUrl || settings.outputFolderUrl || ""
+          response.outputFolderUrl || settings.outputFolderUrl || "",
+          response.templateFolderUrl || settings.templateFolderUrl || ""
         );
         appendAudit("成果物事業者設定更新", null);
         showToast("成果物の事業者設定を保存しました。");
@@ -4372,6 +4414,7 @@
     });
     document.getElementById("resetSamples").addEventListener("click", resetSamples);
     document.getElementById("saveArtifactSettings").addEventListener("click", saveArtifactSettings);
+    document.getElementById("provisionArtifactTemplates").addEventListener("click", provisionArtifactTemplates);
     document.getElementById("reloadArtifactSettings").addEventListener("click", loadArtifactSettings);
     document.getElementById("saveScheduleMaster").addEventListener("click", saveScheduleMaster);
     document.querySelectorAll(".schedule-table input").forEach(function (input) {

@@ -5,3 +5,5 @@ node_modules/**
 .gitignore
 .clasp.json
 _clasp_create_tmp/**
+tmp/**
+output/**

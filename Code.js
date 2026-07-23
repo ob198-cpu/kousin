@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Safe build: real-data access is intentionally disabled.
+// 対象者の共有正本接続は停止中。成果物は明示操作時だけ Artifacts.js からDriveへ作成する。
 
 var SAFE_STATUS_OPTIONS = [
   "免許証確認待ち",
@@ -27,8 +27,7 @@ function doGet() {
   return HtmlService.createTemplateFromFile("Index")
     .evaluate()
     .setTitle("CDP免許更新管理")
-    .addMetaTag("viewport", "width=device-width, initial-scale=1")
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .addMetaTag("viewport", "width=device-width, initial-scale=1");
 }
 
 function apiGetSetupState() {
