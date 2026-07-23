@@ -14,6 +14,11 @@ var RENEWAL_ARTIFACT = {
     guidance: "1jmjiJCrmqi_yWNp_hPLfAFmjVctaVqUZDguhRZ-HRks",
     training: "1b2gjUL0I2vfK-XOvbDhg8oXg36EdADajamivX7wfgC4"
   },
+  // 2026-07-23に全本文・全使用セルを確認した承認版。更新された原本は再承認まで拒否する。
+  TRUSTED_TEMPLATE_MODIFIED_TIMES: {
+    guidance: "2026-07-14T13:49:04.709Z",
+    training: "2026-07-14T13:49:39.552Z"
+  },
   BLOCKED_TEMPLATE_IDS: {
     ledger: "1lAO89hPt2FRu-EoqfkS_xCFKVkfrglz5o-ms-qD92yE",
     certificate: "1QNHWJMo94V1kfz3EGhdO8Y-5kEvVnbChePe1T52-ALY"
@@ -1379,6 +1384,36 @@ function artifactAssertDocumentTabPeripheralClean_(tab, label) {
   return true;
 }
 
+function artifactAssertTrustedSharedTemplate_(kind, templateId) {
+  var expectedId = artifactExtractDriveFileId_(RENEWAL_ARTIFACT.TEMPLATE_IDS[kind]);
+  var expectedModifiedTime = artifactText_(RENEWAL_ARTIFACT.TRUSTED_TEMPLATE_MODIFIED_TIMES[kind]);
+  var id = artifactExtractDriveFileId_(templateId);
+  if (!expectedId || id !== expectedId || !expectedModifiedTime) {
+    throw new Error((RENEWAL_ARTIFACT.LABELS[kind] || "共有原本") + "の承認版識別情報が一致しません。");
+  }
+  var state;
+  try {
+    state = Drive.Files.get(id, {
+      fields: "id,modifiedTime,trashed",
+      supportsAllDrives: true
+    });
+  } catch (stateError) {
+    throw new Error((RENEWAL_ARTIFACT.LABELS[kind] || "共有原本") + "のDrive版情報を確認できません。");
+  }
+  if (
+    !state ||
+    artifactText_(state.id) !== id ||
+    state.trashed === true ||
+    artifactText_(state.modifiedTime) !== expectedModifiedTime
+  ) {
+    throw new Error(
+      (RENEWAL_ARTIFACT.LABELS[kind] || "共有原本") +
+      "が承認版から更新されています。全領域の個人情報不存在と差込構造を再確認し、承認時刻を更新するまで作成を停止します。"
+    );
+  }
+  return true;
+}
+
 function artifactAssertCertificateTemplateClean_(templateId) {
   var id = artifactTemplateId_("certificate", { certificateTemplateId: templateId });
   var doc;
@@ -1450,6 +1485,7 @@ function artifactGuidanceTemplateMissingSentinels_(textValue) {
 }
 
 function artifactAssertGuidanceTemplateClean_(templateId) {
+  artifactAssertTrustedSharedTemplate_("guidance", templateId);
   var doc;
   try { doc = DocumentApp.openById(templateId); }
   catch (openError) { throw new Error("更新講習案内テンプレートを読み取れません。IDと権限を確認してください。"); }
@@ -1522,6 +1558,7 @@ function artifactAssertTrainingSheetClean_(sheet, keepColumns) {
 }
 
 function artifactAssertTrainingTemplateClean_(templateId) {
+  artifactAssertTrustedSharedTemplate_("training", templateId);
   var ss;
   try { ss = SpreadsheetApp.openById(templateId); }
   catch (openError) { throw new Error("講習記録簿テンプレートを読み取れません。IDと権限を確認してください。"); }

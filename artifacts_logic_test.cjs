@@ -1201,6 +1201,8 @@ assert(source.includes("ledgerSheetName: sheet.getName()"), "台帳行位置meta
 assert(source.includes("ledgerVisibleHash: ledgerVisibleHash"), "台帳B:I可視値の作成時hashがありません");
 assert(source.includes("ledgerStateHash: ledgerStateHash"), "台帳旧版markerを含む状態hashがありません");
 assert(source.includes("artifactAssertGuidanceTemplateClean_"), "案内原本の清浄性検査がありません");
+assert(source.includes("TRUSTED_TEMPLATE_MODIFIED_TIMES") && source.includes("artifactAssertTrustedSharedTemplate_"),
+  "共有原本を承認版の最終更新時刻へ固定する検査がありません");
 assert(source.includes("artifactAssertTrainingTemplateClean_"), "講習記録簿原本の清浄性検査がありません");
 
 const manifest = JSON.parse(fs.readFileSync("appsscript.json", "utf8"));
