@@ -15,14 +15,16 @@
     ]
   },
   "oauthScopes": [
+    "openid",
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/script.scriptapp",
     "https://www.googleapis.com/auth/userinfo.email"
   ],
   "webapp": {
-    "access": "MYSELF",
-    "executeAs": "USER_ACCESSING"
+    "access": "ANYONE",
+    "executeAs": "USER_DEPLOYING"
   },
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8"
