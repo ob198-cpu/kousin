@@ -99,7 +99,17 @@ function apiAccessDeniedHtml_() {
  * The private core re-checks the actor, deployment owner, and fixed folder owner.
  */
 function ownerAuthorizeDeployment() {
-  return authorizeDeploymentOwner_();
+  var result = authorizeDeploymentOwner_();
+  if (result.authorized) {
+    console.log("Google認可状態: authorized:true（認可済み）");
+  } else {
+    console.log("Google認可状態: authorized:false（追加認可が必要）");
+    console.log(
+      "次のGoogle公式認可URLを同じ所有者アカウントで開き、内容を確認して許可してください: " +
+      result.authorizationUrl
+    );
+  }
+  return result;
 }
 
 function authorizeDeploymentOwner_() {
