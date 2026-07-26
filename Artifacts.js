@@ -143,6 +143,21 @@ var RENEWAL_ARTIFACT = {
   }
 };
 
+// DocumentApp の findText / replaceText は各テキストブロックを個別に検索する。
+// Google Docs が使用する RE2 で無効になる制御文字エスケープを避け、
+// 清浄化・検査・差込で同じ行パターンを共有する。
+var RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS = {
+  sourceRecipient: "^.*殿$",
+  skillsApplicantNo: "技能証明申請者番号：.*",
+  certificateInstructor: "担当講師：.*",
+  certificateIssuer: "登録更新講習機関名[ 　]*株式会社.*",
+  organizationCode: "登録更新講習機関コード：.*",
+  guidanceEmail: "メールアドレス：.*",
+  guidancePhone: "電話番号：.*",
+  guidanceCompany: "株式会社.*",
+  guidanceAddress: "住所：.*"
+};
+
 // 内閣府「国民の祝日について」で公表済みの年だけを収録する。
 // 2028年分は2027年2月に公表予定のため、将来年を数式で推測しない。
 var RENEWAL_JAPAN_HOLIDAYS = {
@@ -2580,11 +2595,11 @@ function artifactProvisionCertificateTemplate_(templateFolder) {
     artifactReplaceRequiredText_(body, "第[ 　\\t]*UC[0-9]+[ 　\\t]*号", "第　UC0157　号", "修了証明書番号");
     artifactReplaceRequiredText_(body, "[0-9]{4}年[ 　\\t]*[0-9]{1,2}月[ 　\\t]*[0-9]{1,2}日[ 　\\t]*修了", "2000年 1月 1日 修了", "講習修了日");
     artifactReplaceRequiredText_(body, "[0-9]{4}年[ 　\\t]*[0-9]{1,2}月[ 　\\t]*[0-9]{1,2}日[ 　\\t]*まで有効", "2000年 4月 1日 まで有効", "有効期限");
-    artifactReplaceRequiredText_(body, "^[^\\n\\r\\u000b]*殿$", "　　　殿", "受講者氏名");
-    artifactReplaceRequiredText_(body, "技能証明申請者番号：[^\\n\\r\\u000b]*", "技能証明申請者番号：0000000000", "技能証明申請者番号");
-    artifactReplaceRequiredText_(body, "担当講師：[^\\n\\r\\u000b]*", "担当講師：", "担当講師");
-    artifactReplaceRequiredText_(body, "登録更新講習機関名[ 　]*株式会社[^\\n\\r\\u000b]*", "登録更新講習機関名 株式会社", "登録更新講習機関名");
-    artifactReplaceRequiredText_(body, "登録更新講習機関コード：[^\\n\\r\\u000b]*", "登録更新講習機関コード：", "登録更新講習機関コード");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.sourceRecipient, "　　　殿", "受講者氏名");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.skillsApplicantNo, "技能証明申請者番号：0000000000", "技能証明申請者番号");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.certificateInstructor, "担当講師：", "担当講師");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.certificateIssuer, "登録更新講習機関名 株式会社", "登録更新講習機関名");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.organizationCode, "登録更新講習機関コード：", "登録更新講習機関コード");
 
     var tables = body.getTables();
     var matching = [];
@@ -2951,9 +2966,9 @@ function artifactAssertCertificateTemplateClean_(templateId, skipDedicatedPin) {
     ["有効期限", "2000年[ 　\\t]*4月[ 　\\t]*1日[ 　\\t]*まで有効"],
     ["受講者氏名", "^[ 　\\t]*殿$"],
     ["技能証明申請者番号", "技能証明申請者番号：[ 　\\t]*0000000000"],
-    ["担当講師", "担当講師：[^\\n\\r\\u000b]*"],
-    ["登録更新講習機関名", "登録更新講習機関名[ 　]*株式会社[^\\n\\r\\u000b]*"],
-    ["登録更新講習機関コード", "登録更新講習機関コード：[^\\n\\r\\u000b]*"]
+    ["担当講師", RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.certificateInstructor],
+    ["登録更新講習機関名", RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.certificateIssuer],
+    ["登録更新講習機関コード", RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.organizationCode]
   ];
   for (var insertionIndex = 0; insertionIndex < requiredInsertionPatterns.length; insertionIndex++) {
     if (!body.findText(requiredInsertionPatterns[insertionIndex][1])) {
@@ -3883,9 +3898,9 @@ function artifactCreateCertificate_(context) {
     artifactReplaceRequiredText_(body, "2000年[ 　\\t]*4月[ 　\\t]*1日[ 　\\t]*まで有効", expiryJa + "　まで有効", "有効期限");
     artifactReplaceRequiredText_(body, "^[ 　\\t]*殿$", artifactRecordName_(record) + "　殿", "受講者氏名");
     artifactReplaceRequiredText_(body, "技能証明申請者番号：[ 　\\t]*0000000000", "技能証明申請者番号：" + artifactText_(record.skillsApplicantNo), "技能証明申請者番号");
-    artifactReplaceRequiredText_(body, "担当講師：[^\\n\\r\\u000b]*", "担当講師：" + artifactText_(record.certificateInstructor), "担当講師");
-    artifactReplaceRequiredText_(body, "登録更新講習機関名[ 　]*株式会社[^\\n\\r\\u000b]*", "登録更新講習機関名 " + context.settings.issuerCompany, "登録更新講習機関名");
-    artifactReplaceRequiredText_(body, "登録更新講習機関コード：[^\\n\\r\\u000b]*", "登録更新講習機関コード：" + RENEWAL_ARTIFACT.ORGANIZATION_CODE, "登録更新講習機関コード");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.certificateInstructor, "担当講師：" + artifactText_(record.certificateInstructor), "担当講師");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.certificateIssuer, "登録更新講習機関名 " + context.settings.issuerCompany, "登録更新講習機関名");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.organizationCode, "登録更新講習機関コード：" + RENEWAL_ARTIFACT.ORGANIZATION_CODE, "登録更新講習機関コード");
 
     var tables = body.getTables();
     var tableSelections = [];
@@ -4028,10 +4043,10 @@ function artifactCreateGuidance_(context) {
     var billing = artifactCalculateBilling_(record);
     body.replaceText("■受講料金[ 　]*※卒業生特別価格", "■受講料金");
     artifactReplaceRequiredText_(body, "[0-9,]+円（税[込こ]み?）", artifactCurrency_(billing.total) + "円（税込）", "受講料金");
-    artifactReplaceRequiredText_(body, "メールアドレス：[^\\n\\r\\u000b]*", "メールアドレス：" + context.settings.issuerEmail, "申込先メール");
-    artifactReplaceRequiredText_(body, "電話番号：[^\\n\\r\\u000b]*", "電話番号：" + context.settings.issuerPhone, "電話番号");
-    artifactReplaceRequiredText_(body, "株式会社[^\\n\\r\\u000b]*", context.settings.issuerCompany, "事業者名");
-    artifactReplaceRequiredText_(body, "住所：[^\\n\\r\\u000b]*", "住所：" + context.settings.issuerAddress, "住所");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.guidanceEmail, "メールアドレス：" + context.settings.issuerEmail, "申込先メール");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.guidancePhone, "電話番号：" + context.settings.issuerPhone, "電話番号");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.guidanceCompany, context.settings.issuerCompany, "事業者名");
+    artifactReplaceRequiredText_(body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.guidanceAddress, "住所：" + context.settings.issuerAddress, "住所");
     doc.saveAndClose();
     return {
       fileId: copy.getId(),
