@@ -62,13 +62,29 @@ var RENEWAL_ARTIFACT = {
   // 各成果物の列・セル・数式・表示・コピー後補正を変更した場合は、原本更新の有無にかかわらず対象版を増分する。
   LAYOUT_VERSIONS: {
     ledger: "LEDGER_OUTPUT_V4",
-    certificate: "CERTIFICATE_OUTPUT_V2",
+    certificate: "CERTIFICATE_OUTPUT_V3",
     dipsCsv: "DIPS_MANUAL_11COL_V2",
     guidance: "GUIDANCE_OUTPUT_V2",
     training: "TRAINING_OUTPUT_V2",
     billing: "CDP_CLEAN_BILLING_V3"
   },
   CERTIFICATE_BASE_TAB_ID: "t.0",
+  // 画面・正本では正式名称を保持し、承認済み証明書原本の区分表だけ
+  // 省略表示へ明示対応する。部分一致や推測による行選択は行わない。
+  CERTIFICATE_TABLE_AIRCRAFT_LABELS: [
+    {
+      value: "回転翼航空機（マルチローター）",
+      templateLabel: "回転翼航空機（マルチ）"
+    },
+    {
+      value: "回転翼航空機（ヘリコプター）",
+      templateLabel: "回転翼航空機（ヘリ）"
+    },
+    {
+      value: "飛行機",
+      templateLabel: "飛行機"
+    }
+  ],
   ORGANIZATION_CODE: "0157",
   OFFICE_CODE: "R0157001",
   BILLING_NUMBER_NAMESPACE: "UC0157",
@@ -3174,24 +3190,29 @@ function artifactLedgerTemplateRowsHaveData_(values, allowUncheckedDeliveryCell)
 }
 
 function artifactCertificateTableSelection_(matrix, aircraftType, licenseClass) {
-  var aircraftLabels = ["回転翼航空機（マルチローター）", "回転翼航空機（ヘリコプター）", "飛行機"];
+  var aircraftDefinitions = RENEWAL_ARTIFACT.CERTIFICATE_TABLE_AIRCRAFT_LABELS;
+  var aircraftLabels = aircraftDefinitions.map(function(definition) { return definition.value; });
   var selectedAircraft = artifactText_(aircraftType);
   var classValue = artifactClassValue_(licenseClass);
+  if (!Array.isArray(matrix) || !matrix.length) throw new Error("証明書区分表がありません。");
   if (aircraftLabels.indexOf(selectedAircraft) < 0 || !classValue) throw new Error("証明書区分表の選択値が確定していません。");
   var classLabels = ["一等", "二等"];
   var aircraftRows = {};
   var classColumns = {};
   function normalized(value) { return artifactText_(value).replace(/\s/g, ""); }
 
-  for (var aircraftIndex = 0; aircraftIndex < aircraftLabels.length; aircraftIndex++) {
+  for (var aircraftIndex = 0; aircraftIndex < aircraftDefinitions.length; aircraftIndex++) {
+    var aircraftDefinition = aircraftDefinitions[aircraftIndex];
     var aircraftMatches = [];
     for (var row = 0; row < matrix.length; row++) {
       for (var column = 0; column < matrix[row].length; column++) {
-        if (normalized(matrix[row][column]) === normalized(aircraftLabels[aircraftIndex])) aircraftMatches.push({ row: row, column: column });
+        if (normalized(matrix[row][column]) === normalized(aircraftDefinition.templateLabel)) {
+          aircraftMatches.push({ row: row, column: column });
+        }
       }
     }
     if (aircraftMatches.length !== 1) throw new Error("証明書区分表の航空機種類行を一意に確認できません。");
-    aircraftRows[aircraftLabels[aircraftIndex]] = aircraftMatches[0].row;
+    aircraftRows[aircraftDefinition.value] = aircraftMatches[0].row;
   }
   for (var classIndex = 0; classIndex < classLabels.length; classIndex++) {
     var classMatches = [];
