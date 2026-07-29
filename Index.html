@@ -739,19 +739,19 @@
       <section class="summary" aria-label="期限リスク集計">
         <div class="metric danger">
           <div class="label">危険</div>
-          <strong id="dangerCount">0</strong><span class="note">期限到達・超過</span>
+          <strong id="dangerCount">－</strong><span class="note">期限到達・超過</span>
         </div>
         <div class="metric warning">
           <div class="label">注意</div>
-          <strong id="warningCount">0</strong><span class="note">30日以内</span>
+          <strong id="warningCount">－</strong><span class="note">30日以内</span>
         </div>
         <div class="metric guide">
           <div class="label">案内</div>
-          <strong id="guideCount">0</strong><span class="note">手続を進める</span>
+          <strong id="guideCount">－</strong><span class="note">手続を進める</span>
         </div>
         <div class="metric ok">
           <div class="label">対応不要</div>
-          <strong id="okCount">0</strong><span class="note">期限に余裕</span>
+          <strong id="okCount">－</strong><span class="note">期限に余裕</span>
         </div>
       </section>
       <div class="filter-bar">
@@ -773,7 +773,7 @@
       </div>
       <div class="toolbar">
         <h2>優先順</h2>
-        <span class="record-totals"><b id="filteredCount">0</b>件 / 総人数 <b id="peopleCount">0</b>人 / 総回数 <b id="sessionCount">0</b>件</span>
+        <span class="record-totals"><b id="filteredCount">－</b>件 / 総人数 <b id="peopleCount">－</b>人 / 総回数 <b id="sessionCount">－</b>件</span>
       </div>
       <div class="table-wrap">
         <table class="priority-table">
@@ -797,7 +797,7 @@
               <th>操作</th>
             </tr>
           </thead>
-          <tbody id="priorityBody"></tbody>
+          <tbody id="priorityBody"><tr><td colspan="7" class="empty">専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -822,7 +822,7 @@
       </div>
       <div class="toolbar">
         <h2>更新記録</h2>
-        <span class="record-totals"><b id="ledgerCount">0</b>件</span>
+        <span class="record-totals"><b id="ledgerCount">－</b>件</span>
       </div>
       <div class="table-wrap">
         <table class="ledger-table">
@@ -848,7 +848,7 @@
               <th>操作</th>
             </tr>
           </thead>
-          <tbody id="ledgerBody"></tbody>
+          <tbody id="ledgerBody"><tr><td colspan="8" class="empty">専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -2110,6 +2110,7 @@
     const AppData = {
       mode: (typeof google !== "undefined" && google.script && google.script.run) ? "server" : "browser",
       ready: false,
+      loadError: "",
       readOnly: true,
       configured: false,
       role: "",
@@ -3733,7 +3734,33 @@
       });
     }
 
+    function sharedRecordListStatusMessage() {
+      if (AppData.mode !== "server") return "";
+      if (!AppData.ready) {
+        return "専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。";
+      }
+      if (AppData.loadError) {
+        return "共有正本を読み込めません。画面上部のエラーを確認し、「データ管理」から再読込してください。";
+      }
+      return "";
+    }
+
+    function recordListStatusRow(columnCount, message) {
+      return '<tr><td colspan="' + columnCount + '" class="empty">' +
+        escapeHtml(message) + "</td></tr>";
+    }
+
     function renderHome() {
+      const statusMessage = sharedRecordListStatusMessage();
+      if (statusMessage) {
+        ["dangerCount", "warningCount", "guideCount", "okCount",
+          "filteredCount", "peopleCount", "sessionCount"].forEach(function (id) {
+          document.getElementById(id).textContent = "－";
+        });
+        document.getElementById("priorityBody").innerHTML =
+          recordListStatusRow(7, statusMessage);
+        return;
+      }
       const records = activeRecords();
       const analyzed = records.map(function (record) { return { record: record, result: analyze(record) }; });
       const counts = { danger: 0, warning: 0, guide: 0, ok: 0 };
@@ -3782,6 +3809,13 @@
     }
 
     function renderLedger() {
+      const statusMessage = sharedRecordListStatusMessage();
+      if (statusMessage) {
+        document.getElementById("ledgerCount").textContent = "－";
+        document.getElementById("ledgerBody").innerHTML =
+          recordListStatusRow(8, statusMessage);
+        return;
+      }
       const all = loadRecords();
       populateSelect("ledgerFiscalFilter", fiscalYears(all), "すべての年度");
       const search = document.getElementById("ledgerSearch").value.trim().toLowerCase();
@@ -7025,6 +7059,7 @@
       options = options || {};
       if (AppData.mode !== "server") {
         AppData.ready = true;
+        AppData.loadError = "";
         AppData.configured = false;
         AppData.readOnly = true;
         AppData.records = sampleCopy();
@@ -7036,6 +7071,12 @@
         );
         if (options.render !== false) renderAll();
         return;
+      }
+      AppData.ready = false;
+      AppData.loadError = "";
+      if (options.render !== false) {
+        renderHome();
+        renderLedger();
       }
       try {
         const response = await serverCall("apiGetDashboardData", { includeDeleted: true, auditLimit: 500 });
@@ -7088,6 +7129,7 @@
           }
         }
         AppData.ready = true;
+        AppData.loadError = "";
         const generationCapacity = AppData.dataGenerationCapacity;
         const incompleteGenerationCount = Number(
           generationCapacity && generationCapacity.incompleteCount || 0
@@ -7135,6 +7177,7 @@
         if (options.render !== false) renderAll();
       } catch (error) {
         AppData.ready = true;
+        AppData.loadError = error.message || String(error);
         AppData.configured = false;
         AppData.readOnly = true;
         AppData.records = [];

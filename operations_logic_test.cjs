@@ -191,6 +191,15 @@ assert(html.includes("公開Pages版：合成サンプルだけを表示する�
   "公開Pages版の合成サンプル専用・閲覧専用表示がありません");
 assert(scriptMatch[1].includes('targetName: "サンプル太郎"'),
   "公開Pages版の確認用データにサンプル太郎がありません");
+assert(html.includes("専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。"),
+  "共有正本の応答前に空の台帳と誤認させない読込表示が必要です");
+assert(scriptMatch[1].includes("function sharedRecordListStatusMessage()") &&
+  scriptMatch[1].includes("if (!AppData.ready)") &&
+  scriptMatch[1].includes("if (AppData.loadError)"),
+  "対象者一覧は読込中・読込失敗・正常な0件を区別する必要があります");
+assert(scriptMatch[1].includes("AppData.ready = false;") &&
+  scriptMatch[1].includes("renderLedger();"),
+  "共有正本の再読込時も受講者台帳を読込中表示へ戻す必要があります");
 assert.equal($(".production-app-link").length, 1,
   "公開Pages版から認証済み本番版を開く導線がありません");
 assert.equal(
