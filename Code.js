@@ -253,8 +253,11 @@ function apiSetupSystem_(input) {
 function apiGetDashboardData(input) {
   input = input || {};
   return apiResult_(function () {
-    var setup = storeGetSetupState_();
-    if (!setup.configured) {
+    var snapshot = storeGetDashboardSnapshot_({
+      includeDeleted: input.includeDeleted === true,
+      auditLimit: input.auditLimit || 500
+    });
+    if (!snapshot.configured) {
       return {
         success: true,
         configured: false,
@@ -268,26 +271,19 @@ function apiGetDashboardData(input) {
         message: "専用共有正本は未設定です。"
       };
     }
-    var records = storeListRecords_({ includeDeleted: input.includeDeleted === true });
-    var audit = [];
-    var roles = [];
-    if (setup.role === "admin") {
-      audit = storeListAudit_({ limit: input.auditLimit || 500 });
-      roles = storeListRoles_();
-    }
     return {
       success: true,
       configured: true,
       safeMode: false,
-      role: setup.role,
-      spreadsheetUrl: setup.spreadsheetUrl,
-      dataGenerationCapacity: setup.dataGenerationCapacity || null,
+      role: snapshot.role,
+      spreadsheetUrl: snapshot.spreadsheetUrl,
+      dataGenerationCapacity: snapshot.dataGenerationCapacity || null,
       generatedAt: formatSafeDateTime_(new Date()),
-      records: records,
-      audit: audit,
-      roles: roles,
-      allCount: records.length,
-      summary: apiRecordSummary_(records),
+      records: snapshot.records,
+      audit: snapshot.audit,
+      roles: snapshot.roles,
+      allCount: snapshot.records.length,
+      summary: apiRecordSummary_(snapshot.records),
       statusOptions: SAFE_STATUS_OPTIONS,
       customerTypes: SAFE_CUSTOMER_TYPES,
       message: "専用共有正本から読み込みました。"

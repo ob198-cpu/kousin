@@ -981,6 +981,16 @@ const first = context.storeUpsertRecord_({
 assert.equal(first.version, 1);
 assert.equal(first.managementId, "UC-0001|2026|1");
 assert.equal(context.storeListRecords_().length, 1);
+const dashboardSnapshot = context.storeGetDashboardSnapshot_({
+  includeDeleted: true,
+  auditLimit: 500
+});
+assert.equal(dashboardSnapshot.configured, true);
+assert.equal(dashboardSnapshot.role, "admin");
+assert.equal(dashboardSnapshot.records.length, 1);
+assert.equal(dashboardSnapshot.records[0].record.id, "rec-1");
+assert.equal(dashboardSnapshot.roles.length, 1);
+assert(dashboardSnapshot.audit.length >= 1);
 expectCode(() => context.storeUpsertRecord_({
   record: { ...first.record, targetName: "forged approval" },
   expectedVersion: first.version,

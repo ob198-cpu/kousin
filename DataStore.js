@@ -414,6 +414,68 @@ function storeGetSetupState_() {
   return state;
 }
 
+/**
+ * 初期画面用の読取専用スナップショット。
+ * 1回のAPI実行内で専用正本を1度だけ開き、完全性・非公開設定・利用権限を
+ * 検査した同じSpreadsheet参照から対象者・監査・ロールを取得する。
+ * リクエスト間のキャッシュは行わず、次のAPI実行では必ず再検査する。
+ */
+function storeGetDashboardSnapshot_(options) {
+  options = options || {};
+  var spreadsheetId = String(
+    PropertiesService.getScriptProperties().getProperty(
+      RENEWAL_STORE.SPREADSHEET_ID_KEY
+    ) || ""
+  );
+  if (!spreadsheetId) {
+    return {
+      configured: false,
+      records: [],
+      audit: [],
+      roles: []
+    };
+  }
+
+  var spreadsheet = storeOpen_();
+  var actor = storeActorEmail_();
+  var role = storeRequirePermission_(spreadsheet, actor, "read");
+  var state = storeState_(spreadsheet);
+  var records = storeReadRecords_(spreadsheet)
+    .filter(function (row) {
+      return options.includeDeleted === true || !row.deleted;
+    })
+    .map(storePublicRecord_);
+  var audit = [];
+  var roles = [];
+
+  if (role === "admin") {
+    storeRequirePermission_(spreadsheet, actor, "audit.read", role);
+    var auditRows = storeReadObjects_(spreadsheet, "audit");
+    var auditLimit = Math.max(
+      1, Math.min(1000, Number(options.auditLimit || 500))
+    );
+    audit = auditRows.slice(Math.max(0, auditRows.length - auditLimit));
+
+    storeRequirePermission_(spreadsheet, actor, "role.write", role);
+    roles = storeReadRoles_(spreadsheet).map(function (row) {
+      return {
+        email: row.email,
+        role: row.role,
+        active: row.active,
+        version: row.version,
+        updatedAt: row.updatedAt,
+        updatedBy: row.updatedBy
+      };
+    });
+  }
+
+  state.role = role;
+  state.records = records;
+  state.audit = audit;
+  state.roles = roles;
+  return state;
+}
+
 /** 権限のある利用者向けにレコードを返す。削除済みは明示指定時だけ含める。 */
 function storeListRecords_(options) {
   options = options || {};

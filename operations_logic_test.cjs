@@ -7,6 +7,7 @@ const { Linter } = require("eslint");
 
 const html = fs.readFileSync("Index.html", "utf8");
 const codeSource = fs.readFileSync("Code.js", "utf8");
+const dataStoreSource = fs.readFileSync("DataStore.js", "utf8");
 const financeSource = fs.readFileSync("Finance.js", "utf8");
 const financeStoreSource = fs.readFileSync("FinanceStore.js", "utf8");
 const financeDisasterRestoreSource =
@@ -26,6 +27,25 @@ const lintMessages = new Linter().verify(scriptMatch[1], {
 });
 assert.deepEqual(lintMessages.filter((message) => message.fatal || message.ruleId === "no-undef"), [],
   "画面スクリプトに未定義変数があります");
+const dashboardApiBlock = codeSource.slice(
+  codeSource.indexOf("function apiGetDashboardData(input)"),
+  codeSource.indexOf("function apiReadSourceSpreadsheet()")
+);
+assert(dashboardApiBlock.includes("storeGetDashboardSnapshot_"),
+  "初期画面は1回の安全検査から読取スナップショットを取得する必要があります");
+assert.equal(dashboardApiBlock.includes("storeGetSetupState_"), false,
+  "初期画面で同じ共有正本を重複して開いてはいけません");
+assert.equal(dashboardApiBlock.includes("storeListRecords_"), false,
+  "初期画面で対象者一覧のため共有正本を再度開いてはいけません");
+const dashboardStoreBlock = dataStoreSource.slice(
+  dataStoreSource.indexOf("function storeGetDashboardSnapshot_(options)"),
+  dataStoreSource.indexOf("/** 権限のある利用者向けにレコードを返す。")
+);
+assert.equal(
+  (dashboardStoreBlock.match(/storeOpen_\(\)/g) || []).length,
+  1,
+  "1回の初期読込では完全性・非公開設定の検査を1回だけ行う必要があります"
+);
 
 function topLevelFunctionNames(source) {
   return acorn.parse(source, {
@@ -200,6 +220,15 @@ assert(scriptMatch[1].includes("function sharedRecordListStatusMessage()") &&
 assert(scriptMatch[1].includes("AppData.ready = false;") &&
   scriptMatch[1].includes("renderLedger();"),
   "共有正本の再読込時も受講者台帳を読込中表示へ戻す必要があります");
+const sharedStoreRefreshBlock = scriptMatch[1].slice(
+  scriptMatch[1].indexOf("async function refreshSharedStore(options)"),
+  scriptMatch[1].indexOf("async function persistRecord(record, action)")
+);
+assert(
+  sharedStoreRefreshBlock.indexOf("if (options.render !== false) renderAll();") <
+    sharedStoreRefreshBlock.indexOf('serverCall("apiGetFinanceLedger")'),
+  "対象者台帳は会計台帳の追加読込を待たずに表示する必要があります"
+);
 assert.equal($(".production-app-link").length, 1,
   "公開Pages版から認証済み本番版を開く導線がありません");
 assert.equal(

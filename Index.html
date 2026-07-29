@@ -7110,24 +7110,6 @@
           AppData.sharedRestorePrepareUnknown = false;
           AppData.sharedRestoreUnknownBatchId = "";
         }
-        if (AppData.configured &&
-            ["admin", "accounting"].includes(AppData.role)) {
-          const financeResponse = await serverCall("apiGetFinanceLedger");
-          if (financeResponse && financeResponse.success !== false && financeResponse.configured) {
-            AppData.financeConfigured = true;
-            AppData.financeRevision = Number(financeResponse.revision || 0);
-            AppData.financeState = financeResponse.state || null;
-            AppData.financePositions = Array.isArray(financeResponse.positions) ? financeResponse.positions : [];
-            AppData.financeRecoveryNeeded = financeResponse.recoveryNeeded === true;
-            AppData.financeRecoveryCode = String(financeResponse.recoveryCode || "");
-            if (AppData.role === "admin" || AppData.role === "accounting") {
-              const approvalsResponse = await serverCall("apiListFinanceApprovals", { includeCompleted: false });
-              if (approvalsResponse && approvalsResponse.success !== false) {
-                AppData.financeApprovals = approvalsResponse.approvals || [];
-              }
-            }
-          }
-        }
         AppData.ready = true;
         AppData.loadError = "";
         const generationCapacity = AppData.dataGenerationCapacity;
@@ -7163,6 +7145,27 @@
           false
         );
         renderRoleTable();
+        // 対象者台帳は会計・バックアップの追加読込を待たずに表示する。
+        // 後続APIが遅い場合も、正常な対象者を0件表示で覆い隠さない。
+        if (options.render !== false) renderAll();
+        if (AppData.configured &&
+            ["admin", "accounting"].includes(AppData.role)) {
+          const financeResponse = await serverCall("apiGetFinanceLedger");
+          if (financeResponse && financeResponse.success !== false && financeResponse.configured) {
+            AppData.financeConfigured = true;
+            AppData.financeRevision = Number(financeResponse.revision || 0);
+            AppData.financeState = financeResponse.state || null;
+            AppData.financePositions = Array.isArray(financeResponse.positions) ? financeResponse.positions : [];
+            AppData.financeRecoveryNeeded = financeResponse.recoveryNeeded === true;
+            AppData.financeRecoveryCode = String(financeResponse.recoveryCode || "");
+            if (AppData.role === "admin" || AppData.role === "accounting") {
+              const approvalsResponse = await serverCall("apiListFinanceApprovals", { includeCompleted: false });
+              if (approvalsResponse && approvalsResponse.success !== false) {
+                AppData.financeApprovals = approvalsResponse.approvals || [];
+              }
+            }
+          }
+        }
         const loadBackupRestoreData = canUseSharedBackupRestore() &&
           !AppData.sharedBackupRestoreLoaded;
         renderSharedBackupRestoreUi();
