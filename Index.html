@@ -9073,10 +9073,14 @@
     function applyRuntimeModeBanner() {
       const banner = document.getElementById("runtimeModeBanner");
       if (!banner) return;
+      const bannerText = banner.querySelector(".mode-banner-text");
+      const productionLink = banner.querySelector(".production-app-link");
       if (typeof google !== "undefined" && google.script && google.script.run) {
-        banner.textContent = "Apps Script版：専用共有正本へ接続を確認中です。接続・Google認可・利用権限のいずれかを確認できない場合は、ブラウザ保存へ切り替えず読取・保存を停止します。";
+        (bannerText || banner).textContent = "Apps Script版：専用共有正本へ接続を確認中です。接続・Google認可・利用権限のいずれかを確認できない場合は、ブラウザ保存へ切り替えず読取・保存を停止します。";
+        if (productionLink) productionLink.hidden = true;
       } else {
-        banner.textContent = "公開Pages版：合成サンプルをメモリ上だけで表示する閲覧専用デモです。実名・連絡先・証憑・会計情報は入力・保存できません。旧ブラウザ保存は通常表示へ読み込みません。";
+        (bannerText || banner).textContent = "公開Pages版：合成サンプルだけを表示する閲覧専用デモです。実際の受講者データの閲覧・登録・保存は認証済み本番版を使用してください。";
+        if (productionLink) productionLink.hidden = false;
       }
     }
 

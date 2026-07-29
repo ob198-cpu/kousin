@@ -196,6 +196,15 @@ assert.equal(
   "https://script.google.com/macros/s/AKfycbyMf_7Sy10GmbfW7CBT7z5vkSccTo0wTHVy1ospLHhv7LDnlBGgHGTvEJagfkS7xnHq/exec",
   "認証済み本番版への導線が現在の固定デプロイURLと一致しません"
 );
+const runtimeBannerBlock = scriptMatch[1].slice(
+  scriptMatch[1].indexOf("function applyRuntimeModeBanner()"),
+  scriptMatch[1].indexOf('form.addEventListener("submit", saveForm)')
+);
+assert(runtimeBannerBlock.includes('banner.querySelector(".mode-banner-text")') &&
+  runtimeBannerBlock.includes('banner.querySelector(".production-app-link")'),
+  "実行時の案内更新は本番版リンクを残して本文だけを変更する必要があります");
+assert.equal(runtimeBannerBlock.includes("banner.textContent ="), false,
+  "実行時に案内帯全体を上書きして本番版リンクを消してはいけません");
 assert(scriptMatch[1].includes('const LEGACY_STORAGE_KEYS = ["cdp-renewal-license-records-v3"]'), "旧版ブラウザ保存データの移行元がありません");
 assert.equal(
   /localStorage\.setItem\(\s*(?:STORAGE_KEY|AUDIT_KEY)\b/.test(scriptMatch[1]),
