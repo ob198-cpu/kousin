@@ -57,7 +57,7 @@ const expectedCalendarModuleFunctions = [
 ];
 const expectedRegistryModuleFunctions = [
   "artifactOutputIdentity_", "artifactPreparedOutputIdentity_", "artifactExpectedOutputFileName_", "artifactPreparedOutputFileName_",
-  "artifactPrepareNewOutputFile_", "artifactFinalizeNewOutputFile_", "artifactDriveRevisionState_",
+  "artifactPrepareNewOutputFile_", "artifactFinalizeNewOutputFile_", "artifactDriveRevisionState_", "artifactDriveHeadContentRevisionState_",
   "artifactOutputContentHash_", "artifactAssertPriorOutputVersions_", "artifactAssertOutputRootContinuity_",
   "artifactAssertExistingOutputFile_", "artifactAssertGeneratedFileIdentity_", "artifactCreateSpreadsheetInFolder_", "artifactEnsureRegistry_",
   "artifactCreateDriveItemInFolder_", "artifactUpdateBlobFileContent_", "artifactCreateFolderInFolder_", "artifactCopyFileInFolder_",
@@ -134,9 +134,10 @@ const pureNames = [
   "artifactSettingsFromState_", "artifactSettingsAuditRows_", "artifactEnsureSettingsMutationAudit_",
   "artifactAssertLegacyOutputFolderSwitchSafe_",
   "artifactAssertReusableDriveItem_", "artifactAssertOwnerOnlyDriveItem_", "artifactHardenNewDriveItem_",
+  "artifactDedicatedTemplatePinMatches_",
   "artifactSettingsForHash_", "artifactActiveActorEmail_",
   "artifactReferencePinKeysForKinds_", "artifactReferenceFingerprintForKind_",
-  "artifactNormalizeAllowedEmails_", "artifactAssertAllowedOutputEmails_", "artifactAssertDriveItemAcl_", "artifactNormalizeSchedules_",
+  "artifactNormalizeAllowedEmails_", "artifactAssertAllowedOutputEmails_", "artifactResolveOutputAccessEmails_", "artifactAssertDriveItemAcl_", "artifactNormalizeSchedules_",
   "artifactNormalizeIsoDateList_", "artifactValidateDipsCalendarSettings_", "artifactAddIsoDaysUtc_",
   "artifactParseCsvMatrixStrict_", "artifactParseOfficialHolidayCsv_", "artifactAssertImportedHolidayCalendarStore_",
   "artifactDipsSubmissionDeadline_", "artifactValidateDipsSubmission_", "artifactErrorMessage_",
@@ -285,6 +286,20 @@ const context = {
     PINNED_OUTPUT_PARENT_FOLDER_NAME: "2026年度",
     PINNED_OUTPUT_FISCAL_YEAR: "2026",
     CERTIFICATE_BASE_TAB_ID: "t.0",
+    CERTIFICATE_TABLE_AIRCRAFT_LABELS: [
+      {
+        value: "回転翼航空機（マルチローター）",
+        templateLabel: "回転翼航空機（マルチ）"
+      },
+      {
+        value: "回転翼航空機（ヘリコプター）",
+        templateLabel: "回転翼航空機（ヘリ）"
+      },
+      {
+        value: "飛行機",
+        templateLabel: "飛行機"
+      }
+    ],
     TEMPLATE_IDS: { guidance: "template-guidance", training: "template-training" },
     BLOCKED_TEMPLATE_IDS: { ledger: "blocked-ledger", certificate: "blocked-certificate" },
     OFFICIAL_HOLIDAY_CSV_URL: "https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv",
@@ -449,6 +464,7 @@ const context = {
     })
   },
   storeOpen_: () => ({ getId: () => "canonical-store" }),
+  storeArtifactAccessEmails_: () => ["owner@example.com"],
   storeSha256_: (value) => crypto.createHash("sha256")
     .update(String(value), "utf8").digest("hex"),
   storeReadObjects_: (spreadsheet, sheetName) => {
@@ -491,6 +507,96 @@ vm.createContext(context);
 vm.runInContext(pureNames.map(extractFunction).join("\n") +
   "\nthis.logic={" + pureNames.join(",") + "};", context);
 const logic = context.logic;
+
+assert.deepEqual(
+  Array.from(logic.artifactResolveOutputAccessEmails_()),
+  ["owner@example.com"],
+  "成果物アクセス権限は共有正本の有効利用者から自動決定する必要があります"
+);
+
+assert.equal(logic.artifactDedicatedTemplatePinMatches_(
+  {
+    driveVersion: "8",
+    modifiedTime: "2026-07-26T14:37:22.852Z"
+  },
+  {
+    revisionId: "8",
+    modifiedTime: "2026-07-26T14:37:22.852Z"
+  }
+), true, "旧pinと最新本文revisionが一致するメタデータ変更は本文改変として扱いません");
+assert.equal(logic.artifactDedicatedTemplatePinMatches_(
+  {
+    driveVersion: "3",
+    modifiedTime: "2026-07-26T14:37:57.000Z",
+    pinnedAt: "2026-07-26 23:37:56"
+  },
+  {
+    revisionId: "1",
+    modifiedTime: "2026-07-26T14:37:56.510Z"
+  }
+), true, "旧pin固定日時以前の最新本文revisionはDriveメタデータだけの変更として扱います");
+assert.equal(logic.artifactDedicatedTemplatePinMatches_(
+  {
+    driveVersion: "8",
+    modifiedTime: "2026-07-26T14:37:22.852Z",
+    pinnedAt: "2026-07-28 23:44:59"
+  },
+  {
+    revisionId: "9",
+    modifiedTime: "2026-07-28T14:45:01.447Z"
+  }
+), false, "旧pin後に本文revisionが進んだ原本は拒否する必要があります");
+assert.equal(logic.artifactDedicatedTemplatePinMatches_(
+  {
+    driveVersion: "3",
+    modifiedTime: "2026-07-26T14:37:57.000Z",
+    pinnedAt: "不正な日時"
+  },
+  {
+    revisionId: "1",
+    modifiedTime: "2026-07-26T14:37:56.510Z"
+  }
+), false, "旧pinの固定日時を検証できなければ推測で通してはいけません");
+assert.equal(logic.artifactDedicatedTemplatePinMatches_(
+  {
+    contentRevisionId: "8",
+    contentRevisionModifiedTime: "2026-07-26T14:37:22.852Z"
+  },
+  {
+    revisionId: "8",
+    modifiedTime: "2026-07-26T14:37:22.852Z"
+  }
+), true, "新pinは本文revision IDと更新時刻の完全一致を要求します");
+assert.equal(logic.artifactDedicatedTemplatePinMatches_(
+  {
+    contentRevisionId: "8",
+    contentRevisionModifiedTime: "2026-07-26T14:37:22.852Z"
+  },
+  {
+    revisionId: "8",
+    modifiedTime: "2026-07-26T14:37:23.000Z"
+  }
+), false, "新pinは本文revision時刻の不一致を許可してはいけません");
+
+let noOpHardenSetCalls = 0;
+logic.artifactHardenNewDriveItem_({
+  isShareableByEditors: () => false,
+  setShareableByEditors: () => { noOpHardenSetCalls += 1; }
+}, "設定済み原本");
+assert.equal(noOpHardenSetCalls, 0,
+  "再共有が既に無効な原本へ同じ設定を書き戻してDrive版を増分してはいけません");
+let hardenShareable = true;
+let activeHardenSetCalls = 0;
+logic.artifactHardenNewDriveItem_({
+  isShareableByEditors: () => hardenShareable,
+  setShareableByEditors(value) {
+    activeHardenSetCalls += 1;
+    hardenShareable = Boolean(value);
+  }
+}, "新規原本");
+assert.equal(activeHardenSetCalls, 1, "再共有が有効な項目だけを1回無効化する必要があります");
+assert.equal(hardenShareable, false);
+
 const directCreated = logic.artifactCreateSpreadsheetInFolder_(
   "直接作成テスト",
   { getId: () => context.RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID },
@@ -1012,7 +1118,7 @@ let saveApiCurrent = {
   templateFolderId: "template-folder",
   ledgerTemplateId: "ledger-template",
   certificateTemplateId: "certificate-template",
-  allowedOutputEmails: "owner@example.com",
+  allowedOutputEmails: "",
   dipsAdditionalClosedDates: "",
   dipsCalendarConfirmedDate: "2026-07-01",
   dipsCalendarConfirmedBy: "担当者",
@@ -1035,12 +1141,12 @@ const saveApiContext = {
   artifactExtractDriveId_: (value) => /^[A-Za-z0-9_-]+$/.test(String(value || "")) ? String(value) : "",
   artifactExtractDriveFileId_: (value) => /^[A-Za-z0-9_-]+$/.test(String(value || "")) ? String(value) : "",
   artifactNormalizeAllowedEmails_: (value) => String(value || "").split(/[\s,;]+/).filter(Boolean),
+  artifactResolveOutputAccessEmails_: () => ["owner@example.com"],
   artifactNormalizeIsoDateList_: (value) => String(value || "").split(/[\s,;]+/).filter(Boolean),
   artifactNormalizeSchedules_: (value) => Array.isArray(value) ? value : [],
   artifactBoolean_: (value) => value === true,
   artifactIsEmail_: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "")),
   artifactAssertNumberingSettings_() {},
-  artifactAssertAllowedOutputEmails_() {},
   artifactTodayIso_: () => "2026-07-24",
   artifactValidateDipsCalendarSettings_() {},
   artifactAssertRequiredTemplateSettings_() {},
@@ -1111,6 +1217,8 @@ assert.equal(savedFixedSettings.success, true);
 assert.equal(saveApiCommits.length, 1, "検査合格後の固定保存先設定が単一state commitへ渡されません");
 assert.equal(saveApiCommits[0].settings.outputFolderId,
   context.RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID);
+assert.equal(saveApiCommits[0].settings.allowedOutputEmails, "",
+  "旧手入力メールを新しい設定stateへ保存してはいけません");
 
 // Public artifact requests are pinned to one canonical revision.  A browser
 // payload may be present for transition compatibility, but it can never
@@ -2025,8 +2133,8 @@ assert(logic.artifactCertificateTemplateMissingSentinels_(dirtyCertificateName).
 const certificateMatrix = [
   ["区分", "航空機", "一等", "二等"],
   ["", ""],
-  ["", "回転翼航空機（マルチローター）", "〇", ""],
-  ["", "回転翼航空機（ヘリコプター）", "", "〇"],
+  ["", "回転翼航空機（マルチ）", "〇", ""],
+  ["", "回転翼航空機（ヘリ）", "", "〇"],
   ["", "飛行機", "〇", "〇"]
 ];
 const tableSelection = logic.artifactCertificateTableSelection_(
@@ -2758,7 +2866,7 @@ assert.throws(() => logic.artifactTemplateId_("certificate", { certificateTempla
 assert.deepEqual(Array.from(logic.artifactNormalizeAllowedEmails_("Owner@Example.com, staff@example.com\nowner@example.com")), [
   "owner@example.com", "staff@example.com"
 ]);
-assert.throws(() => logic.artifactAssertAllowedOutputEmails_(""), /必須/);
+assert.throws(() => logic.artifactAssertAllowedOutputEmails_(""), /確定できません/);
 const pinnedOutputFolderId = context.RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID;
 assert.equal(
   logic.artifactPublicSettings_({ outputFolderId: "legacy-output" }).outputFolderMigrationRequired,
@@ -2825,12 +2933,27 @@ assert.throws(() => logic.artifactAssertReusableDriveItem_(driveItem({ access: "
 assert.throws(() => logic.artifactAssertReusableDriveItem_(driveItem({ parents: ["moved-parent"] }), "expected-parent", "テスト項目", allowedOutputEmails));
 assert.throws(() => logic.artifactAssertReusableDriveItem_(driveItem({ parents: ["expected-parent", "extra-parent"] }), "expected-parent", "テスト項目", allowedOutputEmails), /直下1か所/);
 assert.throws(() => logic.artifactAssertReusableDriveItem_(driveItem({ viewers: ["outsider@example.com"] }), "expected-parent", "テスト項目", allowedOutputEmails));
-assert.throws(() => logic.artifactAssertReusableDriveItem_(driveItem({ shareableByEditors: true }), "expected-parent", "テスト項目", allowedOutputEmails), /再共有/);
+assert.doesNotThrow(() => logic.artifactAssertReusableDriveItem_(
+  driveItem({ shareableByEditors: true }),
+  "expected-parent",
+  "所有者だけのテスト項目",
+  allowedOutputEmails
+), "編集者が存在しない項目では実効性のない再共有設定だけを理由に停止してはいけません");
 assert.throws(() => logic.artifactAssertReusableDriveItem_(driveItem(), "expected-parent", "テスト項目", "owner@example.com,missing@example.com"), /実際のDrive権限/);
+driveState.permissions = [
+  { type: "user", emailAddress: "owner@example.com", role: "owner" },
+  { type: "user", emailAddress: "editor@example.com", role: "writer" }
+];
+assert.throws(() => logic.artifactAssertReusableDriveItem_(
+  driveItem({ editors: ["editor@example.com"], shareableByEditors: true }),
+  "expected-parent",
+  "編集者ありのテスト項目",
+  "owner@example.com,editor@example.com"
+), /再共有/, "編集者が存在する場合は再共有を必ず禁止する必要があります");
 driveState.permissions = [{ type: "user", emailAddress: "owner@example.com", role: "owner" }, { type: "group", emailAddress: "approved-group@example.com", role: "reader" }];
 assert.doesNotThrow(() => logic.artifactAssertReusableDriveItem_(driveItem(), "expected-parent", "テスト項目", "owner@example.com,approved-group@example.com"));
 driveState.permissions = [{ type: "user", emailAddress: "owner@example.com", role: "owner" }, { type: "group", emailAddress: "outsider-group@example.com", role: "reader" }];
-assert.throws(() => logic.artifactAssertReusableDriveItem_(driveItem(), "expected-parent", "テスト項目", allowedOutputEmails), /許可一覧外/);
+assert.throws(() => logic.artifactAssertReusableDriveItem_(driveItem(), "expected-parent", "テスト項目", allowedOutputEmails), /有効利用者ではない/);
 driveState.permissions = [{ type: "domain", domain: "example.com", role: "reader" }];
 assert.throws(() => logic.artifactAssertReusableDriveItem_(driveItem(), "expected-parent", "テスト項目", allowedOutputEmails), /ドメイン|リンク共有/);
 driveState.permissions = [{ type: "user", emailAddress: "owner@example.com", role: "owner" }];
@@ -2910,7 +3033,7 @@ assert.equal(guidanceHashRecord.taxExceptionApprovedBy, "経理");
 ].forEach((name) => assert(source.includes("function " + name + "("), name + "がありません"));
 assert(source.includes("SCHEMA_VERSION: 3"), "完成版の共通スキーマ版へ増分されていません");
 assert(source.includes('ledger: "LEDGER_OUTPUT_V4"'), "台帳レイアウト版がありません");
-assert(source.includes('certificate: "CERTIFICATE_OUTPUT_V2"'), "証明書レイアウト版がありません");
+assert(source.includes('certificate: "CERTIFICATE_OUTPUT_V3"'), "証明書レイアウト版がありません");
 assert(source.includes('dipsCsv: "DIPS_MANUAL_11COL_V2"'), "DIPSレイアウト版がありません");
 assert(source.includes('training: "TRAINING_OUTPUT_V2"'), "講習記録簿レイアウト版がありません");
 assert(source.includes('billing: "CDP_CLEAN_BILLING_V3"'), "請求帳票レイアウト版がありません");
@@ -2942,7 +3065,8 @@ const advancedManifest = JSON.parse(fs.readFileSync("appsscript.json", "utf8"));
 assert((advancedManifest.dependencies && advancedManifest.dependencies.enabledAdvancedServices || []).some((service) =>
   service.userSymbol === "Drive" && service.serviceId === "drive" && service.version === "v3"
 ), "Advanced Drive API v3をmanifestで有効化する必要があります");
-assert(source.includes("allowedOutputEmails"), "成果物アクセス許可メール設定がありません");
+assert(source.includes("storeArtifactAccessEmails_"),
+  "成果物アクセス権限を共有正本の有効利用者から取得していません");
 assert(source.includes("BLOCKED_TEMPLATE_IDS"), "既知の実データ入りテンプレートID拒否設定がありません");
 const provisionCertificateTemplateBlock = extractFunction("artifactProvisionCertificateTemplate_");
 assert(provisionCertificateTemplateBlock.indexOf("if (tempMatches.length)") >= 0 &&
@@ -2958,7 +3082,9 @@ const saveSettingsBlock = source.slice(
   source.indexOf("function apiSaveArtifactSettings"),
   source.indexOf("function apiPreflightArtifacts")
 );
-assert(saveSettingsBlock.includes("artifactRequireSafeOutputFolder_(next.outputFolderId,"),
+assert(saveSettingsBlock.includes("artifactRequireSafeOutputFolder_(") &&
+  saveSettingsBlock.includes("next.outputFolderId") &&
+  saveSettingsBlock.includes("resolvedOutputAccessEmails"),
   "設定保存時に出力先の非公開検査がありません");
 assert(saveSettingsBlock.includes("artifactAssertNumberingSettings_(next)"),
   "設定保存時に採番seedの形式検査がありません");
@@ -2966,7 +3092,10 @@ assert(saveSettingsBlock.includes("numberingCutoverMonth"),
   "設定保存時に採番切替年月を保存する必要があります");
 assert(saveSettingsBlock.includes("artifactAssertLedgerTemplateClean_(next.ledgerTemplateId)"));
 assert(saveSettingsBlock.includes("artifactAssertCertificateTemplateClean_(next.certificateTemplateId)"));
-assert(saveSettingsBlock.includes("artifactAssertAllowedOutputEmails_(next.allowedOutputEmails)"));
+assert(saveSettingsBlock.includes("artifactResolveOutputAccessEmails_()"),
+  "設定保存時に共有正本から成果物アクセス権限を自動決定していません");
+assert.equal(saveSettingsBlock.includes("input.allowedOutputEmails"), false,
+  "廃止した手入力メールを設定保存APIで受け付けてはいけません");
 assert(saveSettingsBlock.includes("artifactAssertLegacyOutputFolderSwitchSafe_(current.outputFolderId)"),
   "旧保存先の作成履歴・残存項目・削除失敗を監査せず固定保存先へ切り替えてはいけません");
 const legacySwitchBlock = extractFunction("artifactAssertLegacyOutputFolderSwitchSafe_");
@@ -2987,8 +3116,18 @@ const createBlock = source.slice(
   source.indexOf("function artifactBuildPreflight_")
 );
 assert(createBlock.includes("var lockedCanonicalRequest = artifactLoadCanonicalArtifactRequest_(request)") &&
-  createBlock.includes("var lockedPreflight = artifactBuildPreflight_(lockedCanonicalRequest.request)"),
+  createBlock.includes("var lockedPreflight = artifactBuildPreflight_(lockedCanonicalRequest.request, preflightRuntime)"),
   "作成時はロック取得後にも出力先を含む事前検査を再実行する必要があります");
+assert(createBlock.includes("settings: settings") &&
+  createBlock.includes("registryRows: registryRows") &&
+  createBlock.includes("skipDriveValidation: true"),
+  "採番予約後はロック内で検査済みの設定・レジストリを再利用し、Drive全検査を重複実行してはいけません");
+assert.equal(
+  createBlock.slice(0, createBlock.indexOf("var lock = LockService.getScriptLock()"))
+    .includes("artifactBuildPreflight_("),
+  false,
+  "作成APIはDrive変更前のロック内検査だけを実行し、同じ重い事前検査をロック前にも重複実行してはいけません"
+);
 assert(createBlock.includes("artifactPersistCanonicalReservationsUnlocked_") &&
   createBlock.indexOf("artifactPersistCanonicalReservationsUnlocked_") < createBlock.indexOf("artifactCreateByKind_"),
   "採番・期限はDrive成果物の生成前に共有正本へ予約する必要があります");
@@ -3217,18 +3356,21 @@ const settingsLoadBlock = source.slice(
   source.indexOf("function artifactSettingsDefaults_"),
   source.indexOf("function artifactPublicSettings_")
 );
-const publicSettingsBlock = source.slice(
-  source.indexOf("function artifactPublicSettings_"),
-  source.indexOf("function artifactAssertNumberingSettings_")
-);
+const publicSettingsBlock = extractFunction("artifactPublicSettings_");
 assert(settingsLoadBlock.includes('numberingCutoverMonth: ""'),
   "採番切替年月の保存済み設定読込がありません");
 assert(publicSettingsBlock.includes("numberingCutoverMonth"),
   "public settingsへ採番切替年月を返す必要があります");
-["ledgerTemplateId", "certificateTemplateId", "allowedOutputEmails", "dipsAdditionalClosedDates", "dipsCalendarConfirmedDate", "dipsCalendarConfirmedBy"].forEach((field) => {
+["ledgerTemplateId", "certificateTemplateId", "dipsAdditionalClosedDates", "dipsCalendarConfirmedDate", "dipsCalendarConfirmedBy"].forEach((field) => {
   assert(settingsLoadBlock.includes(field), "設定読込にありません: " + field);
   assert(publicSettingsBlock.includes(field), "public settingsにありません: " + field);
 });
+assert(settingsLoadBlock.includes("allowedOutputEmails"),
+  "旧設定stateを安全に読み込む互換キーがありません");
+assert.equal(publicSettingsBlock.includes("allowedOutputEmails"), false,
+  "廃止した手入力メールをpublic settingsへ返してはいけません");
+assert(publicSettingsBlock.includes('outputAccessPolicy: "CANONICAL_ACTIVE_ROLES"'),
+  "画面へ共有正本ロールによる自動アクセス方針を返していません");
 const nextCertificateBlock = source.slice(
   source.indexOf("function artifactNextCertificateNo_"),
   source.indexOf("function artifactNextDipsApplicantId_")
@@ -3386,6 +3528,14 @@ assert.equal(source.includes("Session.getActiveUser().getEmail() || Session.getE
   assert(extractFunction(api).includes('artifactRequireCapability_("' + capability + '")'),
     api + " must be gated by " + capability);
 });
+const artifactStatusBlock = extractFunction("apiGetArtifactCreationStatus");
+assert(
+  artifactStatusBlock.includes('artifactRequireCapability_("artifacts.write")') &&
+  artifactStatusBlock.includes('artifactRequireCapability_("artifacts.billing")') &&
+  artifactStatusBlock.includes("artifactFindExisting_") &&
+  artifactStatusBlock.includes("artifactAssertExistingOutputFile_"),
+  "作成状況照合APIは権限検査・同一payload照合・Drive本文検証を必須にする必要があります"
+);
 ["apiProvisionArtifactTemplates", "apiSaveArtifactSettings", "apiUpdateHolidayCalendarFromOfficialCsv"].forEach((api) => {
   const block = extractFunction(api);
   assert.equal((block.match(/artifactRequireCapability_\("artifacts\.admin"\)/g) || []).length, 2,

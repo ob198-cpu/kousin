@@ -440,6 +440,38 @@
       background: #f8fafc;
     }
     .artifact-option span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .compliance-archive-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 9px;
+      margin: 10px 0 14px;
+    }
+    .compliance-create-button {
+      min-height: 72px;
+      padding: 10px 12px;
+      text-align: left;
+      white-space: normal;
+      line-height: 1.35;
+    }
+    .compliance-create-button strong {
+      display: block;
+      color: inherit;
+      font-size: 14px;
+    }
+    .compliance-create-button small {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+    .compliance-period-fields {
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #f8fafc;
+    }
+    .compliance-period-fields h3 { margin: 0 0 8px; }
     .artifact-result { display: grid; gap: 7px; margin-top: 10px; }
     .artifact-result-row {
       padding: 9px 10px;
@@ -588,6 +620,43 @@
       color: #7a2e0e;
       font-size: 13px;
       font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .mode-banner-text {
+      min-width: 0;
+    }
+    .production-app-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      min-height: 36px;
+      padding: 7px 14px;
+      border: 1px solid #174ea6;
+      border-radius: 7px;
+      background: #1967d2;
+      color: #fff;
+      text-decoration: none;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .production-app-link:hover,
+    .production-app-link:focus-visible {
+      background: #174ea6;
+      color: #fff;
+    }
+    @media (max-width: 720px) {
+      .mode-banner {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .production-app-link {
+        width: 100%;
+      }
     }
     .operation-note {
       margin: 0 0 10px;
@@ -618,7 +687,8 @@
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .report-grid { grid-template-columns: 1fr; }
       .settings-grid,
-      .artifact-options { grid-template-columns: 1fr; }
+      .artifact-options,
+      .compliance-archive-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 680px) {
       main { padding: 10px; }
@@ -646,7 +716,15 @@
       <button type="button" data-screen="data">データ管理</button>
     </nav>
   </header>
-  <div id="runtimeModeBanner" class="mode-banner">公開Pages版：合成サンプルをメモリ上だけで表示する閲覧専用デモです。実名・連絡先・証憑・会計情報は入力・保存できません。再読込するとサンプルの表示状態は初期化されます。</div>
+  <div id="runtimeModeBanner" class="mode-banner">
+    <span class="mode-banner-text">公開Pages版：合成サンプルだけを表示する閲覧専用デモです。実際の受講者データの閲覧・登録・保存は認証済み本番版を使用してください。</span>
+    <a
+      class="production-app-link"
+      href="https://script.google.com/macros/s/AKfycbyMf_7Sy10GmbfW7CBT7z5vkSccTo0wTHVy1ospLHhv7LDnlBGgHGTvEJagfkS7xnHq/exec"
+      target="_blank"
+      rel="noopener noreferrer"
+    >認証済みApps Script本番版を開く</a>
+  </div>
   <div id="storageErrorBanner" class="validation" role="alert">
     ブラウザ内の対象者データまたは変更履歴が破損しています。壊れた原文を退避してから、正常なバックアップを復元してください。対象者データが破損している間は保存を停止します。
     <button type="button" id="downloadCorruptStorage" class="small-button">壊れた原文を保存</button>
@@ -1661,7 +1739,7 @@
             <input id="artifactOutputFolderId" value="1XmQirjBrQR-uC_GuBVXAyRK5zfqtoQwN" readonly>
             <small><a href="https://drive.google.com/drive/folders/1XmQirjBrQR-uC_GuBVXAyRK5zfqtoQwN" target="_blank" rel="noopener noreferrer">2026年度フォルダを開く</a>。成果物は「2026年度 / 自動作成 / 対象者別フォルダ」へ保存します。別フォルダは指定できません。</small>
           </div>
-          <div class="field full"><label for="artifactAllowedOutputEmails">成果物アクセス許可メール *</label><textarea id="artifactAllowedOutputEmails" placeholder="所有者・直接user権限・承認済みGoogleグループをすべて記載（改行またはカンマ区切り）"></textarea><small>Drive権限一覧のuser/groupを全件照合し、domain/anyone、メール不明、一覧外権限、編集者による再共有があれば作成を停止します。操作担当者はグループ所属だけでは不可です。本人メールの直接user権限も付与し、本人とグループの両方を記載してください。</small></div>
+          <div class="field full"><label>成果物のアクセス権限</label><small>メールアドレスの手入力は使用しません。共有正本の有効利用者とGoogle Driveの所有者・編集者・閲覧者を作成前に自動照合し、未知の共有先、リンク・ドメイン公開、編集者による再共有があれば停止します。</small></div>
           <div class="field full"><label for="artifactCertificateTemplateId">無個人情報の修了証明書テンプレートID *</label><input id="artifactCertificateTemplateId" placeholder="「ベース」1タブだけの専用Googleドキュメント"></div>
           <div class="field full"><label for="artifactLedgerTemplateId">無個人情報の発行台帳テンプレートID *</label><input id="artifactLedgerTemplateId" placeholder="空の「ベース」1シートだけの専用Googleスプレッドシート"></div>
           <div class="field full"><label for="artifactDipsAdditionalClosedDates">DIPS追加閉庁日</label><textarea id="artifactDipsAdditionalClosedDates" placeholder="yyyy-MM-dd（改行またはカンマ区切り）"></textarea><small>土日・内閣府公表の祝日以外に、担当部署へ確認した閉庁日だけを入力します。</small></div>
@@ -1706,7 +1784,7 @@
           <div id="numberingMigrationStatus" class="operation-note server-status" role="status"></div>
         </details>
         <p class="operation-note"><strong>担当部署に確認が必要：</strong>DIPSの「発行後5営業日以内」は公開資料だけでは起算日と閉庁日の扱いを確定できません。画面は発行日の翌営業日を1日目として暫定計算し、確認日・確認者がない場合は確定日を表示しません。切替年月に既存番号がある場合は、その月の最新番号を上に入力してから確定します。</p>
-        <p class="operation-note">初回は「専用原本を自動準備」を実行してください。My Drive直下に制限付きの専用原本フォルダを作成し、個人情報を含まない証明書・発行台帳原本のIDを上欄へ自動設定します。既に清浄なIDが設定済みの場合は検査だけを行い、重複作成しません。</p>
+        <p class="operation-note">初回は「専用原本を自動準備」を実行してください。My Drive直下に制限付きの専用原本フォルダを作成し、個人情報を含まない証明書・発行台帳・別添04・別添05の所有者専用原本を準備します。既に清浄な原本が設定済みの場合は検査だけを行い、重複作成しません。</p>
         <div class="actions" style="margin-top:10px">
           <button type="button" id="provisionArtifactTemplates">専用原本を自動準備</button>
           <button type="button" id="saveArtifactSettings" class="primary">事業者設定を保存</button>
@@ -1796,27 +1874,62 @@
       </div>
       <div class="modal-body">
         <p id="artifactTarget" class="operation-note"></p>
-        <div class="artifact-options">
-          <label class="artifact-option"><input type="checkbox" name="artifactKind" value="ledger" checked><strong>発行台帳<span>年度別の台帳へ追記。訂正時は旧版を残します。</span></strong></label>
-          <label class="artifact-option"><input type="checkbox" name="artifactKind" value="certificate" checked><strong>講習修了証明書<span>既存ひな形からGoogleドキュメント下書きを作成。</span></strong></label>
-          <label class="artifact-option"><input type="checkbox" name="artifactKind" value="dipsCsv" checked><strong>DIPS提出CSV<span>11項目順・UTF-8 BOM付き。新規・訂正・削除に対応。</span></strong></label>
-          <label class="artifact-option"><input type="checkbox" name="artifactKind" value="guidance" checked><strong>更新講習のご案内<span>案内ひな形へ対象者・期限・日程・料金を差込。</span></strong></label>
-          <label class="artifact-option"><input type="checkbox" name="artifactKind" value="training" checked><strong>講習記録簿<span>一等・二等の該当ひな形へ記録を差込。</span></strong></label>
-          <label class="artifact-option"><input type="checkbox" name="artifactKind" value="billing"><strong>見積書・請求書<span>発行済み正式請求を明示選択して作成。</span></strong></label>
+        <h3>事務規程・監査保管</h3>
+        <p class="operation-note">各ボタンは最初に作成前検査を行い、確認後にGoogle Driveへ作成・保管します。既存ファイルや原本は上書きしません。</p>
+        <div class="compliance-period-fields">
+          <h3>別添04 実施計画書の入力</h3>
+          <div class="settings-grid">
+            <div class="field"><label for="compliancePlanMonth">対象月</label><input id="compliancePlanMonth" type="month"></div>
+            <div class="field"><label for="complianceFirstStart">一等・開始予定人数</label><input id="complianceFirstStart" type="number" min="0" max="9999" step="1"></div>
+            <div class="field"><label for="complianceFirstFinish">一等・修了予定人数</label><input id="complianceFirstFinish" type="number" min="0" max="9999" step="1"></div>
+            <div class="field"><label for="complianceSecondStart">二等・開始予定人数</label><input id="complianceSecondStart" type="number" min="0" max="9999" step="1"></div>
+            <div class="field"><label for="complianceSecondFinish">二等・修了予定人数</label><input id="complianceSecondFinish" type="number" min="0" max="9999" step="1"></div>
+          </div>
         </div>
-        <div id="artifactFinanceInvoiceField" class="field hidden">
-          <label for="artifactFinanceInvoiceId">請求帳票に使う発行済み正式請求</label>
-          <select id="artifactFinanceInvoiceId"></select>
-          <small>請求帳票は、選択した同一対象者の発行済み正式請求からのみ作成します。下書きや対象者画面の旧金額は使用しません。</small>
+        <div class="compliance-period-fields">
+          <h3>別添05 実施状況報告書の入力</h3>
+          <div class="settings-grid">
+            <div class="field"><label for="complianceReportDate">報告日</label><input id="complianceReportDate" type="date"></div>
+            <div class="field"><label for="complianceReportStart">対象開始日</label><input id="complianceReportStart" type="date"></div>
+            <div class="field"><label for="complianceReportEnd">対象終了日</label><input id="complianceReportEnd" type="date"></div>
+          </div>
+          <small>修了人数と実施場所は、指定期間内の共有正本にあるCDP講習修了記録からサーバーで集計します。</small>
         </div>
-        <p class="operation-note"><strong>注意：</strong>DIPS CSVは公開ガイドラインの11列に合わせ、列7を PA000000000000 とします。ログイン後に取得する最新ひな形との最終照合結果を作成画面に表示します。自動アップロードは行いません。</p>
-        <div id="artifactPreflight" class="artifact-result"></div>
-        <div class="modal-actions">
-          <button type="button" id="preflightArtifacts">作成前検査</button>
-          <button type="button" id="createArtifacts" class="primary" disabled>検査済みの成果物を作成</button>
-          <button type="button" data-close-modal="artifactModal">取消</button>
+        <div class="compliance-archive-grid">
+          <button type="button" class="compliance-create-button" data-existing-compliance-kind="training"><strong>事務規程、別添03 講習記録簿　保管</strong><small>対象者の保存済み講習記録から作成</small></button>
+          <button type="button" class="compliance-create-button" data-compliance-kind="implementationPlan"><strong>事務規程、別添04 実施計画書　保管</strong><small>対象月と予定人数を記入して作成</small></button>
+          <button type="button" class="compliance-create-button" data-compliance-kind="implementationStatus"><strong>事務規程、別添05 実施状況報告書　保管</strong><small>指定期間の共有正本を集計して作成</small></button>
+          <button type="button" class="compliance-create-button" data-existing-compliance-kind="ledger"><strong>事務規程、別添13 修了証明書発行台帳　保管</strong><small>年度別台帳へ監査付きで記録</small></button>
+          <button type="button" class="compliance-create-button" data-compliance-kind="applicationEvidence"><strong>申込書・技能証明書・身分証　保管</strong><small>対象者フォルダと提出チェック表を作成</small></button>
+          <button type="button" class="compliance-create-button" data-existing-compliance-kind="certificate"><strong>無人航空機更新講習修了証明書　保管</strong><small>清浄な専用原本から作成</small></button>
+          <button type="button" class="compliance-create-button" data-existing-compliance-kind="dipsCsv"><strong>CSVファイル　保管</strong><small>DIPS提出用11列CSVを作成</small></button>
+          <button type="button" class="compliance-create-button" data-compliance-kind="paymentRecord"><strong>講習料金収納記録　保管</strong><small>正式会計台帳から請求・入金・消込を集計</small></button>
         </div>
-        <div id="artifactCreateResults" class="artifact-result"></div>
+        <div id="complianceArchiveResult" class="artifact-result" role="status"></div>
+        <details>
+          <summary>その他の成果物・複数選択で作成</summary>
+          <div class="artifact-options">
+            <label class="artifact-option"><input type="checkbox" name="artifactKind" value="ledger" checked><strong>発行台帳<span>年度別の台帳へ追記。訂正時は旧版を残します。</span></strong></label>
+            <label class="artifact-option"><input type="checkbox" name="artifactKind" value="certificate" checked><strong>講習修了証明書<span>既存ひな形からGoogleドキュメント下書きを作成。</span></strong></label>
+            <label class="artifact-option"><input type="checkbox" name="artifactKind" value="dipsCsv" checked><strong>DIPS提出CSV<span>11項目順・UTF-8 BOM付き。新規・訂正・削除に対応。</span></strong></label>
+            <label class="artifact-option"><input type="checkbox" name="artifactKind" value="guidance" checked><strong>更新講習のご案内<span>案内ひな形へ対象者・期限・日程・料金を差込。</span></strong></label>
+            <label class="artifact-option"><input type="checkbox" name="artifactKind" value="training" checked><strong>講習記録簿<span>一等・二等の該当ひな形へ記録を差込。</span></strong></label>
+            <label class="artifact-option"><input type="checkbox" name="artifactKind" value="billing"><strong>見積書・請求書<span>発行済み正式請求を明示選択して作成。</span></strong></label>
+          </div>
+          <div id="artifactFinanceInvoiceField" class="field hidden">
+            <label for="artifactFinanceInvoiceId">請求帳票に使う発行済み正式請求</label>
+            <select id="artifactFinanceInvoiceId"></select>
+            <small>請求帳票は、選択した同一対象者の発行済み正式請求からのみ作成します。下書きや対象者画面の旧金額は使用しません。</small>
+          </div>
+          <p class="operation-note"><strong>注意：</strong>DIPS CSVは公開ガイドラインの11列に合わせ、列7を PA000000000000 とします。ログイン後に取得する最新ひな形との最終照合結果を作成画面に表示します。自動アップロードは行いません。</p>
+          <div id="artifactPreflight" class="artifact-result"></div>
+          <div class="modal-actions">
+            <button type="button" id="preflightArtifacts">作成前検査</button>
+            <button type="button" id="createArtifacts" class="primary" disabled>検査済みの成果物を作成</button>
+          </div>
+          <div id="artifactCreateResults" class="artifact-result"></div>
+        </details>
+        <div class="modal-actions"><button type="button" data-close-modal="artifactModal">閉じる</button></div>
       </div>
     </div>
   </div>
@@ -1986,6 +2099,7 @@
     let financeRecordId = null;
     let financeInvoiceId = "";
     let artifactPreflightState = null;
+    let complianceArchiveBusy = false;
     let artifactSettingsLoaded = false;
     let artifactRuntimeSettings = {};
     let artifactSettingsVersion = 0;
@@ -2036,7 +2150,21 @@
       dipsCsv: "DIPS提出CSV",
       guidance: "更新講習のご案内",
       training: "講習記録簿",
-      billing: "見積書・請求書"
+      billing: "見積書・請求書",
+      implementationPlan: "事務規程、別添04 実施計画書　保管",
+      implementationStatus: "事務規程、別添05 実施状況報告書　保管",
+      applicationEvidence: "申込書・技能証明書・身分証　保管",
+      paymentRecord: "講習料金収納記録　保管"
+    };
+    const COMPLIANCE_ARCHIVE_LABELS = {
+      training: "事務規程、別添03 講習記録簿　保管",
+      implementationPlan: "事務規程、別添04 実施計画書　保管",
+      implementationStatus: "事務規程、別添05 実施状況報告書　保管",
+      ledger: "事務規程、別添13 修了証明書発行台帳　保管",
+      applicationEvidence: "申込書・技能証明書・身分証　保管",
+      certificate: "無人航空機更新講習修了証明書　保管",
+      dipsCsv: "CSVファイル　保管",
+      paymentRecord: "講習料金収納記録　保管"
     };
 
     const JAPAN_HOLIDAYS = {
@@ -5536,6 +5664,70 @@
       });
     }
 
+    function waitMilliseconds(milliseconds) {
+      return new Promise(function (resolve) {
+        window.setTimeout(resolve, milliseconds);
+      });
+    }
+
+    function serverCallWithTimeout(method, timeoutMilliseconds) {
+      const args = Array.prototype.slice.call(arguments, 2);
+      return Promise.race([
+        serverCall.apply(null, [method].concat(args)),
+        waitMilliseconds(timeoutMilliseconds).then(function () {
+          throw new Error("照合処理が時間内に応答しませんでした。");
+        })
+      ]);
+    }
+
+    async function createArtifactWithStatusRecovery(request, label) {
+      const createCall = serverCall("apiCreateArtifacts", request).then(
+        function (value) { return { settled: true, value: value }; },
+        function (error) { return { settled: true, error: error }; }
+      );
+      const first = await Promise.race([
+        createCall,
+        waitMilliseconds(25000).then(function () { return { settled: false }; })
+      ]);
+      if (first.settled) {
+        if (first.error) throw first.error;
+        return first.value;
+      }
+
+      document.getElementById("complianceArchiveResult").innerHTML =
+        artifactResultRow(
+          "warning",
+          label,
+          "Driveへの作成結果を監査台帳で照合しています。重複防止のため同じボタンは押さないでください。"
+        );
+      try {
+        const firstStatus = await serverCallWithTimeout(
+          "apiGetArtifactCreationStatus", 15000, request
+        );
+        if (firstStatus && firstStatus.complete === true) return firstStatus;
+      } catch (ignoredFirstStatusError) {}
+
+      const second = await Promise.race([
+        createCall,
+        waitMilliseconds(25000).then(function () { return { settled: false }; })
+      ]);
+      if (second.settled) {
+        if (second.error) throw second.error;
+        return second.value;
+      }
+      try {
+        const secondStatus = await serverCallWithTimeout(
+          "apiGetArtifactCreationStatus", 15000, request
+        );
+        if (secondStatus && secondStatus.complete === true) return secondStatus;
+      } catch (ignoredSecondStatusError) {}
+
+      throw new Error(
+        "65秒以内に完了結果を確認できませんでした。処理結果は不明です。" +
+        "画面を再読込して同じボタンを1回押すと、作成済みなら再利用し、重複作成はしません。"
+      );
+    }
+
     function serverRecordFromRow(row) {
       const source = row && row.record ? row.record : (row && row.payload ? row.payload : row || {});
       const record = normalizeRecord(source);
@@ -7589,7 +7781,6 @@
         artifactIssuerEmail: "issuerEmail",
         artifactInvoiceRegistrationNo: "invoiceRegistrationNo",
         artifactOutputFolderId: "outputFolderId",
-        artifactAllowedOutputEmails: "allowedOutputEmails",
         artifactCertificateTemplateId: "certificateTemplateId",
         artifactLedgerTemplateId: "ledgerTemplateId",
         artifactDipsAdditionalClosedDates: "dipsAdditionalClosedDates",
@@ -7736,10 +7927,10 @@
     }
 
     async function provisionArtifactTemplates() {
-      if (!window.confirm("制限付きの専用原本フォルダと、無個人情報の修了証明書・発行台帳原本をGoogle Driveへ準備します。よろしいですか？")) return;
+      if (!window.confirm("制限付きの専用原本フォルダと、無個人情報の修了証明書・発行台帳・別添04・別添05原本をGoogle Driveへ準備します。公開参照元は変更しません。よろしいですか？")) return;
       const button = document.getElementById("provisionArtifactTemplates");
       button.disabled = true;
-      setArtifactSettingsStatus("専用原本を準備しています。元資料は変更しません。", false);
+      setArtifactSettingsStatus("4種類の専用原本を準備しています。元資料は変更しません。", false);
       try {
         const response = await serverCall("apiProvisionArtifactTemplates");
         if (!response || response.success === false) {
@@ -7750,15 +7941,26 @@
         artifactSettingsLoaded = true;
         artifactPreflightState = null;
         document.getElementById("createArtifacts").disabled = true;
+        const complianceResponse = await serverCall("apiProvisionComplianceTemplates");
+        if (!complianceResponse || complianceResponse.success === false) {
+          throw new Error(
+            "修了証明書・発行台帳の原本は確認できましたが、別添04・05原本を準備できませんでした: " +
+            (complianceResponse && (complianceResponse.message || complianceResponse.error)
+              ? (complianceResponse.message || complianceResponse.error)
+              : "サーバー応答を確認できません。")
+          );
+        }
         setArtifactSettingsStatus(
-          (response.message || "専用原本を準備しました。") +
+          (response.message || "修了証明書・発行台帳原本を準備しました。") + " " +
+            (complianceResponse.message || "別添04・05原本を準備しました。") +
             (response.recoveryRequired ? " " + (response.warning || "サーバー監査回収が必要です。") : ""),
           response.recoveryRequired === true,
           response.outputFolderUrl || "",
-          response.templateFolderUrl || ""
+          complianceResponse.templateFolderUrl || response.templateFolderUrl || ""
         );
         appendAudit(response.created ? "成果物専用原本作成" : "成果物専用原本検査", null);
-        showToast(response.created ? "専用原本を作成しました。" : "専用原本を検査しました。");
+        appendAudit(complianceResponse.created ? "事務規程専用原本作成" : "事務規程専用原本検査", null);
+        showToast(response.created || complianceResponse.created ? "4種類の専用原本を準備しました。" : "4種類の専用原本を検査しました。");
       } catch (error) {
         setArtifactSettingsStatus(error.message, true);
       } finally {
@@ -7776,7 +7978,6 @@
         issuerEmail: document.getElementById("artifactIssuerEmail").value.trim(),
         invoiceRegistrationNo: document.getElementById("artifactInvoiceRegistrationNo").value.trim(),
         outputFolderId: document.getElementById("artifactOutputFolderId").value.trim(),
-        allowedOutputEmails: document.getElementById("artifactAllowedOutputEmails").value.trim(),
         certificateTemplateId: document.getElementById("artifactCertificateTemplateId").value.trim(),
         ledgerTemplateId: document.getElementById("artifactLedgerTemplateId").value.trim(),
         dipsAdditionalClosedDates: document.getElementById("artifactDipsAdditionalClosedDates").value.trim(),
@@ -7796,11 +7997,6 @@
       }
       if (!payload.certificateTemplateId || !payload.ledgerTemplateId) {
         setArtifactSettingsStatus("無個人情報の修了証明書・発行台帳テンプレートIDを両方指定してください。", true);
-        return;
-      }
-      const allowedEmails = splitSettingList(payload.allowedOutputEmails);
-      if (!allowedEmails.length || allowedEmails.some(function (email) { return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); })) {
-        setArtifactSettingsStatus("成果物アクセス許可メールを正しい形式で1件以上指定してください。", true);
         return;
       }
       const closedDates = splitSettingList(payload.dipsAdditionalClosedDates);
@@ -7955,11 +8151,276 @@
       container.innerHTML = html;
     }
 
+    function setComplianceArchiveButtonsDisabled(disabled) {
+      document.querySelectorAll(".compliance-create-button").forEach(function (button) {
+        button.disabled = disabled;
+      });
+    }
+
+    function complianceRecordRequest_() {
+      const record = findRecord(artifactRecordId);
+      return {
+        record: record,
+        recordId: record ? record.id : "",
+        expectedVersion: record ? Number(record._storeVersion || 0) : 0,
+        expectedPayloadHash: record ? String(record._storeHash || "") : ""
+      };
+    }
+
+    function complianceArchiveRequest(kind) {
+      const base = complianceRecordRequest_();
+      const request = {
+        kind: kind,
+        recordId: base.recordId,
+        expectedVersion: base.expectedVersion,
+        expectedPayloadHash: base.expectedPayloadHash
+      };
+      if (kind === "implementationPlan") {
+        request.planMonth = document.getElementById("compliancePlanMonth").value;
+        request.firstStartCount = document.getElementById("complianceFirstStart").value;
+        request.firstFinishCount = document.getElementById("complianceFirstFinish").value;
+        request.secondStartCount = document.getElementById("complianceSecondStart").value;
+        request.secondFinishCount = document.getElementById("complianceSecondFinish").value;
+      } else if (kind === "implementationStatus") {
+        request.reportDate = document.getElementById("complianceReportDate").value;
+        request.reportStartDate = document.getElementById("complianceReportStart").value;
+        request.reportEndDate = document.getElementById("complianceReportEnd").value;
+      }
+      return request;
+    }
+
+    function complianceSummaryMessages(result) {
+      const summary = result && result.summary ? result.summary : {};
+      const kind = result && result.kind ? result.kind : "";
+      const messages = [];
+      if (kind === "implementationPlan") {
+        messages.push("対象月: " + (summary.planMonth || "未入力"));
+        messages.push(
+          "一等 開始" + Number(summary.firstStartCount || 0) + "人・修了" +
+          Number(summary.firstFinishCount || 0) + "人／二等 開始" +
+          Number(summary.secondStartCount || 0) + "人・修了" +
+          Number(summary.secondFinishCount || 0) + "人"
+        );
+      } else if (kind === "implementationStatus") {
+        messages.push(
+          "対象期間: " + (summary.reportStartDate || "") + "～" +
+          (summary.reportEndDate || "") + "／報告日: " + (summary.reportDate || "")
+        );
+        messages.push(
+          "共有正本集計: 一等" + Number(summary.firstCompletedCount || 0) +
+          "人・二等" + Number(summary.secondCompletedCount || 0) + "人"
+        );
+        messages.push(
+          "実施場所: 一等 " + ((summary.firstVenues || []).join("、") || "該当なし") +
+          "／二等 " + ((summary.secondVenues || []).join("、") || "該当なし")
+        );
+      } else if (summary.targetName || summary.managementId) {
+        messages.push(
+          "対象者: " + (summary.targetName || "名称未設定") +
+          "／管理ID: " + (summary.managementId || "未設定")
+        );
+        if (kind === "paymentRecord") {
+          messages.push(
+            "正式会計: 請求" + Number(summary.invoiceCount || 0) +
+            "件・入金等" + Number(summary.paymentCount || 0) +
+            "件／revision " + Number(summary.financeRevision || 0)
+          );
+        }
+      }
+      return messages.concat(messageList(result && result.warnings));
+    }
+
+    function renderComplianceArchiveResponse(result, fallbackLabel, phase) {
+      const container = document.getElementById("complianceArchiveResult");
+      const label = (result && result.label) || fallbackLabel || "監査保管";
+      if (!result || result.success === false || result.ready === false) {
+        const errorMessages = messageList(result && (result.errors || result.message || result.error));
+        if (result && result.preservationRequired) {
+          errorMessages.push("作成済みの可能性があるため、表示されたファイルを確認するまで再実行しないでください。");
+        }
+        container.innerHTML = artifactResultRow(
+          "error",
+          label,
+          errorMessages.length ? errorMessages : "処理結果を確認できませんでした。",
+          result && (result.url || result.fileUrl)
+        );
+        return;
+      }
+      if (phase === "preflight") {
+        const messages = complianceSummaryMessages(result);
+        messages.push("作成前検査に合格しました。確認後に作成します。");
+        container.innerHTML = artifactResultRow("ready", label, messages);
+        return;
+      }
+      const items = normalizeResultItems(result.results || result.items || result.artifacts);
+      if (items.length) {
+        container.innerHTML = items.map(function (item) {
+          const failed = item.success === false || item.status === "error" || item.status === "failed";
+          const reused = item.status === "reused" || item.status === "skipped";
+          return artifactResultRow(
+            failed ? "error" : (reused ? "warning" : "ready"),
+            item.label || ARTIFACT_LABELS[item.kind] || label,
+            messageList(item.message || item.errors || (reused ? "同じ内容の既存保管物を再利用しました。" : "作成・保管しました。")),
+            item.url || item.fileUrl
+          );
+        }).join("");
+        return;
+      }
+      const messages = messageList(result.message).concat(messageList(result.warnings));
+      container.innerHTML = artifactResultRow(
+        result.status === "reused" ? "warning" : "ready",
+        label,
+        messages.length ? messages : "Google Driveへ作成・保管しました。",
+        result.url || result.fileUrl
+      );
+    }
+
+    async function runExistingComplianceArchive(kind) {
+      if (complianceArchiveBusy) return;
+      const label = COMPLIANCE_ARCHIVE_LABELS[kind] || ARTIFACT_LABELS[kind] || kind;
+      const base = complianceRecordRequest_();
+      const request = {
+        recordId: base.recordId,
+        expectedVersion: base.expectedVersion,
+        expectedPayloadHash: base.expectedPayloadHash,
+        kinds: [kind],
+        financeInvoiceId: ""
+      };
+      if (
+        !base.record ||
+        AppData.mode !== "server" ||
+        request.expectedVersion < 1 ||
+        !/^[0-9a-f]{64}$/i.test(request.expectedPayloadHash)
+      ) {
+        renderComplianceArchiveResponse(
+          { success: false, message: "共有正本の対象者・版・内容hashを確認できません。一覧を再読込してください。" },
+          label
+        );
+        return;
+      }
+      complianceArchiveBusy = true;
+      setComplianceArchiveButtonsDisabled(true);
+      document.getElementById("complianceArchiveResult").innerHTML =
+        artifactResultRow("warning", label, "作成前検査を実行しています。");
+      try {
+        const preflight = await serverCall("apiPreflightArtifacts", request);
+        const preflightItems = normalizeResultItems(preflight && (preflight.items || preflight.results || preflight.checks));
+        const preflightErrors = messageList(preflight && preflight.errors).concat(
+          preflightItems.reduce(function (all, item) {
+            return all.concat(messageList(item.errors));
+          }, [])
+        );
+        if (!preflight || preflight.success === false || preflight.ready !== true || preflightErrors.length) {
+          renderComplianceArchiveResponse(
+            {
+              success: false,
+              label: label,
+              errors: preflightErrors.length
+                ? preflightErrors
+                : messageList(preflight && (preflight.message || preflight.error))
+            },
+            label
+          );
+          return;
+        }
+        renderComplianceArchiveResponse(
+          {
+            success: true,
+            ready: true,
+            kind: kind,
+            label: label,
+            summary: {
+              targetName: base.record.targetName,
+              managementId: base.record.personId
+            },
+            warnings: preflight.warnings
+          },
+          label,
+          "preflight"
+        );
+        if (!window.confirm(label + "をGoogle Driveへ作成・保管します。原本と既存ファイルは上書きしません。よろしいですか？")) return;
+        document.getElementById("complianceArchiveResult").innerHTML =
+          artifactResultRow("warning", label, "Google Driveへ作成・保管しています。画面を閉じずにお待ちください。");
+        const result = await createArtifactWithStatusRecovery(request, label);
+        renderComplianceArchiveResponse(result || {}, label, "create");
+        const updated = applyArtifactCanonical(result && result.canonical);
+        if (updated) artifactRecordId = updated.id;
+        renderAll();
+        showToast(result && result.success === false ? "作成結果に確認事項があります。" : label + "を作成・保管しました。");
+      } catch (error) {
+        renderComplianceArchiveResponse(
+          { success: false, message: error.message + " 同じ操作を直ちに再実行せず、共有正本と生成台帳を確認してください。" },
+          label
+        );
+      } finally {
+        complianceArchiveBusy = false;
+        setComplianceArchiveButtonsDisabled(false);
+      }
+    }
+
+    async function runComplianceArchive(kind) {
+      if (complianceArchiveBusy) return;
+      const label = COMPLIANCE_ARCHIVE_LABELS[kind] || ARTIFACT_LABELS[kind] || kind;
+      const request = complianceArchiveRequest(kind);
+      if (
+        (kind === "applicationEvidence" || kind === "paymentRecord") &&
+        (
+          !request.recordId ||
+          AppData.mode !== "server" ||
+          request.expectedVersion < 1 ||
+          !/^[0-9a-f]{64}$/i.test(request.expectedPayloadHash)
+        )
+      ) {
+        renderComplianceArchiveResponse(
+          { success: false, message: "共有正本の対象者・版・内容hashを確認できません。一覧を再読込してください。" },
+          label
+        );
+        return;
+      }
+      complianceArchiveBusy = true;
+      setComplianceArchiveButtonsDisabled(true);
+      document.getElementById("complianceArchiveResult").innerHTML =
+        artifactResultRow("warning", label, "作成前検査を実行しています。");
+      try {
+        const preflight = await serverCall("apiPreflightComplianceArchive", request);
+        renderComplianceArchiveResponse(preflight || {}, label, "preflight");
+        if (!preflight || preflight.success === false || preflight.ready !== true) return;
+        if (!window.confirm(label + "をGoogle Driveへ作成・保管します。原本と既存ファイルは上書きしません。よろしいですか？")) return;
+        document.getElementById("complianceArchiveResult").innerHTML =
+          artifactResultRow("warning", label, "Google Driveへ作成・保管しています。画面を閉じずにお待ちください。");
+        const result = await serverCall("apiCreateComplianceArchive", request);
+        renderComplianceArchiveResponse(result || {}, label, "create");
+        if (!result || result.success === false) {
+          showToast("作成結果に確認事項があります。");
+          return;
+        }
+        showToast(label + "を作成・保管しました。");
+      } catch (error) {
+        renderComplianceArchiveResponse(
+          { success: false, message: error.message + " 同じ操作を直ちに再実行せず、表示結果と保存先を確認してください。" },
+          label
+        );
+      } finally {
+        complianceArchiveBusy = false;
+        setComplianceArchiveButtonsDisabled(false);
+      }
+    }
+
     function openArtifactModal(record) {
       artifactRecordId = record.id;
       artifactPreflightState = null;
       document.getElementById("artifactTarget").textContent = record.targetName + "（管理ID: " + record.personId + "）の保存済み記録から作成します。";
       populateArtifactFinanceInvoices(record.id);
+      const courseMonth = /^\d{4}-\d{2}-\d{2}$/.test(record.courseDate || "")
+        ? record.courseDate.slice(0, 7)
+        : "";
+      document.getElementById("compliancePlanMonth").value = courseMonth;
+      ["complianceFirstStart", "complianceFirstFinish", "complianceSecondStart", "complianceSecondFinish",
+        "complianceReportStart", "complianceReportEnd"].forEach(function (id) {
+        document.getElementById(id).value = "";
+      });
+      document.getElementById("complianceReportDate").value = today();
+      document.getElementById("complianceArchiveResult").innerHTML = "";
       document.getElementById("artifactPreflight").innerHTML = "";
       document.getElementById("artifactCreateResults").innerHTML = "";
       document.getElementById("createArtifacts").disabled = true;
@@ -8806,6 +9267,16 @@
     });
     document.getElementById("preflightArtifacts").addEventListener("click", runArtifactPreflight);
     document.getElementById("createArtifacts").addEventListener("click", runArtifactCreate);
+    document.querySelectorAll("[data-existing-compliance-kind]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        runExistingComplianceArchive(button.getAttribute("data-existing-compliance-kind"));
+      });
+    });
+    document.querySelectorAll("[data-compliance-kind]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        runComplianceArchive(button.getAttribute("data-compliance-kind"));
+      });
+    });
     document.querySelectorAll('input[name="artifactKind"]').forEach(function (checkbox) {
       checkbox.addEventListener("change", function () {
         artifactPreflightState = null;

@@ -120,6 +120,79 @@ function artifactDriveRevisionState_(fileId) {
   return { driveVersion: driveVersion, modifiedTime: modifiedTime, md5Checksum: md5Checksum };
 }
 
+/**
+ * Googleネイティブ原本の本文版を、権限・説明等のメタデータ更新と分離して取得する。
+ * Drive.Files.version / modifiedTime はACL変更でも増分されるため、専用原本の
+ * 本文固定には Revisions.list の最新revisionを使用する。
+ */
+function artifactDriveHeadContentRevisionState_(fileId) {
+  var id = artifactText_(fileId);
+  if (!id) throw new Error("専用原本のDrive IDがありません。");
+  if (
+    typeof Drive === "undefined" ||
+    !Drive.Revisions ||
+    typeof Drive.Revisions.list !== "function"
+  ) {
+    throw new Error("専用原本の本文版確認に必要なAdvanced Drive Revisions APIが有効ではありません。");
+  }
+  var revisions = [];
+  var pageToken = "";
+  var seenPageTokens = {};
+  var pageCount = 0;
+  do {
+    if (pageToken && seenPageTokens[pageToken]) {
+      throw new Error("専用原本の本文版一覧が循環したため作成を停止しました。");
+    }
+    if (pageToken) seenPageTokens[pageToken] = true;
+    if (++pageCount > 1000) {
+      throw new Error("専用原本の本文版一覧が上限を超えたため作成を停止しました。");
+    }
+    var response;
+    try {
+      var options = {
+        pageSize: 1000,
+        fields: "nextPageToken,revisions(id,modifiedTime)"
+      };
+      if (pageToken) options.pageToken = pageToken;
+      response = Drive.Revisions.list(id, options);
+    } catch (revisionListError) {
+      throw new Error("専用原本の本文版一覧を取得できないため作成を停止しました。");
+    }
+    if (!response || !Array.isArray(response.revisions)) {
+      throw new Error("専用原本の本文版一覧が不完全なため作成を停止しました。");
+    }
+    revisions = revisions.concat(response.revisions);
+    pageToken = artifactText_(response.nextPageToken);
+  } while (pageToken);
+  if (!revisions.length) {
+    throw new Error("専用原本の本文版を1件も確認できないため作成を停止しました。");
+  }
+  revisions.sort(function(left, right) {
+    var timeComparison = artifactText_(left && left.modifiedTime)
+      .localeCompare(artifactText_(right && right.modifiedTime));
+    if (timeComparison) return timeComparison;
+    var leftId = artifactText_(left && left.id);
+    var rightId = artifactText_(right && right.id);
+    if (/^\d+$/.test(leftId) && /^\d+$/.test(rightId)) {
+      return Number(leftId) - Number(rightId);
+    }
+    return leftId.localeCompare(rightId);
+  });
+  var head = revisions[revisions.length - 1] || {};
+  var revisionId = artifactText_(head.id);
+  var modifiedTime = artifactText_(head.modifiedTime);
+  if (
+    !revisionId ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(modifiedTime)
+  ) {
+    throw new Error("専用原本の最新本文版情報が不完全なため作成を停止しました。");
+  }
+  return {
+    revisionId: revisionId,
+    modifiedTime: modifiedTime
+  };
+}
+
 function artifactOutputContentHash_(fileId, kind) {
   var snapshot;
   if (["certificate", "guidance"].indexOf(kind) >= 0) {

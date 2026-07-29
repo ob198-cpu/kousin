@@ -907,6 +907,50 @@ expectCode(
 context.Drive.Permissions.list = savedPermissionList;
 context.storeAssertResourcePrivate_(setupDataFolder, "owner-only ACL fixture");
 assert.equal(context.storeGetSetupState_().role, "admin");
+assert.deepEqual(
+  Array.from(context.storeArtifactAccessEmails_()),
+  ["owner@example.com"],
+  "成果物アクセス権限は共有正本の有効ロールから自動決定する必要があります"
+);
+assert.deepEqual(
+  Array.from(context.storeArtifactAccessEmailsFromRows_(
+    "owner@gmail.com",
+    context.RENEWAL_STORE.SETUP_MODE_PERSONAL,
+    "owner@gmail.com",
+    [{ email: "owner@gmail.com", role: "admin", active: true }],
+    ["admin", "renewal", "accounting", "viewer"]
+  )),
+  ["owner@gmail.com"],
+  "個人単独運用は所有者1名だけを自動許可する必要があります"
+);
+expectCode(
+  () => context.storeArtifactAccessEmailsFromRows_(
+    "owner@gmail.com",
+    context.RENEWAL_STORE.SETUP_MODE_PERSONAL,
+    "owner@gmail.com",
+    [
+      { email: "owner@gmail.com", role: "admin", active: true },
+      { email: "other@gmail.com", role: "viewer", active: true }
+    ],
+    ["admin", "renewal", "accounting", "viewer"]
+  ),
+  "STORE_WORKSPACE_REQUIRED"
+);
+assert.deepEqual(
+  Array.from(context.storeArtifactAccessEmailsFromRows_(
+    "owner@example.com",
+    context.RENEWAL_STORE.SETUP_MODE_WORKSPACE,
+    "owner@example.com",
+    [
+      { email: "renewal@example.com", role: "renewal", active: true },
+      { email: "owner@example.com", role: "admin", active: true },
+      { email: "disabled@example.com", role: "viewer", active: false }
+    ],
+    ["admin", "renewal", "accounting", "viewer"]
+  )),
+  ["owner@example.com", "renewal@example.com"],
+  "Workspace運用は共有正本の有効ロールだけを安定順で自動許可する必要があります"
+);
 const recordsSheetCapacity = state.spreadsheets.get(storeId).getSheetByName("records");
 context.storeEnsureSheetRows_(recordsSheetCapacity, 1001);
 assert.equal(recordsSheetCapacity.getMaxRows(), 1001, "行上限到達前にシートを拡張する");

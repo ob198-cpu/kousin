@@ -2977,8 +2977,7 @@ function storeRequirePermission_(spreadsheet, actor, permission, knownRole) {
   return role;
 }
 
-/** Capability names are the only cross-module authorization surface. */
-function storeRequireCapability_(capability) {
+function storeCapabilityRoles_(capability) {
   var map = {
     "records.import": ["admin"],
     "artifacts.read": ["admin", "renewal", "accounting", "viewer"],
@@ -2990,11 +2989,78 @@ function storeRequireCapability_(capability) {
   };
   var allowed = map[String(capability || "")];
   if (!allowed) storeFail_("STORE_CAPABILITY_UNKNOWN", "Unknown capability.");
+  return allowed.slice();
+}
+
+/** Capability names are the only cross-module authorization surface. */
+function storeRequireCapability_(capability) {
+  var allowed = storeCapabilityRoles_(capability);
   var spreadsheet = storeOpen_();
   var actor = storeActorEmail_();
   var role = storeRoleForActor_(spreadsheet, actor);
   if (allowed.indexOf(role) < 0) storeFail_("STORE_ACCESS_DENIED", "Permission denied.");
   return { email: actor, role: role, capability: capability };
+}
+
+/**
+ * 成果物のDrive ACL正本は、別管理の手入力メール一覧ではなく共有正本の
+ * 有効ロールとする。ここでは権限を付与せず、期待するメール集合だけを返す。
+ */
+function storeArtifactAccessEmails_() {
+  var spreadsheet = storeOpen_();
+  var actor = storeActorEmail_();
+  var actorRole = storeRoleForActor_(spreadsheet, actor);
+  var readableRoles = storeCapabilityRoles_("artifacts.read");
+  if (readableRoles.indexOf(actorRole) < 0) {
+    storeFail_("STORE_ACCESS_DENIED", "Permission denied.");
+  }
+  var meta = storeReadMetaMap_(spreadsheet);
+  return storeArtifactAccessEmailsFromRows_(
+    meta.createdBy,
+    meta.deploymentMode,
+    actor,
+    storeReadRoles_(spreadsheet),
+    readableRoles
+  );
+}
+
+function storeArtifactAccessEmailsFromRows_(
+  ownerValue,
+  deploymentModeValue,
+  actorValue,
+  rows,
+  readableRoles
+) {
+  var owner = storeEmail_(ownerValue);
+  var actor = storeEmail_(actorValue);
+  var deploymentMode = String(deploymentModeValue || "").trim();
+  var allowedRoleMap = {};
+  (Array.isArray(readableRoles) ? readableRoles : []).forEach(function(role) {
+    allowedRoleMap[String(role || "").trim().toLowerCase()] = true;
+  });
+  var emails = (Array.isArray(rows) ? rows : []).filter(function(row) {
+    return row && row.active === true && allowedRoleMap[String(row.role || "").trim().toLowerCase()];
+  }).map(function(row) {
+    var email = storeEmail_(row.email);
+    storeAssertRoleDomainPair_(owner, email, deploymentMode);
+    return email;
+  }).sort();
+  if (!emails.length || emails.indexOf(actor) < 0 || emails.indexOf(owner) < 0) {
+    storeFail_(
+      "STORE_ARTIFACT_ACCESS_POLICY_INVALID",
+      "The canonical active roles cannot establish the artifact Drive access policy."
+    );
+  }
+  if (
+    deploymentMode === RENEWAL_STORE.SETUP_MODE_PERSONAL &&
+    (emails.length !== 1 || emails[0] !== owner || actor !== owner)
+  ) {
+    storeFail_(
+      "STORE_PERSONAL_ARTIFACT_OWNER_ONLY_REQUIRED",
+      "Personal single-user artifact storage must remain owner-only."
+    );
+  }
+  return emails;
 }
 
 /**

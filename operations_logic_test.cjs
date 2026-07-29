@@ -107,11 +107,15 @@ assert.deepEqual(Array.from(declarationContext.schema.CSV_COLUMNS, (column) => c
 [
   "artifactModal", "artifactPreflight", "artifactCreateResults", "preflightArtifacts", "createArtifacts",
   "saveArtifactSettings", "reloadArtifactSettings", "saveScheduleMaster", "artifactOutputFolderId",
-  "artifactAllowedOutputEmails", "artifactCertificateTemplateId", "artifactLedgerTemplateId",
+  "artifactCertificateTemplateId", "artifactLedgerTemplateId",
   "artifactDipsAdditionalClosedDates", "artifactDipsCalendarConfirmedDate", "artifactDipsCalendarConfirmedBy",
   "artifactNumberingInitialized", "artifactNumberingCutoverMonth", "artifactCertificateSequenceSeed", "artifactDipsSequenceSeed",
   "paidTotal", "appliedTotal", "outstandingTotal", "overpaymentTotal", "financeAccountingFrom", "financeAccountingTo"
 ].forEach((id) => assert.equal($("#" + id).length, 1, id + "が画面にありません"));
+assert.equal($("#artifactAllowedOutputEmails").length, 0,
+  "廃止した成果物アクセス許可メールの手入力欄を残してはいけません");
+assert($.root().text().includes("共有正本の有効利用者とGoogle Driveの所有者・編集者・閲覧者を作成前に自動照合"),
+  "成果物アクセス権限の自動照合方針を画面へ表示する必要があります");
 const pinnedOutputFolderId = "1XmQirjBrQR-uC_GuBVXAyRK5zfqtoQwN";
 assert.equal($("#artifactOutputFolderId").is("[readonly]"), true,
   "成果物の固定保存先は利用者が編集できない必要があります");
@@ -183,8 +187,15 @@ trainingPrefixes.forEach((prefix) => {
   "1lAO89hPt2FRu-EoqfkS_xCFKVkfrglz5o-ms-qD92yE"
 ].forEach((spreadsheetId) => assert.equal(html.includes(spreadsheetId), false, spreadsheetId + "を公開HTMLへ埋め込んではいけません"));
 assert(html.includes("原本リンクは個人情報保護のため公開画面へ表示しません。"), "公開画面の原本リンク非表示方針がありません");
-assert(html.includes("公開Pages版：合成サンプルをメモリ上だけで表示する閲覧専用デモです。"),
-  "公開Pages版のメモリ専用・閲覧専用表示がありません");
+assert(html.includes("公開Pages版：合成サンプルだけを表示する閲覧専用デモです。"),
+  "公開Pages版の合成サンプル専用・閲覧専用表示がありません");
+assert.equal($(".production-app-link").length, 1,
+  "公開Pages版から認証済み本番版を開く導線がありません");
+assert.equal(
+  $(".production-app-link").attr("href"),
+  "https://script.google.com/macros/s/AKfycbyMf_7Sy10GmbfW7CBT7z5vkSccTo0wTHVy1ospLHhv7LDnlBGgHGTvEJagfkS7xnHq/exec",
+  "認証済み本番版への導線が現在の固定デプロイURLと一致しません"
+);
 assert(scriptMatch[1].includes('const LEGACY_STORAGE_KEYS = ["cdp-renewal-license-records-v3"]'), "旧版ブラウザ保存データの移行元がありません");
 assert.equal(
   /localStorage\.setItem\(\s*(?:STORAGE_KEY|AUDIT_KEY)\b/.test(scriptMatch[1]),
@@ -366,7 +377,8 @@ assert(
 assert(
   $("#setupSharedStore").is("[disabled]") &&
   codeSource.includes("function ownerAuthorizeDeployment()") &&
-  codeSource.includes("return authorizeDeploymentOwner_();") &&
+  codeSource.includes("var result = authorizeDeploymentOwner_();") &&
+  codeSource.includes("return result;") &&
   codeSource.includes("function ownerSetupWorkspaceSystem()") &&
   codeSource.includes("return setupDedicatedSystemAsOwner_();") &&
   codeSource.includes("function ownerSetupPersonalSingleUserSystem()") &&

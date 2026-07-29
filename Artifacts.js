@@ -53,6 +53,24 @@ var RENEWAL_ARTIFACT = {
       revisionModifiedTime: "2026-06-27T10:26:32.571Z",
       modifiedTime: "2026-06-27T10:26:32.613Z",
       kinds: ["certificate"]
+    },
+    implementationPlanSource: {
+      label: "別添04 登録更新講習機関実施計画書参照元",
+      id: "1igNBB5Ved91p-yUX4NhOUEWuW6KwIc-2jgOjReMp_Js",
+      mimeType: "application/vnd.google-apps.spreadsheet",
+      revisionId: "53",
+      revisionModifiedTime: "2026-07-22T05:38:40.682Z",
+      modifiedTime: "2026-07-22T05:38:40.705Z",
+      kinds: []
+    },
+    implementationStatusSource: {
+      label: "別添05 登録更新講習機関実施状況報告書参照元",
+      id: "10VToVFT0QltCgsRyGPt1nH9oeCQvz60KtmGTJjn_bZQ",
+      mimeType: "application/vnd.google-apps.document",
+      revisionId: "237",
+      revisionModifiedTime: "2026-07-22T05:39:37.720Z",
+      modifiedTime: "2026-07-22T05:39:37.823Z",
+      kinds: []
     }
   },
   BLOCKED_TEMPLATE_IDS: {
@@ -101,7 +119,9 @@ var RENEWAL_ARTIFACT = {
     dipsCsv: "DIPS提出CSV",
     guidance: "更新講習のご案内",
     training: "講習記録簿",
-    billing: "見積書・請求書"
+    billing: "見積書・請求書",
+    implementationPlan: "別添04 実施計画書",
+    implementationStatus: "別添05 実施状況報告書"
   },
   LEDGER_HEADER_ALLOWLIST: [
     ["別添13　無人航空機更新講習講習修了証明書発行台帳", "", "", "", "", "", "", "", ""],
@@ -441,9 +461,9 @@ function apiSaveArtifactSettings(input) {
       templateFolderId: artifactExtractDriveId_(current.templateFolderId),
       ledgerTemplateId: artifactExtractDriveFileId_(input.ledgerTemplateId !== undefined ? input.ledgerTemplateId : current.ledgerTemplateId),
       certificateTemplateId: artifactExtractDriveFileId_(input.certificateTemplateId !== undefined ? input.certificateTemplateId : current.certificateTemplateId),
-      allowedOutputEmails: artifactNormalizeAllowedEmails_(input.allowedOutputEmails !== undefined
-        ? input.allowedOutputEmails
-        : current.allowedOutputEmails).join("\n"),
+      // Drive ACLの期待値は共有正本の有効ロールから毎回決定する。
+      // 旧手入力値は新しい設定stateへ引き継がない。
+      allowedOutputEmails: "",
       dipsAdditionalClosedDates: artifactNormalizeIsoDateList_(input.dipsAdditionalClosedDates !== undefined
         ? input.dipsAdditionalClosedDates
         : current.dipsAdditionalClosedDates).join("\n"),
@@ -469,7 +489,7 @@ function apiSaveArtifactSettings(input) {
     };
     if (next.issuerEmail && !artifactIsEmail_(next.issuerEmail)) throw new Error("申込先メールの形式が正しくありません。");
     artifactAssertNumberingSettings_(next);
-    artifactAssertAllowedOutputEmails_(next.allowedOutputEmails);
+    var resolvedOutputAccessEmails = artifactResolveOutputAccessEmails_();
     var dipsSettingsErrors = [];
     artifactValidateDipsCalendarSettings_(next, artifactTodayIso_(), false, dipsSettingsErrors);
     if (dipsSettingsErrors.length) throw new Error(dipsSettingsErrors.join(" "));
@@ -479,7 +499,11 @@ function apiSaveArtifactSettings(input) {
     artifactAssertDedicatedTemplateStorageSafe_(next);
 
     // 保存時にも個人情報を置ける非公開フォルダであることを確認する。フォルダ自体は変更しない。
-    artifactRequireSafeOutputFolder_(next.outputFolderId, [next.ledgerTemplateId, next.certificateTemplateId], next.allowedOutputEmails);
+    artifactRequireSafeOutputFolder_(
+      next.outputFolderId,
+      [next.ledgerTemplateId, next.certificateTemplateId],
+      resolvedOutputAccessEmails
+    );
     if (artifactText_(current.outputFolderId) && artifactText_(current.outputFolderId) !== artifactText_(next.outputFolderId)) {
       artifactAssertLegacyOutputFolderSwitchSafe_(current.outputFolderId);
     }
@@ -1289,6 +1313,131 @@ function apiPreflightArtifacts(request) {
 }
 
 /**
+ * 長時間のDrive処理後にブラウザ応答だけが失われた場合の読取専用照合。
+ * 同じ正本・種別・payloadHashでcreatedになった成果物だけを返し、
+ * preparedや別内容を作成済みとして扱わない。
+ */
+function apiGetArtifactCreationStatus(request) {
+  try {
+    request = request || {};
+    var kinds = artifactNormalizeKinds_(request.kinds || request.types || request.artifactTypes);
+    if (kinds.length !== 1) {
+      throw new Error("作成状況の照合は成果物を1種類ずつ指定してください。");
+    }
+    var kind = kinds[0];
+    if (kind === "billing") artifactRequireCapability_("artifacts.billing");
+    else artifactRequireCapability_("artifacts.write");
+
+    var recordId = artifactText_(request.recordId);
+    var expectedVersion = Number(request.expectedVersion);
+    var expectedPayloadHash = artifactText_(request.expectedPayloadHash).toLowerCase();
+    if (
+      !recordId ||
+      !Number.isInteger(expectedVersion) ||
+      expectedVersion < 1 ||
+      !/^[0-9a-f]{64}$/.test(expectedPayloadHash)
+    ) {
+      throw new Error("作成状況の照合に必要な対象者の版情報がありません。");
+    }
+    var canonical = storeGetRecord_(recordId, { includeDeleted: true });
+    if (!canonical || canonical.deleted || !canonical.record) {
+      throw new Error("共有正本の対象者を照合できません。");
+    }
+    if (
+      Number(canonical.version) < expectedVersion ||
+      (
+        Number(canonical.version) === expectedVersion &&
+        artifactText_(canonical.payloadHash).toLowerCase() !== expectedPayloadHash
+      )
+    ) {
+      throw artifactCanonicalRequestError_(
+        "作成開始時の対象者版と共有正本が一致しません。",
+        canonical
+      );
+    }
+    var settings = artifactLoadSettings_();
+    var record = artifactNormalizeRecord_(canonical.record);
+    record.id = recordId;
+    record.recordId = recordId;
+    if (kind === "billing") {
+      var financeInvoiceId = artifactText_(request.financeInvoiceId);
+      if (!financeInvoiceId) throw new Error("請求帳票の作成状況照合にはfinanceInvoiceIdが必要です。");
+      artifactApplyFormalInvoiceToRecord_(
+        record,
+        artifactLoadFormalInvoiceForArtifact_(financeInvoiceId, recordId)
+      );
+    }
+    var registryRows = artifactReadAllRegistryRows_(settings.allowedOutputEmails);
+    artifactApplyMissing_(
+      record,
+      artifactFindRecordAssignments_(registryRows, recordId)
+    );
+    var effectiveHolidayMaster = kind === "dipsCsv"
+      ? artifactLoadEffectiveHolidayMaster_()
+      : RENEWAL_JAPAN_HOLIDAYS;
+    var payloadHash = artifactHashHex_({
+      schemaVersion: RENEWAL_ARTIFACT.SCHEMA_VERSION,
+      kind: kind,
+      templateFingerprint: artifactTemplateFingerprint_(kind, settings),
+      record: artifactRecordForHash_(kind, record),
+      settings: artifactSettingsForHash_(kind, settings, effectiveHolidayMaster, record),
+      schedules: kind === "guidance" ? artifactNormalizeSchedules_(settings.schedules) : [],
+      outputFolderId: settings.outputFolderId
+    });
+    var existing = artifactFindExisting_(registryRows, record.recordId, kind, payloadHash);
+    if (existing) {
+      var file = DriveApp.getFileById(existing.fileId);
+      var targetFolder = DriveApp.getFolderById(existing.folderId);
+      artifactAssertReusableDriveItem_(
+        file,
+        targetFolder.getId(),
+        (RENEWAL_ARTIFACT.LABELS[kind] || "成果物") + "の作成済み成果物",
+        settings.allowedOutputEmails
+      );
+      var verified = null;
+      if (kind === "ledger") {
+        var autoRoot = DriveApp.getFolderById(existing.folderId);
+        artifactAssertExistingLedgerRow_(existing, record.recordId, payloadHash, autoRoot, settings);
+      } else {
+        verified = artifactAssertExistingOutputFile_(
+          file, existing, record.recordId, kind, payloadHash, targetFolder
+        );
+      }
+      return artifactAttachCanonicalResult_({
+        success: true,
+        complete: true,
+        results: [{
+          kind: kind,
+          label: RENEWAL_ARTIFACT.LABELS[kind],
+          status: "reused",
+          url: verified ? verified.url : existing.url,
+          fileName: verified ? verified.fileName : existing.fileName,
+          message: "作成済み成果物（v" + existing.version + "）を監査台帳とDriveで確認しました。"
+        }]
+      }, canonical);
+    }
+    var prepared = artifactFindPrepared_(registryRows, record.recordId, kind);
+    return artifactAttachCanonicalResult_({
+      success: true,
+      complete: false,
+      pending: !!prepared,
+      message: prepared
+        ? "作成予約を確認しました。サーバー処理の完了を待っています。"
+        : "同じ内容の作成済み成果物はまだ確認できません。"
+    }, canonical);
+  } catch (error) {
+    var message = artifactErrorMessage_(error);
+    return artifactAttachCanonicalResult_({
+      success: false,
+      complete: false,
+      errors: [message],
+      error: message,
+      message: message
+    }, error && error.artifactCanonical);
+  }
+}
+
+/**
  * 検査済み成果物を作成する。テンプレート原本は読み取りのみで、必ずコピーへ記入する。
  * 同一 recordId・種別・payloadHash は既存成果物を返し、内容変更時だけ version を進める。
  */
@@ -1315,17 +1464,6 @@ function apiCreateArtifacts(request) {
       authorizationError && authorizationError.artifactCanonical
     );
   }
-  var preflight = artifactBuildPreflight_(canonicalRequest.request);
-  if (!preflight.success || !preflight.ready) {
-    return artifactAttachCanonicalResult_({
-      success: false,
-      results: [],
-      recordUpdates: {},
-      errors: preflight.errors && preflight.errors.length ? preflight.errors : ["作成前検査に合格していません。"],
-      preflight: preflight
-    }, canonicalRequest.canonical);
-  }
-
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) {
     return artifactAttachCanonicalResult_(
@@ -1346,7 +1484,8 @@ function apiCreateArtifacts(request) {
     }
     artifactAssertNoUnresolvedCleanupFailures_();
     var lockedCanonicalRequest = artifactLoadCanonicalArtifactRequest_(request);
-    var lockedPreflight = artifactBuildPreflight_(lockedCanonicalRequest.request);
+    var preflightRuntime = {};
+    var lockedPreflight = artifactBuildPreflight_(lockedCanonicalRequest.request, preflightRuntime);
     if (!lockedPreflight.ready) {
       return artifactAttachCanonicalResult_(
         { success: false, results: [], recordUpdates: {}, errors: lockedPreflight.errors || ["作成前検査に合格していません。"] },
@@ -1354,7 +1493,7 @@ function apiCreateArtifacts(request) {
       );
     }
 
-    var settings = artifactLoadSettings_();
+    var settings = preflightRuntime.settings;
     var record = artifactNormalizeRecord_(lockedCanonicalRequest.request.record);
     var kinds = artifactNormalizeKinds_(lockedCanonicalRequest.request.kinds);
     var effectiveHolidayMaster = kinds.indexOf("dipsCsv") >= 0
@@ -1368,7 +1507,7 @@ function apiCreateArtifacts(request) {
     }
     var autoRoot = artifactEnsureAutoRoot_(settings.outputFolderId, settings.allowedOutputEmails);
     var registry = artifactEnsureRegistry_(autoRoot, settings.allowedOutputEmails);
-    var registryRows = artifactReadAllRegistryRows_(settings.allowedOutputEmails);
+    var registryRows = preflightRuntime.registryRows;
     var canonicalSpreadsheet = storeOpen_();
     var numberingRows = registryRows.concat(
       artifactCanonicalNumberReservationRows_(canonicalSpreadsheet, record.recordId)
@@ -1452,7 +1591,14 @@ function apiCreateArtifacts(request) {
       artifactApplyFormalInvoiceToRecord_(reservedRecord, lockedCanonicalRequest.financeInvoice);
     }
     record = reservedRecord;
-    var reservedPreflight = artifactBuildPreflight_({ record: record, kinds: kinds });
+    var reservedPreflight = artifactBuildPreflight_(
+      { record: record, kinds: kinds },
+      {
+        settings: settings,
+        registryRows: registryRows,
+        skipDriveValidation: true
+      }
+    );
     if (!reservedPreflight.ready) {
       throw new Error(
         (reservedPreflight.errors || []).concat(
@@ -1783,9 +1929,11 @@ function apiCreateArtifacts(request) {
   }
 }
 
-function artifactBuildPreflight_(request) {
+function artifactBuildPreflight_(request, runtime) {
   request = request || {};
-  var settings = artifactLoadSettings_();
+  runtime = runtime || {};
+  var settings = runtime.settings || artifactLoadSettings_();
+  runtime.settings = settings;
   var record = artifactNormalizeRecord_(request.record || request.payload || {});
   var kinds = artifactNormalizeKinds_(request.kinds || request.types || request.artifactTypes);
   // request.schedules は旧画面・未保存編集の可能性があるため無視し、保存済み設定を正本にする。
@@ -1794,18 +1942,20 @@ function artifactBuildPreflight_(request) {
   var globalErrors = [];
   var globalWarnings = [];
   if (!kinds.length) globalErrors.push("作成する成果物を1つ以上選択してください。");
-  try { artifactAssertPinnedReferenceSources_(kinds); }
-  catch (referenceError) { globalErrors.push(artifactErrorMessage_(referenceError)); }
-
   try { artifactAssertNumberingSettings_(settings); }
   catch (numberingSettingsError) { globalErrors.push(artifactErrorMessage_(numberingSettingsError)); }
-  try { artifactAssertDedicatedTemplateStorageSafe_(settings); }
-  catch (templateStorageError) { globalErrors.push(artifactErrorMessage_(templateStorageError)); }
-  try { artifactRequireSafeOutputFolder_(settings.outputFolderId, [settings.ledgerTemplateId, settings.certificateTemplateId], settings.allowedOutputEmails); }
-  catch (folderError) { globalErrors.push(artifactErrorMessage_(folderError)); }
-  var registryRows = [];
-  try { registryRows = artifactReadAllRegistryRows_(settings.allowedOutputEmails); }
-  catch (registryReadError) { globalErrors.push(artifactErrorMessage_(registryReadError)); }
+  var registryRows = Array.isArray(runtime.registryRows) ? runtime.registryRows : [];
+  if (!runtime.skipDriveValidation) {
+    try { artifactAssertPinnedReferenceSources_(kinds); }
+    catch (referenceError) { globalErrors.push(artifactErrorMessage_(referenceError)); }
+    try { artifactAssertDedicatedTemplateStorageSafe_(settings); }
+    catch (templateStorageError) { globalErrors.push(artifactErrorMessage_(templateStorageError)); }
+    try { artifactRequireSafeOutputFolder_(settings.outputFolderId, [settings.ledgerTemplateId, settings.certificateTemplateId], settings.allowedOutputEmails); }
+    catch (folderError) { globalErrors.push(artifactErrorMessage_(folderError)); }
+    try { registryRows = artifactReadAllRegistryRows_(settings.allowedOutputEmails); }
+    catch (registryReadError) { globalErrors.push(artifactErrorMessage_(registryReadError)); }
+    runtime.registryRows = registryRows;
+  }
   if (!globalErrors.length || registryRows.length) {
     try {
       artifactApplyMissing_(record, artifactFindRecordAssignments_(registryRows, artifactText_(record.recordId)));
@@ -1838,7 +1988,7 @@ function artifactBuildPreflight_(request) {
     var templateId = "";
     try {
       templateId = artifactTemplateId_(kind, settings);
-      if (templateId && !checkedTemplates[templateId]) {
+      if (templateId && !checkedTemplates[templateId] && !runtime.skipDriveValidation) {
         DriveApp.getFileById(templateId).getName();
         if (kind === "ledger") artifactAssertLedgerTemplateClean_(templateId);
         if (kind === "certificate") artifactAssertCertificateTemplateClean_(templateId);
@@ -2888,16 +3038,21 @@ function artifactHasDedicatedTemplatePin_(kind, fileId) {
 }
 
 function artifactPinDedicatedTemplate_(kind, fileId) {
-  if (["ledger", "certificate"].indexOf(kind) < 0) throw new Error("専用原本として版固定できない種別です: " + kind);
+  if (["ledger", "certificate", "implementationPlan", "implementationStatus"].indexOf(kind) < 0) {
+    throw new Error("専用原本として版固定できない種別です: " + kind);
+  }
   var id = artifactExtractDriveFileId_(fileId);
   if (!id) throw new Error("専用原本のDrive IDが正しくありません。");
   var revision = artifactDriveRevisionState_(id);
+  var contentRevision = artifactDriveHeadContentRevisionState_(id);
   var store = artifactLoadDedicatedTemplatePins_();
   store.pins[kind] = {
     fileId: id,
     driveVersion: revision.driveVersion,
     modifiedTime: revision.modifiedTime,
     md5Checksum: revision.md5Checksum,
+    contentRevisionId: contentRevision.revisionId,
+    contentRevisionModifiedTime: contentRevision.modifiedTime,
     pinnedAt: artifactNowText_()
   };
   PropertiesService.getScriptProperties().setProperty(
@@ -2907,6 +3062,50 @@ function artifactPinDedicatedTemplate_(kind, fileId) {
   return store.pins[kind];
 }
 
+function artifactDedicatedTemplatePinMatches_(expected, actualContentRevision) {
+  expected = expected || {};
+  actualContentRevision = actualContentRevision || {};
+  var actualRevisionId = artifactText_(actualContentRevision.revisionId);
+  var actualModifiedTime = artifactText_(actualContentRevision.modifiedTime);
+  if (!actualRevisionId || !actualModifiedTime) return false;
+  var expectedContentRevisionId = artifactText_(expected.contentRevisionId);
+  var expectedContentModifiedTime = artifactText_(expected.contentRevisionModifiedTime);
+  if (expectedContentRevisionId || expectedContentModifiedTime) {
+    return !!(
+      expectedContentRevisionId &&
+      expectedContentModifiedTime &&
+      expectedContentRevisionId === actualRevisionId &&
+      expectedContentModifiedTime === actualModifiedTime
+    );
+  }
+  // 旧pinはDrive全体のversion/modifiedTimeだけを保持していた。
+  // 現在の本文revisionと旧値が一致するか、最新本文revisionが固定日時以前なら
+  // ACL等のメタデータだけが固定後に変わったと確認できる。本文revisionが
+  // 固定日時より後へ進んでいれば従来どおり停止する。
+  if (
+    artifactText_(expected.driveVersion) === actualRevisionId ||
+    artifactText_(expected.modifiedTime) === actualModifiedTime
+  ) return true;
+  var pinMatch = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
+    .exec(artifactText_(expected.pinnedAt));
+  if (!pinMatch) return false;
+  var pinnedAtEndOfSecond = Date.UTC(
+    Number(pinMatch[1]),
+    Number(pinMatch[2]) - 1,
+    Number(pinMatch[3]),
+    Number(pinMatch[4]) - 9,
+    Number(pinMatch[5]),
+    Number(pinMatch[6]),
+    999
+  );
+  var actualContentTime = Date.parse(actualModifiedTime);
+  return (
+    isFinite(pinnedAtEndOfSecond) &&
+    isFinite(actualContentTime) &&
+    actualContentTime <= pinnedAtEndOfSecond
+  );
+}
+
 function artifactAssertDedicatedTemplatePin_(kind, fileId) {
   var id = artifactExtractDriveFileId_(fileId);
   var store = artifactLoadDedicatedTemplatePins_();
@@ -2914,13 +3113,9 @@ function artifactAssertDedicatedTemplatePin_(kind, fileId) {
   if (!expected || artifactText_(expected.fileId) !== id) {
     throw new Error((RENEWAL_ARTIFACT.LABELS[kind] || "専用原本") + "の版固定情報がありません。「専用原本を自動準備」で清浄性確認と版固定を行ってください。");
   }
-  var actual = artifactDriveRevisionState_(id);
-  if (
-    actual.driveVersion !== artifactText_(expected.driveVersion) ||
-    actual.modifiedTime !== artifactText_(expected.modifiedTime) ||
-    actual.md5Checksum !== artifactText_(expected.md5Checksum)
-  ) {
-    throw new Error((RENEWAL_ARTIFACT.LABELS[kind] || "専用原本") + "が版固定後に変更されています。自動で承認し直さず、全領域を再確認するまで作成を停止します。");
+  var actualContentRevision = artifactDriveHeadContentRevisionState_(id);
+  if (!artifactDedicatedTemplatePinMatches_(expected, actualContentRevision)) {
+    throw new Error((RENEWAL_ARTIFACT.LABELS[kind] || "専用原本") + "の本文版が固定後に変更されています。自動で承認し直さず、全領域を再確認するまで作成を停止します。");
   }
   return true;
 }
@@ -4461,6 +4656,9 @@ function artifactStoredSettingsObject_(settings) {
   Object.keys(artifactSettingsDefaults_()).forEach(function(key) {
     stored[key] = normalized[key];
   });
+  // 旧版互換のキーは残すが、利用者メールは共有正本のロールを正本とし、
+  // Script Propertiesへ二重保存しない。
+  stored.allowedOutputEmails = "";
   return stored;
 }
 
@@ -5082,7 +5280,9 @@ function artifactSettingsFromState_(state) {
 }
 
 function artifactLoadSettings_() {
-  return artifactSettingsFromState_(artifactLoadSettingsState_());
+  var settings = artifactSettingsFromState_(artifactLoadSettingsState_());
+  settings.allowedOutputEmails = artifactResolveOutputAccessEmails_().join("\n");
+  return settings;
 }
 
 function artifactPublicSettings_(settings, includeAdminDetails) {
@@ -5104,7 +5304,7 @@ function artifactPublicSettings_(settings, includeAdminDetails) {
     templateFolderId: artifactText_(settings.templateFolderId),
     ledgerTemplateId: artifactText_(settings.ledgerTemplateId),
     certificateTemplateId: artifactText_(settings.certificateTemplateId),
-    allowedOutputEmails: artifactNormalizeAllowedEmails_(settings.allowedOutputEmails).join("\n"),
+    outputAccessPolicy: "CANONICAL_ACTIVE_ROLES",
     dipsAdditionalClosedDates: artifactNormalizeIsoDateList_(settings.dipsAdditionalClosedDates).join("\n"),
     dipsCalendarConfirmedDate: artifactText_(settings.dipsCalendarConfirmedDate),
     dipsCalendarConfirmedBy: artifactText_(settings.dipsCalendarConfirmedBy),
@@ -5233,11 +5433,22 @@ function artifactNormalizeAllowedEmails_(value) {
 
 function artifactAssertAllowedOutputEmails_(value) {
   var emails = artifactNormalizeAllowedEmails_(value);
-  if (!emails.length) throw new Error("成果物アクセス許可メール一覧は必須です。出力先の所有者・編集者・閲覧者をすべて指定してください。");
+  if (!emails.length) {
+    throw new Error("共有正本の有効利用者から成果物のDriveアクセス権限を確定できません。");
+  }
   for (var i = 0; i < emails.length; i++) {
-    if (!artifactIsEmail_(emails[i])) throw new Error("成果物アクセス許可メールの形式が正しくありません: " + emails[i]);
+    if (!artifactIsEmail_(emails[i])) {
+      throw new Error("共有正本の有効利用者メール形式が正しくありません: " + emails[i]);
+    }
   }
   return emails;
+}
+
+function artifactResolveOutputAccessEmails_() {
+  if (typeof storeArtifactAccessEmails_ !== "function") {
+    throw new Error("共有正本の利用者から成果物アクセス権限を決定する処理が利用できません。");
+  }
+  return artifactAssertAllowedOutputEmails_(storeArtifactAccessEmails_());
 }
 
 /** 発行日の翌日から数え、土日・祝日・設定済み閉庁日を除く5営業日目。 */
@@ -5253,16 +5464,7 @@ function artifactAssertDriveItemAcl_(item, allowedOutputEmails, label, options) 
   if (requireActorPermission) {
     var actor = artifactActiveActorEmail_();
     if (!actor) throw new Error(itemLabel + "を操作する実行者メールを取得できないため、ACL監査未完として停止しました。");
-    if (!allowedMap[actor]) throw new Error(itemLabel + "の実行者メールが成果物アクセス許可一覧にありません: " + actor);
-  }
-
-  try {
-    if (item.isShareableByEditors()) {
-      throw new Error(itemLabel + "で編集者による再共有が許可されています。Driveの共有設定で無効にしてください。");
-    }
-  } catch (reshareError) {
-    if (artifactErrorMessage_(reshareError).indexOf("再共有が許可") >= 0) throw reshareError;
-    throw new Error(itemLabel + "の編集者再共有設定を確認できないため、ACL監査未完として停止しました。");
+    if (!allowedMap[actor]) throw new Error(itemLabel + "の実行者が共有正本の有効利用者に含まれていません: " + actor);
   }
 
   var owner;
@@ -5276,13 +5478,17 @@ function artifactAssertDriveItemAcl_(item, allowedOutputEmails, label, options) 
     throw new Error(itemLabel + "の所有者・編集者・閲覧者を完全取得できないため、ACL監査未完として停止しました。");
   }
   if (!owner) throw new Error(itemLabel + "の所有者を取得できないため、共有ドライブ等のACL監査未完として停止しました。");
-  var users = [owner].concat(Array.isArray(editors) ? editors : [], Array.isArray(viewers) ? viewers : []);
+  if (!Array.isArray(editors) || !Array.isArray(viewers)) {
+    throw new Error(itemLabel + "の編集者・閲覧者一覧が不完全なため、ACL監査未完として停止しました。");
+  }
+  var hasEditorPermission = editors.length > 0;
+  var users = [owner].concat(editors, viewers);
   for (var userIndex = 0; userIndex < users.length; userIndex++) {
     var email = "";
     try { email = artifactText_(users[userIndex].getEmail()).toLowerCase(); }
     catch (userError) {}
     if (!email) throw new Error(itemLabel + "の共有ユーザーのメールを取得できないため、ACL監査未完として停止しました。");
-    if (!allowedMap[email]) throw new Error(itemLabel + "に許可一覧外の共有ユーザーがあります: " + email);
+    if (!allowedMap[email]) throw new Error(itemLabel + "に共有正本の有効利用者ではない共有ユーザーがあります: " + email);
   }
 
   var itemId = "";
@@ -5327,7 +5533,11 @@ function artifactAssertDriveItemAcl_(item, allowedOutputEmails, label, options) 
       }
       var permissionEmail = artifactText_(permission.emailAddress).toLowerCase();
       if (!permissionEmail) throw new Error(itemLabel + "の" + permissionType + "権限メールを取得できないため、ACL監査未完として停止しました。");
-      if (!allowedMap[permissionEmail]) throw new Error(itemLabel + "に許可一覧外の" + permissionType + "権限があります: " + permissionEmail);
+      if (!allowedMap[permissionEmail]) throw new Error(itemLabel + "に共有正本の有効利用者ではない" + permissionType + "権限があります: " + permissionEmail);
+      var permissionRole = artifactText_(permission.role);
+      if (["writer", "fileOrganizer", "organizer"].indexOf(permissionRole) >= 0) {
+        hasEditorPermission = true;
+      }
       seenPermissionEmails[permissionEmail] = true;
     }
     pageToken = artifactText_(response.nextPageToken);
@@ -5335,8 +5545,20 @@ function artifactAssertDriveItemAcl_(item, allowedOutputEmails, label, options) 
   if (requireExactPermissions) {
     for (var allowedIndex = 0; allowedIndex < allowed.length; allowedIndex++) {
       if (!seenPermissionEmails[allowed[allowedIndex]]) {
-        throw new Error(itemLabel + "の実際のDrive権限に、許可一覧のメールがありません: " + allowed[allowedIndex]);
+        throw new Error(itemLabel + "の実際のDrive権限に、共有正本の有効利用者がありません: " + allowed[allowedIndex]);
       }
+    }
+  }
+  // Google Driveの「編集者による権限変更・共有」設定は、編集者が存在するときだけ
+  // 実効性を持つ。所有者1名だけのフォルダでは未知の共有先を完全ACL照合で別途拒否する。
+  if (hasEditorPermission) {
+    try {
+      if (item.isShareableByEditors()) {
+        throw new Error(itemLabel + "で編集者による再共有が許可されています。Driveの共有設定で無効にしてください。");
+      }
+    } catch (reshareError) {
+      if (artifactErrorMessage_(reshareError).indexOf("再共有が許可") >= 0) throw reshareError;
+      throw new Error(itemLabel + "の編集者再共有設定を確認できないため、ACL監査未完として停止しました。");
     }
   }
   return true;
@@ -5345,7 +5567,10 @@ function artifactAssertDriveItemAcl_(item, allowedOutputEmails, label, options) 
 function artifactHardenNewDriveItem_(item, label) {
   var itemLabel = artifactText_(label) || "新規Drive項目";
   try {
-    item.setShareableByEditors(false);
+    // falseの項目へ同じ値を再設定するとGoogleネイティブファイルの
+    // Drive version / modifiedTimeだけが増分されることがある。
+    // 現在値を確認し、実際に無効化が必要な場合だけ変更する。
+    if (item.isShareableByEditors()) item.setShareableByEditors(false);
     if (item.isShareableByEditors()) throw new Error("再共有無効化後も有効です。");
   } catch (hardeningError) {
     throw new Error(itemLabel + "で編集者による再共有を無効化できないため、作成を停止しました。");
