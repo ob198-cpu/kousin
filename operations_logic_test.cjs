@@ -189,6 +189,8 @@ trainingPrefixes.forEach((prefix) => {
 assert(html.includes("原本リンクは個人情報保護のため公開画面へ表示しません。"), "公開画面の原本リンク非表示方針がありません");
 assert(html.includes("公開Pages版：合成サンプルだけを表示する閲覧専用デモです。"),
   "公開Pages版の合成サンプル専用・閲覧専用表示がありません");
+assert(scriptMatch[1].includes('targetName: "サンプル太郎"'),
+  "公開Pages版の確認用データにサンプル太郎がありません");
 assert.equal($(".production-app-link").length, 1,
   "公開Pages版から認証済み本番版を開く導線がありません");
 assert.equal(
