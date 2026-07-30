@@ -90,11 +90,25 @@ assert(ledgerRenderer.includes("artifactLedgerOutputFields_(context.record)"),
 assert(ledgerRenderer.includes("artifactAssertLedgerTemplateClean_") &&
   ledgerRenderer.includes(".copyTo(spreadsheet)"),
   "対象者資料ブックの発行台帳は検査済み専用原本を複製する必要があります");
+assert(
+  ledgerRenderer.indexOf("artifactAssertLedgerTemplateClean_") <
+    ledgerRenderer.indexOf(".copyTo(spreadsheet)"),
+  "発行台帳専用原本は複製前に完全検査する必要があります"
+);
 assert(ledgerRenderer.includes("artifactApplyLedgerOutputHeaders_") &&
   ledgerRenderer.includes('"B3:I3"'),
   "発行台帳は原本のB:I列へ正式8項目を転記する必要があります");
 assert(!ledgerRenderer.includes("certificateDeliveredDate") && !ledgerRenderer.includes("record.recordId"),
   "発行台帳の可視列へ実交付日や内部recordIdを混在させてはいけません");
+
+const personWorkbookPreflight = source.slice(
+  source.indexOf("function apiPreflightPersonWorkbook("),
+  source.indexOf("function apiCreateOrUpdatePersonWorkbook(")
+);
+assert(!personWorkbookPreflight.includes("artifactAssertLedgerTemplateClean_"),
+  "作成前検査でDrive原本の完全検査を重複実行してはいけません");
+assert(personWorkbookPreflight.includes("作成確定後・書込み前に再実行"),
+  "完全検査を作成時に行う説明が必要です");
 
 const planRenderer = source.slice(
   source.indexOf("function personWorkbookRenderPlan_("),

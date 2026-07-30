@@ -27,7 +27,6 @@ function apiPreflightPersonWorkbook(request) {
       personWorkbookCanonicalRequest_(request)
     );
     var settings = artifactLoadSettings_();
-    artifactAssertLedgerTemplateClean_(settings.ledgerTemplateId);
     personWorkbookAssertAdminOnlyAcl_(authorization.email);
     var record = artifactNormalizeRecord_(canonicalRequest.request.record);
     var fiscalYear = artifactText_(record.fiscalYear);
@@ -38,7 +37,8 @@ function apiPreflightPersonWorkbook(request) {
     var warnings = [
       "未入力項目は空欄で作成します。共有正本の値を推測・補完しません。",
       "同じ対象者はrecordIdで判定し、同じGoogleスプレッドシートの固定シートを更新します。",
-      "従来の個別成果物は監査履歴として残し、自動移動・自動削除しません。"
+      "従来の個別成果物は監査履歴として残し、自動移動・自動削除しません。",
+      "発行台帳専用原本の完全検査は、作成確定後・書込み前に再実行します。"
     ];
     var financeState = personWorkbookFinanceSnapshot_(record.recordId, true);
     if (
