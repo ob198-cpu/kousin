@@ -87,16 +87,13 @@ const ledgerRenderer = source.slice(
 });
 assert(ledgerRenderer.includes("artifactLedgerOutputFields_(context.record)"),
   "対象者資料ブックの発行台帳は共通転記規則を使用する必要があります");
-assert(ledgerRenderer.includes("artifactAssertLedgerTemplateClean_") &&
-  ledgerRenderer.includes(".copyTo(spreadsheet)"),
-  "対象者資料ブックの発行台帳は検査済み専用原本を複製する必要があります");
-assert(
-  ledgerRenderer.indexOf("artifactAssertLedgerTemplateClean_") <
-    ledgerRenderer.indexOf(".copyTo(spreadsheet)"),
-  "発行台帳専用原本は複製前に完全検査する必要があります"
-);
-assert(ledgerRenderer.includes("artifactApplyLedgerOutputHeaders_") &&
-  ledgerRenderer.includes('"B3:I3"'),
+assert(ledgerRenderer.includes("RENEWAL_ARTIFACT.LEDGER_HEADER_ALLOWLIST") &&
+  ledgerRenderer.includes('"B2:I22"'),
+  "対象者資料ブックの発行台帳は検査済み専用原本の固定様式を再現する必要があります");
+assert(!ledgerRenderer.includes("artifactApplyLedgerOutputHeaders_") &&
+  !ledgerRenderer.includes("deleteColumns(") &&
+  ledgerRenderer.includes('"F4:F22"') &&
+  ledgerRenderer.includes("personWorkbookSetValuesWithRetry_"),
   "発行台帳は原本のB:I列へ正式8項目を転記する必要があります");
 assert(!ledgerRenderer.includes("certificateDeliveredDate") && !ledgerRenderer.includes("record.recordId"),
   "発行台帳の可視列へ実交付日や内部recordIdを混在させてはいけません");
@@ -107,8 +104,8 @@ const personWorkbookPreflight = source.slice(
 );
 assert(!personWorkbookPreflight.includes("artifactAssertLedgerTemplateClean_"),
   "作成前検査でDrive原本の完全検査を重複実行してはいけません");
-assert(personWorkbookPreflight.includes("作成確定後・書込み前に再実行"),
-  "完全検査を作成時に行う説明が必要です");
+assert(personWorkbookPreflight.includes("固定した本文版との一致"),
+  "作成時の版固定照合を説明する必要があります");
 
 const planRenderer = source.slice(
   source.indexOf("function personWorkbookRenderPlan_("),
@@ -118,7 +115,7 @@ assert(planRenderer.includes('"A1:AH5"') &&
   planRenderer.includes('"D1:AH1"') &&
   planRenderer.includes('"二等無人航空機操縦士"') &&
   planRenderer.includes('"一等無人航空機操縦士"') &&
-  planRenderer.includes("setFrozenColumns(3)"),
+  !planRenderer.includes("setFrozenColumns("),
   "別添04は承認済み固定構造の34列様式を再現する必要があります");
 assert(!planRenderer.includes("PLAN_SOURCE_ID") &&
   !planRenderer.includes("complianceLoadTemplateState_"),
@@ -155,19 +152,33 @@ assert(!titleRenderer.includes("#0b4f8a") &&
 const updateStart = source.indexOf("function personWorkbookUpdate_(");
 const updateEnd = source.indexOf("function personWorkbookEnsureSystemSheet_(");
 const updateSource = source.slice(updateStart, updateEnd);
+assert(updateSource.includes("artifactAssertDedicatedTemplatePin_") &&
+  updateSource.indexOf("artifactAssertDedicatedTemplatePin_") <
+    updateSource.indexOf("spreadsheet.setSpreadsheetTimeZone"),
+  "発行台帳専用原本は対象者ブックへ書き込む前に固定本文版を照合する必要があります");
 const systemVerifyPosition = updateSource.indexOf(
-  "personWorkbookAssertSystemSheet_(systemSheet"
+  "personWorkbookAssertSystemSheet_("
+);
+const targetVerifyPosition = updateSource.indexOf(
+  "更新後シートの名前・内容を確認できません"
 );
 const backupDeletePosition = updateSource.indexOf(
   "spreadsheet.deleteSheet(backups[deleteIndex].sheet)"
 );
-assert(systemVerifyPosition >= 0 && backupDeletePosition > systemVerifyPosition,
-  "旧シート削除は新シートと管理情報の検証完了後でなければなりません");
+assert(systemVerifyPosition >= 0 &&
+  targetVerifyPosition >= 0 &&
+  backupDeletePosition > systemVerifyPosition &&
+  backupDeletePosition > targetVerifyPosition,
+  "旧シート削除は新シートと最終管理情報の検証完了後でなければなりません");
 assert(updateSource.includes("systemBefore") &&
   updateSource.includes("systemRollbackError"),
   "更新失敗時は管理シートも元に戻す必要があります");
 assert(updateSource.includes("cleanupWarnings"),
   "更新確定後の旧シート削除失敗は新シートを破壊せず警告にする必要があります");
+assert(updateSource.includes("personWorkbookFlushWithRetry_()") &&
+  updateSource.indexOf("personWorkbookFlushWithRetry_()") <
+    updateSource.indexOf("prepared.push({"),
+  "各シートは次の帳票へ進む前に変更を確定する必要があります");
 assert(updateSource.includes("personWorkbookQuarantineName_") &&
   updateSource.includes("__中断_") &&
   updateSource.includes("削除せず"),
@@ -178,8 +189,10 @@ assert(!updateSource.includes("前回の更新途中シート") ||
 
 assert(scriptMatch[1].includes('serverCall(\n          "apiPreflightPersonWorkbook"'),
   "画面は資料一式の作成前検査APIを呼ぶ必要があります");
-assert(scriptMatch[1].includes('serverCall(\n          "apiCreateOrUpdatePersonWorkbook"'),
-  "画面は資料一式の作成・更新APIを呼ぶ必要があります");
+assert(scriptMatch[1].includes(
+  'serverCall(\n            "apiCreateOrUpdatePersonWorkbookBatch"'
+) && scriptMatch[1].includes("batchIndex < 5"),
+  "画面は発行台帳を単独段階に分けて作成・更新する必要があります");
 assert(scriptMatch[1].includes("openArtifactModal(record);\n          runPersonWorkbook(record);"),
   "詳細画面の資料作成ボタン1回で全資料の作成を開始する必要があります");
 

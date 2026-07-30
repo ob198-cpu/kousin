@@ -50,7 +50,8 @@ assert(
 );
 assert(
   runner.includes('"apiPreflightPersonWorkbook"') &&
-    runner.includes('"apiCreateOrUpdatePersonWorkbook"'),
+    runner.includes('"apiCreateOrUpdatePersonWorkbookBatch"') &&
+    runner.includes("batchIndex < 5"),
   "既存の作成前検査と同一ファイル更新処理を使用する必要があります"
 );
 

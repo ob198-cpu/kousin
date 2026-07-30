@@ -8952,15 +8952,34 @@
         if (!preflight || preflight.success === false || preflight.ready !== true) {
           return;
         }
-        document.getElementById("personWorkbookResult").innerHTML +=
-          artifactResultRow(
-            "warning",
-            "対象者資料一式",
-            "同じ対象者の資料を1つのGoogleスプレッドシートへ作成・更新しています。"
+        let result = null;
+        for (let batchIndex = 0; batchIndex < 5; batchIndex += 1) {
+          document.getElementById("personWorkbookResult").innerHTML =
+            artifactResultRow(
+              "warning",
+              "対象者資料一式",
+              "全9シートを5回に分けて安全に更新しています。" +
+              " 現在 " + (batchIndex + 1) + " / 5 回目です。"
+            );
+          result = await serverCall(
+            "apiCreateOrUpdatePersonWorkbookBatch",
+            Object.assign({}, request, { batchIndex: batchIndex })
           );
-        const result = await serverCall(
-          "apiCreateOrUpdatePersonWorkbook", request
-        );
+          if (!result || result.success === false || result.ready === false) {
+            renderPersonWorkbookResponse(result || {}, "create");
+            showToast("作成結果に確認事項があります。");
+            return;
+          }
+          if (result.complete !== true) {
+            document.getElementById("personWorkbookResult").innerHTML =
+              artifactResultRow(
+                "ready",
+                "対象者資料一式",
+                result.message || "一部シートを更新しました。残りを続けます。",
+                result.url || result.fileUrl
+              );
+          }
+        }
         renderPersonWorkbookResponse(result || {}, "create");
         showToast(
           result && result.success !== false

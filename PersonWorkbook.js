@@ -38,7 +38,7 @@ function apiPreflightPersonWorkbook(request) {
       "未入力項目は空欄で作成します。共有正本の値を推測・補完しません。",
       "同じ対象者はrecordIdで判定し、同じGoogleスプレッドシートの固定シートを更新します。",
       "従来の個別成果物は監査履歴として残し、自動移動・自動削除しません。",
-      "発行台帳専用原本の完全検査は、作成確定後・書込み前に再実行します。"
+      "発行台帳専用原本は、清浄性確認時に固定した本文版との一致を、書込み前に再検査します。"
     ];
     var financeState = personWorkbookFinanceSnapshot_(record.recordId, true);
     if (
@@ -82,6 +82,17 @@ function apiPreflightPersonWorkbook(request) {
 
 function apiCreateOrUpdatePersonWorkbook(request) {
   request = request || {};
+  var batchMode = request.__personWorkbookBatch === true;
+  var batchIndex = Number(request.batchIndex);
+  if (
+    batchMode &&
+    (!isFinite(batchIndex) || Math.floor(batchIndex) !== batchIndex ||
+      batchIndex < 0 || batchIndex > 4)
+  ) {
+    return personWorkbookErrorResult_(
+      new Error("対象者資料ブックの作成段階が正しくありません。")
+    );
+  }
   var authorization;
   var canonicalRequest;
   try {
@@ -149,7 +160,13 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       )
     };
     resolved = personWorkbookResolve_(context);
-    var updateResult = personWorkbookUpdate_(resolved, context);
+    var updateResult = batchMode
+      ? personWorkbookUpdate_(resolved, context, {
+        specs: personWorkbookBatchSpecs_(batchIndex),
+        finalize: batchIndex === 4,
+        batchIndex: batchIndex
+      })
+      : personWorkbookUpdate_(resolved, context);
     updateCompleted = true;
     resolved.file.setName(personWorkbookFileName_(record));
     if (resolved.file.getName() !== personWorkbookFileName_(record)) {
@@ -162,6 +179,28 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       "対象者資料ブック",
       allowedEmails
     );
+    if (batchMode && updateResult.complete !== true) {
+      return {
+        success: true,
+        ready: true,
+        inProgress: true,
+        complete: false,
+        batchIndex: batchIndex,
+        nextBatchIndex: batchIndex + 1,
+        completedSheetCount: personWorkbookCompletedSheetCount_(batchIndex),
+        label: "対象者資料一式",
+        status: resolved.created ? "created" : "updated",
+        fileId: resolved.file.getId(),
+        url: resolved.file.getUrl(),
+        fileUrl: resolved.file.getUrl(),
+        fileName: resolved.file.getName(),
+        warnings: updateResult.cleanupWarnings || [],
+        message:
+          "全9シートのうち" +
+          personWorkbookCompletedSheetCount_(batchIndex) +
+          "シートまで安全に更新しました。続けて残りを更新します。"
+      };
+    }
     var auditWarning = "";
     try {
       complianceEnsureServerAudit_({
@@ -203,6 +242,7 @@ function apiCreateOrUpdatePersonWorkbook(request) {
         return row.name;
       }),
       updatedAt: updateResult.updatedAt,
+      complete: true,
       warnings: responseWarnings,
       message: auditWarning || (
         resolved.created
@@ -231,6 +271,23 @@ function apiCreateOrUpdatePersonWorkbook(request) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function apiCreateOrUpdatePersonWorkbookBatch(request) {
+  var input = artifactClone_(request || {});
+  input.__personWorkbookBatch = true;
+  return apiCreateOrUpdatePersonWorkbook(input);
+}
+
+function personWorkbookBatchSpecs_(batchIndex) {
+  var boundaries = [3, 4, 5, 6, 9];
+  var index = Number(batchIndex);
+  var start = index === 0 ? 0 : boundaries[index - 1];
+  return RENEWAL_PERSON_WORKBOOK.SHEETS.slice(start, boundaries[index]);
+}
+
+function personWorkbookCompletedSheetCount_(batchIndex) {
+  return [3, 4, 5, 6, 9][Number(batchIndex)] || 0;
 }
 
 function personWorkbookCanonicalRequest_(request) {
@@ -500,7 +557,18 @@ function personWorkbookPublishProperty_(file, context) {
   }
 }
 
-function personWorkbookUpdate_(resolved, context) {
+function personWorkbookUpdate_(resolved, context, options) {
+  options = options || {};
+  var renderSpecs = Array.isArray(options.specs) && options.specs.length
+    ? options.specs
+    : RENEWAL_PERSON_WORKBOOK.SHEETS;
+  var finalize = options.finalize !== false;
+  // Full-cell cleanliness was verified when the dedicated master was pinned.
+  // At each output, verify that the Drive content revision is still that
+  // approved revision before touching the destination workbook.
+  artifactAssertDedicatedTemplatePin_(
+    "ledger", context.settings.ledgerTemplateId
+  );
   var spreadsheet = resolved.spreadsheet;
   spreadsheet.setSpreadsheetTimeZone("Asia/Tokyo");
   var systemSheet = personWorkbookEnsureSystemSheet_(
@@ -536,23 +604,21 @@ function personWorkbookUpdate_(resolved, context) {
   var systemWasHidden = systemSheet.isSheetHidden();
   systemSheet.showSheet();
   try {
-    for (var i = 0; i < RENEWAL_PERSON_WORKBOOK.SHEETS.length; i++) {
-      var spec = RENEWAL_PERSON_WORKBOOK.SHEETS[i];
+    for (var i = 0; i < renderSpecs.length; i++) {
+      var spec = renderSpecs[i];
       var tempName = "__準備_" + runTag + "_" + (i + 1);
       var preparedSheet = personWorkbookRenderPrepared_(
         spreadsheet, tempName, spec.key, context
       );
+      personWorkbookFlushWithRetry_();
+      if (!artifactText_(preparedSheet.getRange("A1").getDisplayValue())) {
+        throw new Error(spec.name + "の作成後読戻しに失敗しました。");
+      }
       prepared.push({
         key: spec.key,
         targetName: spec.name,
         sheet: preparedSheet
       });
-    }
-    SpreadsheetApp.flush();
-    for (var verifyIndex = 0; verifyIndex < prepared.length; verifyIndex++) {
-      if (!artifactText_(prepared[verifyIndex].sheet.getRange("A1").getDisplayValue())) {
-        throw new Error(prepared[verifyIndex].targetName + "の作成後読戻しに失敗しました。");
-      }
     }
     for (var swapIndex = 0; swapIndex < prepared.length; swapIndex++) {
       var targetName = prepared[swapIndex].targetName;
@@ -585,21 +651,34 @@ function personWorkbookUpdate_(resolved, context) {
         throw new Error("更新後シートの名前・内容を確認できません。");
       }
     }
-    for (var orderIndex = 0; orderIndex < RENEWAL_PERSON_WORKBOOK.SHEETS.length; orderIndex++) {
-      var ordered = spreadsheet.getSheetByName(
-        RENEWAL_PERSON_WORKBOOK.SHEETS[orderIndex].name
-      );
-      spreadsheet.setActiveSheet(ordered);
-      spreadsheet.moveActiveSheet(orderIndex + 1);
-    }
     var updatedAt = artifactNowText_();
-    personWorkbookWriteSystemSheet_(systemSheet, resolved.file, context, updatedAt);
-    spreadsheet.setActiveSheet(
-      spreadsheet.getSheetByName(RENEWAL_PERSON_WORKBOOK.SHEETS[0].name)
-    );
-    systemSheet.hideSheet();
-    SpreadsheetApp.flush();
-    personWorkbookAssertSystemSheet_(systemSheet, resolved.file, context);
+    if (finalize) {
+      for (
+        var orderIndex = 0;
+        orderIndex < RENEWAL_PERSON_WORKBOOK.SHEETS.length;
+        orderIndex++
+      ) {
+        var ordered = spreadsheet.getSheetByName(
+          RENEWAL_PERSON_WORKBOOK.SHEETS[orderIndex].name
+        );
+        spreadsheet.setActiveSheet(ordered);
+        spreadsheet.moveActiveSheet(orderIndex + 1);
+      }
+      personWorkbookWriteSystemSheet_(
+        systemSheet, resolved.file, context, updatedAt
+      );
+      spreadsheet.setActiveSheet(
+        spreadsheet.getSheetByName(RENEWAL_PERSON_WORKBOOK.SHEETS[0].name)
+      );
+      systemSheet.hideSheet();
+      SpreadsheetApp.flush();
+      personWorkbookAssertSystemSheet_(
+        systemSheet, resolved.file, context
+      );
+    } else {
+      if (systemWasHidden) systemSheet.hideSheet();
+      personWorkbookFlushWithRetry_();
+    }
     var cleanupWarnings = recoveryWarnings.slice();
     for (var deleteIndex = 0; deleteIndex < backups.length; deleteIndex++) {
       try {
@@ -617,6 +696,7 @@ function personWorkbookUpdate_(resolved, context) {
     }
     return {
       updatedAt: updatedAt,
+      complete: finalize,
       cleanupWarnings: cleanupWarnings
     };
   } catch (error) {
@@ -693,6 +773,20 @@ function personWorkbookUpdate_(resolved, context) {
     }
     throw error;
   }
+}
+
+function personWorkbookFlushWithRetry_() {
+  var lastError = null;
+  for (var attempt = 0; attempt < 3; attempt++) {
+    try {
+      SpreadsheetApp.flush();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) Utilities.sleep((attempt + 1) * 1200);
+    }
+  }
+  throw lastError || new Error("スプレッドシートの変更を確定できません。");
 }
 
 function personWorkbookQuarantineName_(spreadsheet, preparedName) {
@@ -1113,7 +1207,6 @@ function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
   sheet.setRowHeight(1, 38);
   sheet.setRowHeights(2, 4, 30);
   sheet.setFrozenRows(3);
-  sheet.setFrozenColumns(3);
   try { sheet.setHiddenGridlines(true); } catch (ignoredPlanGridlines) {}
   return sheet;
 }
@@ -1244,34 +1337,72 @@ function personWorkbookRenderStatus_(sheet, context) {
 }
 
 function personWorkbookRenderLedger_(spreadsheet, tempName, context) {
-  artifactAssertLedgerTemplateClean_(context.settings.ledgerTemplateId);
-  var template = SpreadsheetApp.openById(context.settings.ledgerTemplateId);
-  var base = template.getSheetByName("ベース");
-  if (!base) {
-    throw new Error("別添13専用原本の「ベース」シートがありません。");
+  var sheet = spreadsheet.insertSheet(tempName);
+  personWorkbookApplyDocumentStyle_(sheet, 24, 9);
+  var title = "別添13　無人航空機更新講習講習修了証明書発行台帳";
+  sheet.getRange("A1:I1").merge()
+    .setValue((context.sampleMode ? "【サンプル・正式使用禁止】 " : "") + title)
+    .setFontSize(12)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("middle");
+  if (context.sampleMode) {
+    sheet.getRange("A1:I1").setFontColor("#b91c1c");
+    sheet.setTabColor("#b91c1c");
   }
-  var sheet = base.copyTo(spreadsheet);
-  sheet.setName(tempName);
-  if (sheet.getMaxColumns() > 9) {
-    sheet.deleteColumns(10, sheet.getMaxColumns() - 9);
-  }
-  artifactApplyLedgerOutputHeaders_(sheet);
+  var headers = RENEWAL_ARTIFACT.LEDGER_HEADER_ALLOWLIST[1].slice(1);
+  personWorkbookSetValuesWithRetry_(
+    sheet.getRange(2, 2, 1, headers.length),
+    [headers]
+  );
   var values = artifactLedgerOutputFields_(context.record);
   [3, 5, 6].forEach(function(index) {
     values[index] = values[index] ? artifactDateObject_(values[index]) : "";
   });
-  sheet.getRange("B3:I3").setValues(artifactSafeSheetMatrix_([values]));
+  personWorkbookSetValuesWithRetry_(
+    sheet.getRange(3, 2, 1, values.length),
+    [values]
+  );
+  sheet.getRange("F4:F22").setValue("□有り　・　□無し");
+  sheet.getRange("B2:I22")
+    .setBorder(
+      true, true, true, true, true, true,
+      "#111827", SpreadsheetApp.BorderStyle.SOLID
+    )
+    .setVerticalAlignment("middle")
+    .setWrap(true);
+  sheet.getRange("B2:I2")
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setBackground("#ffffff");
+  sheet.getRange("B3:H22").setHorizontalAlignment("center");
   sheet.getRange("E3").setNumberFormat('yyyy"年"m"月"d"日');
   sheet.getRange("G3:H3").setNumberFormat('yyyy"年"m"月"d"日');
-  if (context.sampleMode) {
-    sheet.getRange("A1").setValue(
-      "【サンプル・正式使用禁止】 " +
-      "別添13　無人航空機更新講習講習修了証明書発行台帳"
-    ).setFontColor("#b91c1c").setFontWeight("bold");
-    sheet.setTabColor("#b91c1c");
-  }
+  sheet.setColumnWidth(1, 24);
+  [185, 150, 125, 110, 132, 132, 142, 180]
+    .forEach(function(width, index) {
+      sheet.setColumnWidth(index + 2, width);
+    });
+  sheet.setRowHeight(1, 34);
+  sheet.setRowHeight(2, 58);
+  sheet.setRowHeights(3, 20, 28);
+  sheet.setFrozenRows(2);
   try { sheet.setHiddenGridlines(true); } catch (ignoredLedgerGridlines) {}
   return sheet;
+}
+
+function personWorkbookSetValuesWithRetry_(range, values) {
+  var lastError = null;
+  for (var attempt = 0; attempt < 2; attempt++) {
+    try {
+      range.setValues(values);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) Utilities.sleep(1500);
+    }
+  }
+  throw lastError || new Error("シートの範囲へ値を書き込めません。");
 }
 
 function personWorkbookRenderEvidence_(sheet, context) {
