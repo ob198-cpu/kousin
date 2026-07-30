@@ -815,8 +815,7 @@ function personWorkbookRenderOverview_(sheet, context) {
     ["区分", record.customerType],
     ["受講機関", record.courseProvider],
     ["資格区分", record.licenseClass],
-    ["航空機の種類", record.aircraftType],
-    ["技能証明書番号", record.licenseNo],
+    ["航空機の種類", artifactOperationalAircraftType_(record)],
     ["技能証明申請者番号",
       personWorkbookOptionalIdentifier_(record.skillsApplicantNo)],
     ["現在の免許期限", record.licenseExpiry],
@@ -1112,22 +1111,22 @@ function personWorkbookRenderEvidence_(sheet, context) {
     ],
     [
       "技能証明書",
-      record.licenseNo ? "番号登録あり" : "",
-      record.licenseNo,
+      record.referenceSource === "技能証明書" ? "資料参照あり" : "",
+      "",
       record.referenceSource,
       "",
-      record.eligibilityCheckedDate,
-      record.eligibilityCheckedBy,
-      record.eligibilityEvidence
+      "",
+      "",
+      record.sourceMemo
     ],
     [
       "身分証",
-      record.eligibilityCheckStatus === "一致確認済み" ? "照合済み" : "",
-      record.eligibilityCheckStatus,
-      record.eligibilityEvidence,
       "",
-      record.eligibilityCheckedDate,
-      record.eligibilityCheckedBy,
+      "",
+      "",
+      "",
+      "",
+      "",
       ""
     ]
   ]));
@@ -1146,6 +1145,7 @@ function personWorkbookRenderEvidence_(sheet, context) {
 function personWorkbookRenderCertificate_(sheet, context) {
   personWorkbookPrepareGrid_(sheet, 36, 12);
   var record = context.record;
+  var aircraftType = artifactOperationalAircraftType_(record);
   var expiry = artifactValidIsoDateOrBlank_(record.certificateExpiry) ||
     (artifactValidIsoDateOrBlank_(record.courseDate)
       ? artifactAddCalendarMonthsMinusOne_(record.courseDate)
@@ -1172,19 +1172,19 @@ function personWorkbookRenderCertificate_(sheet, context) {
   sheet.getRange("A12:F16").setValues(artifactSafeSheetMatrix_([
     ["航空機の種類", "一等", "二等", "", "", ""],
     ["回転翼航空機（マルチローター）",
-      record.aircraftType === "回転翼航空機（マルチローター）" &&
+      aircraftType === "回転翼航空機（マルチローター）" &&
         Number(artifactClassValue_(record.licenseClass)) === 1 ? "〇" : "",
-      record.aircraftType === "回転翼航空機（マルチローター）" &&
+      aircraftType === "回転翼航空機（マルチローター）" &&
         Number(artifactClassValue_(record.licenseClass)) === 2 ? "〇" : "", "", "", ""],
     ["回転翼航空機（ヘリコプター）",
-      record.aircraftType === "回転翼航空機（ヘリコプター）" &&
+      aircraftType === "回転翼航空機（ヘリコプター）" &&
         Number(artifactClassValue_(record.licenseClass)) === 1 ? "〇" : "",
-      record.aircraftType === "回転翼航空機（ヘリコプター）" &&
+      aircraftType === "回転翼航空機（ヘリコプター）" &&
         Number(artifactClassValue_(record.licenseClass)) === 2 ? "〇" : "", "", "", ""],
     ["飛行機",
-      record.aircraftType === "飛行機" &&
+      aircraftType === "飛行機" &&
         Number(artifactClassValue_(record.licenseClass)) === 1 ? "〇" : "",
-      record.aircraftType === "飛行機" &&
+      aircraftType === "飛行機" &&
         Number(artifactClassValue_(record.licenseClass)) === 2 ? "〇" : "", "", "", ""],
     ["停止処分者向け講習", record.suspensionCourse, "", "", "", ""]
   ]));

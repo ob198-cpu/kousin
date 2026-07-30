@@ -124,7 +124,7 @@ const pureNames = [
   "artifactValidCutoverMonth_", "artifactRequireNumberingInitialized_",
   "artifactAssertAutomaticNumberingAllowed_", "artifactValidateAutomaticNumberingForPreflight_",
   "artifactValidateCertificateDates_", "artifactValidateCertificateDelivery_",
-  "artifactValidateEligibility_", "artifactEligibilityMetadata_", "artifactQualificationContextMetadata_", "artifactTaxExceptionMetadata_",
+  "artifactValidateEligibility_", "artifactEligibilityMetadata_", "artifactQualificationContextMetadata_", "artifactOperationalAircraftType_", "artifactTaxExceptionMetadata_",
   "artifactAssertEffectiveNumberRules_", "artifactAnyKind_", "artifactYyMm_",
   "artifactAssertPrivateSharingAccess_", "artifactRequireSafeOutputFolder_", "artifactPublicSettings_", "artifactLoadSettings_",
   "artifactSettingsDefaults_", "artifactNormalizeStoredSettings_", "artifactStoredSettingsObject_",
@@ -3359,9 +3359,9 @@ const validateKindBlock = source.slice(
   source.indexOf("function artifactValidateKind_"),
   source.indexOf("function artifactValidateCertificateDates_")
 );
-assert(validateKindBlock.includes("artifactValidateEligibility_(record"),
-  "台帳・証明書・DIPS・講習記録簿の作成前に適格性照合を強制する必要があります");
-assert(validateKindBlock.includes('record.aircraftType) !== "回転翼航空機（マルチローター）"'),
+assert.equal(validateKindBlock.includes("artifactValidateEligibility_(record"), false,
+  "削除した受講開始時照合入力を成果物作成の必須条件にしてはいけません");
+assert(validateKindBlock.includes('aircraftType !== "回転翼航空機（マルチローター）"'),
   "講習記録簿の機体種類をマルチローターに限定する必要があります");
 assert(validateKindBlock.includes('record.courseProvider) !== "CDP"'),
   "CDP実施分以外の正式成果物をCDP名義で作成してはいけません");

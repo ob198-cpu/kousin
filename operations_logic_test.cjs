@@ -106,20 +106,31 @@ const declarationEnd = scriptMatch[1].indexOf("const SAMPLE_RECORDS");
 const declarationContext = {};
 vm.createContext(declarationContext);
 vm.runInContext(scriptMatch[1].slice(declarationStart, declarationEnd) +
-  "\nthis.schema = { FIELD_IDS, CSV_COLUMNS };", declarationContext);
+  "\nthis.schema = { FIELD_IDS, CSV_COLUMNS, REMOVED_INPUT_FIELD_IDS };", declarationContext);
 const formFieldIds = $("#entryForm input[id], #entryForm select[id], #entryForm textarea[id]")
   .map((_, element) => $(element).attr("id")).get().sort();
-assert.deepEqual(Array.from(declarationContext.schema.FIELD_IDS).sort(), formFieldIds, "画面項目とFIELD_IDSが一致しません");
-assert.deepEqual(Array.from(declarationContext.schema.CSV_COLUMNS, (column) => column[0]).sort(),
+const removedInputFieldIds = Array.from(declarationContext.schema.REMOVED_INPUT_FIELD_IDS);
+assert.deepEqual(Array.from(declarationContext.schema.FIELD_IDS)
+  .filter((id) => !removedInputFieldIds.includes(id)).sort(), formFieldIds,
+  "表示中の画面項目とFIELD_IDSが一致しません");
+assert.deepEqual(Array.from(declarationContext.schema.CSV_COLUMNS, (column) => column[0])
+  .filter((id) => !removedInputFieldIds.includes(id)).sort(),
   formFieldIds.filter((id) => id !== "recordId"), "画面項目とCSV_COLUMNSが一致しません");
+removedInputFieldIds.forEach((id) => assert.equal($("#" + id).length, 0, id + "は入力画面から削除してください"));
+const readFormSource = extractFunction(scriptMatch[1], "readForm");
+assert(readFormSource.includes("existingRecord") &&
+  readFormSource.includes("Object.prototype.hasOwnProperty.call(existingRecord, id)"),
+  "画面から削除した旧項目は、既存レコードの編集保存時に元の値を保持する必要があります");
+assert(scriptMatch[1].includes('const DEFAULT_AIRCRAFT_TYPE = "回転翼航空機（マルチローター）"') &&
+  scriptMatch[1].includes("aircraftType: DEFAULT_AIRCRAFT_TYPE"),
+  "航空機の種類を画面から削除した後も、自動帳票の対応機種を内部既定値として固定してください");
 
 [
   "renewalListNo", "courseAvailableDate", "courseDeadlineDate", "noticeSixMonthDate",
   "noticeSixMonthStatus", "noticeThreeMonthDate", "noticeThreeMonthStatus", "noticeLetter1",
   "noticeLetter2", "courseVenue", "renewalListAmount", "renewalListAmountTaxBasis", "renewalListMemo",
-  "practicalVenue", "aircraftType", "eligibilityCheckStatus", "eligibilityCheckedDate", "eligibilityCheckedBy",
-  "eligibilityEvidence", "certificateDelivered", "certificateDeliveredDate", "certificateLedgerMemo", "skillsApplicantNo",
-  "certificateInstructor", "dipsCompletionLinkedDate", "dipsApplicantId", "suspensionCourse", "fitnessCertificateNo",
+  "practicalVenue", "certificateDelivered", "certificateDeliveredDate", "certificateLedgerMemo", "skillsApplicantNo",
+  "certificateInstructor", "dipsCompletionLinkedDate", "dipsApplicantId", "suspensionCourse",
   "dipsRecordMode", "billingRecipientName", "billingHonorific", "billingAddress", "quoteNo",
   "quoteDate", "quoteExpiry", "taxExceptionApprovalDate", "taxExceptionApprovedBy", "taxExceptionReason"
 ].forEach((id) => assert.equal($("#" + id).length, 1, id + "が画面にありません"));

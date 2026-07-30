@@ -894,10 +894,6 @@
                 <input id="email" type="email">
               </div>
               <div class="field">
-                <label for="licenseNo">技能証明書番号</label>
-                <input id="licenseNo">
-              </div>
-              <div class="field">
                 <label for="skillsApplicantNo">技能証明申請者番号</label>
                 <input id="skillsApplicantNo" inputmode="numeric" placeholder="例：2304009552">
               </div>
@@ -909,16 +905,6 @@
                   <option>二等</option>
                 </select>
               </div>
-              <div class="field wide">
-                <label for="aircraftType">航空機の種類</label>
-                <select id="aircraftType">
-                  <option>未確認</option>
-                  <option>回転翼航空機（マルチローター）</option>
-                  <option>回転翼航空機（ヘリコプター）</option>
-                  <option>飛行機</option>
-                </select>
-                <small>この画面の講習記録簿と最低時間の自動判定は、回転翼航空機（マルチローター）だけに対応します。</small>
-              </div>
               <div class="field">
                 <label for="licenseIssuedDate">免許取得日</label>
                 <input id="licenseIssuedDate" type="date">
@@ -926,14 +912,6 @@
               <div class="field">
                 <label for="licenseExpiry">現在の免許期限 *</label>
                 <input id="licenseExpiry" type="date" required>
-              </div>
-              <div class="field">
-                <label for="licenseChecked">技能証明書確認</label>
-                <select id="licenseChecked">
-                  <option>未確認</option>
-                  <option>有効確認済み</option>
-                  <option>期限切れ疑い</option>
-                </select>
               </div>
               <div class="field">
                 <label for="fiscalYear">管理年度（4月〜翌3月）</label>
@@ -950,35 +928,6 @@
                   <option>他機関</option>
                   <option>未確認</option>
                 </select>
-              </div>
-            </div>
-          </fieldset>
-
-          <fieldset>
-            <legend>受講開始時の本人・対象講習照合</legend>
-            <p class="operation-note field full">
-              技能証明申請者番号、氏名、住所、生年月日と、DIPS通知メールに示された受講対象講習を原資料上で突合します。住所・生年月日・メール本文はこのブラウザへ保存せず、照合結果と証憑参照だけを記録します。
-            </p>
-            <div class="grid">
-              <div class="field">
-                <label for="eligibilityCheckStatus">照合結果</label>
-                <select id="eligibilityCheckStatus">
-                  <option>未確認</option>
-                  <option>一致確認済み</option>
-                  <option>不一致</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="eligibilityCheckedDate">照合日</label>
-                <input id="eligibilityCheckedDate" type="date">
-              </div>
-              <div class="field">
-                <label for="eligibilityCheckedBy">照合者</label>
-                <input id="eligibilityCheckedBy">
-              </div>
-              <div class="field wide">
-                <label for="eligibilityEvidence">証憑参照</label>
-                <input id="eligibilityEvidence" placeholder="例：本人提示DIPS画面・通知メール（原本の保存場所を記載）">
               </div>
             </div>
           </fieldset>
@@ -1154,24 +1103,6 @@
                 <input id="certificateInstructor" placeholder="証明書へ記載する担当講師名">
               </div>
               <div class="field">
-                <label for="fitnessMethod">身体適性資料</label>
-                <select id="fitnessMethod">
-                  <option value="">未確認</option>
-                  <option>運転免許証</option>
-                  <option>身体適性検査証明書</option>
-                  <option>その他</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="fitnessCheckedDate">身体適性確認日</label>
-                <input id="fitnessCheckedDate" type="date">
-              </div>
-              <div class="field">
-                <label for="fitnessExpiry">身体適性資料期限</label>
-                <input id="fitnessExpiry" type="date">
-                <small>資料に記載された期限を転記します。CDPの確認日からは自動計算しません。</small>
-              </div>
-              <div class="field">
                 <label for="dipsCompletionLinkedDate">DIPS修了者情報連携日（CDP受講分）</label>
                 <input id="dipsCompletionLinkedDate" type="date">
                 <small>講習機関がCSVを連携し、受理を確認した実日。発行後5営業日の扱いは担当部署に確認が必要です。</small>
@@ -1193,11 +1124,6 @@
                   <option>なし</option>
                   <option>あり</option>
                 </select>
-              </div>
-              <div class="field wide">
-                <label for="fitnessCertificateNo">身体適性検査証明書番号（内部管理用）</label>
-                <input id="fitnessCertificateNo" placeholder="DIPS提出CSVの列7には転記しません">
-                <small>DIPS提出CSVの列7は現行ガイドライン指定の固定値 PA000000000000 を出力します。</small>
               </div>
               <div class="field">
                 <label for="dipsRecordMode">DIPS状態フラグ</label>
@@ -2249,6 +2175,12 @@
     const TRAINING_FIELD_IDS = TRAINING_MODULES.reduce(function (fields, module) {
       return fields.concat([module[0] + "Date", module[0] + "Start", module[0] + "End", module[0] + "Instructor"]);
     }, []);
+    const DEFAULT_AIRCRAFT_TYPE = "回転翼航空機（マルチローター）";
+    const REMOVED_INPUT_FIELD_IDS = [
+      "licenseNo", "aircraftType", "licenseChecked",
+      "eligibilityCheckStatus", "eligibilityCheckedDate", "eligibilityCheckedBy", "eligibilityEvidence",
+      "fitnessMethod", "fitnessCheckedDate", "fitnessExpiry", "fitnessCertificateNo"
+    ];
     const TRAINING_CSV_COLUMNS = TRAINING_MODULES.reduce(function (columns, module) {
       return columns.concat([
         [module[0] + "Date", module[1] + "・受講日"],
@@ -2677,7 +2609,7 @@
         licenseNo: "",
         skillsApplicantNo: "",
         licenseClass: "未確認",
-        aircraftType: "未確認",
+        aircraftType: DEFAULT_AIRCRAFT_TYPE,
         licenseIssuedDate: "",
         licenseExpiry: "",
         licenseChecked: "未確認",
@@ -2758,6 +2690,9 @@
       };
       TRAINING_FIELD_IDS.forEach(function (id) { defaults[id] = ""; });
       const record = Object.assign(defaults, raw || {});
+      if (!record.aircraftType || record.aircraftType === "未確認") {
+        record.aircraftType = DEFAULT_AIRCRAFT_TYPE;
+      }
       if (record.courseDate) {
         record.certificateExpiry = certificateExpiryFromCourseDate(record.courseDate);
       }
@@ -3309,22 +3244,19 @@
     function analyze(record) {
       const licenseExpiry = toDate(record.licenseExpiry);
       const courseDate = toDate(record.courseDate);
-      const eligibilityCheckedDate = toDate(record.eligibilityCheckedDate);
       const certificateIssuedDate = toDate(record.certificateIssuedDate);
       const calculatedCertificateExpiry = courseDate ? toDate(certificateExpiryFromCourseDate(courseDate)) : null;
       const certificateExpiry = toDate(record.certificateExpiry) || calculatedCertificateExpiry;
-      const fitnessExpiry = toDate(record.fitnessExpiry);
       const applicationStart = addMonths(licenseExpiry, -6);
       const applicationDeadline = addMonths(licenseExpiry, -1);
       const legalCourseStart = addMonths(licenseExpiry, -9);
       const cdpCourseStart = addMonths(licenseExpiry, -6);
-      const followDeadline = minDate(applicationDeadline, certificateExpiry, fitnessExpiry);
+      const followDeadline = minDate(applicationDeadline, certificateExpiry);
       const newExpiry = toDate(record.newExpiry);
       const nextCdpCourseStart = addMonths(newExpiry, -6);
       const hasCourse = Boolean(record.courseDate);
       const hasCertificate = Boolean(record.certificateDelivered === "有り" && record.certificateIssuedDate &&
         record.certificateDeliveredDate && record.certificateExpiry && record.certificateNo);
-      const hasFitness = Boolean(record.fitnessMethod && record.fitnessCheckedDate && record.fitnessExpiry);
       const hasDipsApplication = Boolean(record.dipsDate);
       const hasCompletionLink = Boolean(record.dipsCompletionLinkedDate);
       const completionLinkRequired = record.courseProvider === "CDP" && Boolean(certificateIssuedDate);
@@ -3347,7 +3279,7 @@
           dueDate: null, basis: "-", calculation: "-", licenseExpiry: licenseExpiry,
           legalCourseStart: legalCourseStart, cdpCourseStart: cdpCourseStart, applicationStart: applicationStart,
           applicationDeadline: applicationDeadline, certificateExpiry: certificateExpiry,
-          fitnessExpiry: fitnessExpiry, followDeadline: followDeadline, nextCdpCourseStart: nextCdpCourseStart
+          followDeadline: followDeadline, nextCdpCourseStart: nextCdpCourseStart
         };
       }
 
@@ -3408,8 +3340,7 @@
         task = "更新完了と新しい免許期限を確認";
         status = "更新完了待ち";
         dueDate = followDeadline || applicationDeadline;
-        basis = sameDate(dueDate, certificateExpiry) ? "修了証明書有効日" :
-          (sameDate(dueDate, fitnessExpiry) ? "身体適性資料期限" : "申請期限");
+        basis = sameDate(dueDate, certificateExpiry) ? "修了証明書有効日" : "申請期限";
         calculation = basis === "申請期限" ? "免許期限 - 1か月" : "資料記載の期限";
         if (daysUntil(dueDate) <= 0) {
           level = "danger";
@@ -3424,15 +3355,11 @@
       } else if (hasCourse || certificateIssuedDate) {
         stage = hasCertificate ? "修了証明書交付済み" : "講習修了";
         dueDate = followDeadline || applicationDeadline;
-        basis = sameDate(dueDate, certificateExpiry) ? "修了証明書有効日" :
-          (sameDate(dueDate, fitnessExpiry) ? "身体適性資料期限" : "申請期限");
+        basis = sameDate(dueDate, certificateExpiry) ? "修了証明書有効日" : "申請期限";
         calculation = basis === "申請期限" ? "免許期限 - 1か月" : "資料記載の期限";
         if (!hasCertificate) {
           task = "修了証明書の発行番号・交付日・有効日を登録";
           status = "修了証明書情報未完了";
-        } else if (!hasFitness) {
-          task = "身体適性資料を確認";
-          status = "身体適性確認待ち";
         } else {
           task = "DIPS更新申請を完了";
           status = "DIPS申請待ち";
@@ -3477,24 +3404,11 @@
         }
       }
 
-      if (record.licenseChecked !== "有効確認済み" && licenseExpiry && !hasConfirmed) {
-        if (stage === "受付前" || stage === "CDP受付対象") {
-          task = "技能証明書の有効期限を確認";
-          status = "技能証明書未確認";
-          if (level === "ok") {
-            level = "guide";
-            label = "案内";
-          }
-        } else {
-          status += " / 技能証明書未確認";
-        }
-      }
-
       return {
         level: level, label: label, stage: stage, task: task, status: status, dueDate: dueDate, dueDisplay: dueDisplay,
         basis: basis, calculation: calculation, licenseExpiry: licenseExpiry, legalCourseStart: legalCourseStart,
         cdpCourseStart: cdpCourseStart, applicationStart: applicationStart, applicationDeadline: applicationDeadline,
-        certificateExpiry: certificateExpiry, fitnessExpiry: fitnessExpiry, followDeadline: followDeadline,
+        certificateExpiry: certificateExpiry, followDeadline: followDeadline,
         nextCdpCourseStart: nextCdpCourseStart
       };
     }
@@ -3512,12 +3426,9 @@
       const result = analyze(record);
       const licenseExpiry = toDate(record.licenseExpiry);
       const courseDate = toDate(record.courseDate);
-      const eligibilityCheckedDate = toDate(record.eligibilityCheckedDate);
       const certificateIssued = toDate(record.certificateIssuedDate);
       const certificateDeliveredDate = toDate(record.certificateDeliveredDate);
       const certificateExpiry = toDate(record.certificateExpiry);
-      const fitnessCheckedDate = toDate(record.fitnessCheckedDate);
-      const fitnessExpiry = toDate(record.fitnessExpiry);
       const dipsCompletionLinkedDate = toDate(record.dipsCompletionLinkedDate);
       const dipsDate = toDate(record.dipsDate);
       const confirmedDate = toDate(record.confirmedDate);
@@ -3549,8 +3460,6 @@
         if (record[item[1]] !== "" && !/^\d+$/.test(String(record[item[1]]))) errors.push(item[0] + "は0以上の整数で入力してください。");
       });
       if (!["未確認", "一等", "二等"].includes(record.licenseClass)) errors.push("資格区分の値が正しくありません。");
-      if (!["未確認", "回転翼航空機（マルチローター）", "回転翼航空機（ヘリコプター）", "飛行機"].includes(record.aircraftType)) errors.push("航空機の種類が正しくありません。");
-      if (!["未確認", "一致確認済み", "不一致"].includes(record.eligibilityCheckStatus)) errors.push("受講開始時の照合結果が正しくありません。");
       if (!["未送付", "送付済", "対象外"].includes(record.noticeSixMonthStatus)) errors.push("6か月前の案内送付状態が正しくありません。");
       if (!["未送付", "送付済", "対象外"].includes(record.noticeThreeMonthStatus)) errors.push("3か月前の案内送付状態が正しくありません。");
       if (!["未確認", "税抜", "税込"].includes(record.renewalListAmountTaxBasis)) errors.push("更新者一覧の金額税区分が正しくありません。");
@@ -3564,6 +3473,7 @@
       if (!["0", "8", "10"].includes(String(record.taxRate))) errors.push("消費税率は0%、8%、10%のいずれかにしてください。");
       if (!["切捨て", "四捨五入", "切上げ"].includes(record.taxRounding)) errors.push("消費税の端数処理を選択してください。");
       DATE_FIELD_IDS.forEach(function (id) {
+        if (REMOVED_INPUT_FIELD_IDS.includes(id)) return;
         if (record[id] && !toDate(record[id])) errors.push((CSV_COLUMNS.find(function (column) { return column[0] === id; }) || [id, id])[1] + "の日付が正しくありません。");
       });
       if (["0", "8"].includes(String(record.taxRate)) &&
@@ -3575,7 +3485,6 @@
         warnings.push("消費税率10%ですが税率例外の承認情報があります。不要な記録か確認してください。");
       }
       if (certificateIssued && courseDate && certificateIssued < courseDate) errors.push("修了証明書発行日は講習修了日以後にしてください。");
-      if ((certificateIssued || record.certificateNo) && record.aircraftType === "未確認") errors.push("修了証明書を発行・採番する場合は航空機の種類を確定してください。");
       if (certificateIssued && certificateIssued > today()) errors.push("修了証明書発行日に未来日は登録できません。");
       if (certificateIssued && certificateExpiry && certificateExpiry < certificateIssued) errors.push("修了証明書有効年月日が発行日より前です。");
       if (courseDate && certificateExpiry) {
@@ -3588,10 +3497,6 @@
       if (certificateDeliveredDate && !certificateIssued) errors.push("修了証明書の交付年月日を登録する場合は発行日が必要です。");
       if (certificateDeliveredDate && certificateIssued && certificateDeliveredDate < certificateIssued) errors.push("修了証明書の交付年月日は発行日以後にしてください。");
       if (certificateDeliveredDate && certificateDeliveredDate > today()) errors.push("修了証明書の交付年月日に未来日は登録できません。");
-      if (record.fitnessMethod && (!record.fitnessCheckedDate || !record.fitnessExpiry)) warnings.push("身体適性資料を確認済みにするには、確認日と資料記載の期限が必要です。");
-      if ((record.fitnessCheckedDate || record.fitnessExpiry) && !record.fitnessMethod) errors.push("身体適性の確認日・期限を登録する場合は使用した資料を選択してください。");
-      if (fitnessCheckedDate && fitnessCheckedDate > today()) errors.push("身体適性確認日に未来日は登録できません。");
-      if (fitnessCheckedDate && fitnessExpiry && fitnessExpiry < fitnessCheckedDate) warnings.push("身体適性資料が確認日時点で期限切れです。資料原本を再確認してください。");
       if (dipsCompletionLinkedDate && !certificateIssued) errors.push("DIPS修了者情報連携日がある場合は修了証明書発行日が必要です。");
       if (dipsCompletionLinkedDate && certificateIssued && dipsCompletionLinkedDate < certificateIssued) errors.push("DIPS修了者情報連携日は修了証明書発行日以後にしてください。");
       if (dipsCompletionLinkedDate && dipsCompletionLinkedDate > today()) errors.push("DIPS修了者情報連携日に未来日は登録できません。");
@@ -3639,18 +3544,8 @@
       if (record.certificateDelivered === "有り" && !record.certificateDeliveredDate) errors.push("修了証明書を交付済みにする場合は実際の交付年月日が必要です。");
       if (record.certificateDelivered === "有り" && !record.certificateExpiry) errors.push("修了証明書を交付済みにする場合は有効年月日が必要です。");
       if (record.certificateDelivered !== "有り" && record.certificateDeliveredDate) errors.push("修了証明書の交付年月日がある場合は交付状態を「有り」にしてください。");
-      if (courseDate && record.eligibilityCheckStatus !== "一致確認済み") warnings.push("講習修了日がありますが、受講開始時の本人・対象講習照合が完了していません。");
-      if (record.eligibilityCheckStatus === "一致確認済み" && (!record.eligibilityCheckedDate || !record.eligibilityCheckedBy || !record.eligibilityEvidence)) {
-        errors.push("受講開始時照合を確認済みにする場合は、照合日・照合者・証憑参照が必要です。");
-      }
-      if (eligibilityCheckedDate && eligibilityCheckedDate > today()) errors.push("受講開始時の照合日に未来日は登録できません。");
-      if (eligibilityCheckedDate && courseDate && eligibilityCheckedDate > courseDate) errors.push("受講開始時の照合日は講習修了日以前にしてください。");
-      if (record.eligibilityCheckStatus === "不一致") warnings.push("本人情報または受講対象講習が不一致です。講習・証明書作成を進めないでください。");
       if (["既存情報更新", "削除"].includes(record.dipsRecordMode) && !record.dipsApplicantId) errors.push("DIPSの更新・削除には誤登録時と同じ申請者IDが必要です。");
       if (record.dipsRecordMode === "削除") warnings.push("DIPS削除用CSVです。対象行と申請者IDを担当者が再確認し、手動アップロードしてください。");
-      if (record.fitnessCertificateNo && record.fitnessMethod !== "身体適性検査証明書") {
-        warnings.push("身体適性検査証明書番号がありますが、身体適性資料が身体適性検査証明書ではありません。");
-      }
       if (record.quoteDate && record.quoteExpiry && toDate(record.quoteExpiry) < toDate(record.quoteDate)) {
         errors.push("見積有効期限は見積日以後にしてください。");
       }
@@ -3683,13 +3578,13 @@
       const hasPracticalEntry = ["practicalExercise1", "practicalDiscussion"].some(function (prefix) {
         return ["Date", "Start", "End", "Instructor"].some(function (suffix) { return Boolean(record[prefix + suffix]); });
       });
-      if (hasTrainingEntry && record.aircraftType !== "回転翼航空機（マルチローター）") {
+      if (hasTrainingEntry && record.aircraftType !== DEFAULT_AIRCRAFT_TYPE) {
         warnings.push("講習時間の自動判定と記録簿自動作成は回転翼航空機（マルチローター）だけに対応します。");
       }
       if (hasPracticalEntry && record.suspensionCourse !== "あり") {
         warnings.push("実地講習記録がありますが、技能証明の効力停止処分者向け講習が「なし」です。対象区分を確認してください。");
       }
-      if (record.aircraftType === "回転翼航空機（マルチローター）") {
+      if (record.aircraftType === DEFAULT_AIRCRAFT_TYPE) {
         const commonAcademicMinutes = ["academicOverview", "academicRules", "academicLawUpdate", "academicAccident", "academicSafety"]
           .map(function (prefix) { return trainingMinutes(record, prefix); });
         if (commonAcademicMinutes.every(function (minutes) { return minutes !== null; }) &&
@@ -5536,12 +5431,10 @@
     }
 
     function renewalTasks(record, result) {
-      const checked = record.licenseChecked === "有効確認済み";
       const applied = Boolean(record.applicationDate);
       const courseDone = Boolean(record.courseDate);
       const certificateDone = Boolean(record.certificateDelivered === "有り" && record.certificateIssuedDate &&
         record.certificateDeliveredDate && record.certificateExpiry && record.certificateNo);
-      const fitnessDone = Boolean(record.fitnessMethod && record.fitnessCheckedDate);
       const completionLinked = Boolean(record.dipsCompletionLinkedDate);
       const completionLinkApplicable = record.courseProvider === "CDP";
       const completionLinkRequired = completionLinkApplicable && Boolean(record.certificateIssuedDate);
@@ -5552,16 +5445,10 @@
       const followPast = result.followDeadline && daysUntil(result.followDeadline) <= 0;
       const tasks = [
         {
-          title: "技能証明書を確認",
-          detail: "技能証明書番号、免許取得日、現在の免許期限を確認する。",
-          deadline: result.licenseExpiry,
-          state: taskState(checked, !checked, !checked && result.licenseExpiry && daysUntil(result.licenseExpiry) <= 30)
-        },
-        {
           title: "申込・講習日程を登録",
           detail: "CDPは免許期限6か月前から受付し、申込日と講習予定日を登録する。",
           deadline: result.cdpCourseStart,
-          state: taskState(applied, checked && !applied && result.cdpCourseStart && daysUntil(result.cdpCourseStart) <= 0, false)
+          state: taskState(applied, !applied && result.cdpCourseStart && daysUntil(result.cdpCourseStart) <= 0, false)
         },
         {
           title: "更新講習を修了",
@@ -5585,18 +5472,12 @@
             { label: "対象外", className: "done" }
         },
         {
-          title: "身体適性資料を確認",
-          detail: "使用する資料、確認日、資料期限を登録する。",
-          deadline: result.fitnessExpiry,
-          state: taskState(fitnessDone, certificateDone && !fitnessDone, certificateDone && !fitnessDone && followPast)
-        },
-        {
           title: "本人のDIPS更新申請",
           detail: "通常は免許期限6か月前から1か月前まで。本人が申請した実日を登録し、機関のCSV連携日と混同しない。",
           deadline: result.followDeadline || result.applicationDeadline,
           state: taskState(
             dipsApplicationDone,
-            certificateDone && fitnessDone && (!completionLinkApplicable || completionLinked) && !dipsApplicationDone,
+            certificateDone && (!completionLinkApplicable || completionLinked) && !dipsApplicationDone,
             !dipsApplicationDone && followPast
           )
         },
@@ -5665,9 +5546,7 @@
           detailItem("会社名", record.companyName) +
           detailItem("電話", record.phone) +
           detailItem("メール", record.email) +
-          detailItem("技能証明書番号", record.licenseNo) +
           detailItem("資格区分", record.licenseClass) +
-          detailItem("航空機の種類", record.aircraftType) +
           detailItem("免許取得日", record.licenseIssuedDate) +
           detailItem("現在の免許期限", record.licenseExpiry) +
           detailItem("更新者一覧番号", record.renewalListNo) +
@@ -5677,8 +5556,6 @@
           detailItem("3か月前案内", record.noticeThreeMonthStatus + " / " + (record.noticeLetter2 || "記録なし")) +
           detailItem("講習会場", record.courseVenue) +
           detailItem("実地講習場所", record.practicalVenue) +
-          detailItem("受講開始時照合", record.eligibilityCheckStatus + " / " + (record.eligibilityCheckedDate || "日付なし") + " / " + (record.eligibilityCheckedBy || "担当者なし")) +
-          detailItem("照合証憑参照", record.eligibilityEvidence) +
           detailItem("講習記録", completedTraining.length + "/" + applicableModules.length + "項目完了" +
             (completedTraining.length ? "（" + completedTraining.join("、") + "）" : "")) +
           detailItem("修了証明書発行番号", record.certificateNo) +
@@ -5687,7 +5564,6 @@
           detailItem("修了証明書交付年月日", record.certificateDeliveredDate) +
           detailItem("修了証明書有効年月日", dateValue(result.certificateExpiry)) +
           detailItem("発行台帳備考", record.certificateLedgerMemo) +
-          detailItem("身体適性資料期限", dateValue(result.fitnessExpiry)) +
           detailItem("DIPS修了者情報連携日", record.dipsCompletionLinkedDate) +
           detailItem("DIPS更新申請日（本人）", record.dipsDate) +
           detailItem("更新完了確認日", record.confirmedDate) +
@@ -8943,9 +8819,17 @@
 
     function readForm() {
       const data = {};
+      const currentRecordId = String(document.getElementById("recordId").value || "").trim();
+      const existingRecord = currentRecordId ? loadRecords().find(function (record) {
+        return String(record.id || record.recordId || "") === currentRecordId;
+      }) : null;
       FIELD_IDS.forEach(function (id) {
         const element = document.getElementById(id);
-        data[id] = element ? element.value.trim() : "";
+        if (element) {
+          data[id] = element.value.trim();
+        } else if (existingRecord && Object.prototype.hasOwnProperty.call(existingRecord, id)) {
+          data[id] = existingRecord[id];
+        }
       });
       if (!data.personId) data.personId = makePersonId();
       if (!data.recordId) data.recordId = makeId("rec");

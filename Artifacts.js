@@ -2333,19 +2333,19 @@ function artifactValidateCommon_(record, errors, settings) {
 function artifactValidateKind_(kind, record, settings, schedules, errors, warnings) {
   var courseDate = artifactValidIsoDateOrBlank_(record.courseDate);
   var classValue = artifactClassValue_(record.licenseClass);
+  var aircraftType = artifactOperationalAircraftType_(record);
   if (kind === "ledger" || kind === "certificate" || kind === "dipsCsv" || kind === "training") {
     if (!courseDate) errors.push("講習修了日が必要です。");
     if (!classValue) errors.push("資格区分は一等または二等を選択してください。");
     if (["なし", "あり"].indexOf(artifactText_(record.suspensionCourse)) < 0) {
       errors.push("停止処分者向け講習は「なし」または「あり」を確定してください。「未確認」のまま正式成果物は作成できません。");
     }
-    if (["回転翼航空機（マルチローター）", "回転翼航空機（ヘリコプター）", "飛行機"].indexOf(artifactText_(record.aircraftType)) < 0) {
+    if (["回転翼航空機（マルチローター）", "回転翼航空機（ヘリコプター）", "飛行機"].indexOf(aircraftType) < 0) {
       errors.push("航空機の種類をマルチローター・ヘリコプター・飛行機のいずれかに確定してください。");
     }
     if (artifactText_(record.courseProvider) !== "CDP") {
       errors.push("【担当部署に確認が必要】CDP実施分以外の正式成果物はCDP名義で作成できません。講習実施機関を確認してください。");
     }
-    artifactValidateEligibility_(record, artifactTodayIso_(), errors);
   }
   var usesCertificateNumber = ["ledger", "certificate", "dipsCsv"].indexOf(kind) >= 0;
   var certificateIssuedDate = "";
@@ -2424,7 +2424,7 @@ function artifactValidateKind_(kind, record, settings, schedules, errors, warnin
     artifactValidateSchedules_(schedules, record, errors);
     artifactRequireIssuer_(settings, errors, true, false);
   } else if (kind === "training") {
-    if (artifactText_(record.aircraftType) !== "回転翼航空機（マルチローター）") {
+    if (aircraftType !== "回転翼航空機（マルチローター）") {
       errors.push("講習記録簿の自動作成と最低時間判定は、回転翼航空機（マルチローター）のみ対応しています。");
     }
     if (!artifactText_(record.courseVenue)) errors.push("学科講習の会場が必要です。");
@@ -2553,10 +2553,16 @@ function artifactQualificationContextMetadata_(record) {
   record = record || {};
   return {
     licenseClass: artifactText_(record.licenseClass),
-    aircraftType: artifactText_(record.aircraftType),
+    aircraftType: artifactOperationalAircraftType_(record),
     suspensionCourse: artifactText_(record.suspensionCourse),
     courseProvider: artifactText_(record.courseProvider)
   };
+}
+
+/** 本システムの自動帳票はマルチローター講習専用。旧データの未設定値だけを既定値で補完する。 */
+function artifactOperationalAircraftType_(record) {
+  var value = artifactText_((record || {}).aircraftType);
+  return !value || value === "未確認" ? "回転翼航空機（マルチローター）" : value;
 }
 
 function artifactTaxExceptionMetadata_(record) {
@@ -4524,7 +4530,7 @@ function artifactCreateCertificate_(context) {
         tableSelections.push({
           table: tables[tableIndex],
           selection: artifactCertificateTableSelection_(
-            artifactDocTableMatrix_(tables[tableIndex]), record.aircraftType, record.licenseClass
+            artifactDocTableMatrix_(tables[tableIndex]), artifactOperationalAircraftType_(record), record.licenseClass
           )
         });
       } catch (tableMismatchError) {}
@@ -7108,6 +7114,7 @@ function artifactRecordForHash_(kind, record) {
   }
   var result = {};
   for (var i = 0; i < fields.length; i++) result[fields[i]] = record[fields[i]] === undefined || record[fields[i]] === null ? "" : record[fields[i]];
+  if (fields.indexOf("aircraftType") >= 0) result.aircraftType = artifactOperationalAircraftType_(record);
   return result;
 }
 

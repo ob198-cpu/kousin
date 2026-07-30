@@ -1137,7 +1137,7 @@ function complianceCreateSampleCertificate_(context, folder, fileName) {
         matches.push({
           table: table,
           selection: artifactCertificateTableSelection_(
-            artifactDocTableMatrix_(table), record.aircraftType, record.licenseClass
+            artifactDocTableMatrix_(table), artifactOperationalAircraftType_(record), record.licenseClass
           )
         });
       } catch (ignoredTable) {}
