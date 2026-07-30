@@ -185,6 +185,23 @@
     }
     .filter-bar input { min-width: 260px; flex: 1 1 300px; }
     .filter-bar select { min-width: 150px; }
+    .home-filter-bar {
+      display: grid;
+      grid-template-columns:
+        minmax(220px, 1.6fr)
+        repeat(3, minmax(130px, 1fr))
+        max-content;
+      align-items: center;
+    }
+    .home-filter-bar input,
+    .home-filter-bar select {
+      width: 100%;
+      min-width: 0;
+    }
+    .home-filter-bar button {
+      min-height: 40px;
+      white-space: nowrap;
+    }
     .ledger-filter-bar {
       display: grid;
       grid-template-columns: minmax(280px, 1fr) 180px 180px;
@@ -739,6 +756,9 @@
       .artifact-options,
       .compliance-archive-grid { grid-template-columns: 1fr; }
     }
+    @media (max-width: 800px) {
+      .home-filter-bar { grid-template-columns: 1fr; }
+    }
     @media (max-width: 680px) {
       main { padding: 10px; }
       .summary,
@@ -802,7 +822,7 @@
           <strong id="okCount">－</strong><span class="note">期限に余裕</span>
         </div>
       </section>
-      <div class="filter-bar">
+      <div class="filter-bar home-filter-bar">
         <input id="homeSearch" type="search" placeholder="氏名・管理ID・免許番号で検索">
         <select id="riskFilter" aria-label="判定">
           <option value="">すべての判定</option>

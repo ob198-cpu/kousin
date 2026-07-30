@@ -331,6 +331,16 @@ assert.equal($(".app-header .tabs > button[data-screen='finance']").length, 0,
   "上部ナビゲーションに請求・入金ボタンを残してはいけません");
 assert(html.includes("「設定」から再読込してください。"),
   "共有正本の再読込案内は現在の設定ボタン名と一致させてください");
+assert.equal($(".home-filter-bar #homeSearch").length, 1,
+  "ホーム画面の検索欄が横一列フィルタ内にありません");
+assert.equal($(".home-filter-bar select").length, 3,
+  "ホーム画面の判定・段階・年度が横一列フィルタ内にありません");
+assert.equal($(".home-filter-bar #clearHomeFilters").length, 1,
+  "ホーム画面の条件クリアが横一列フィルタ内にありません");
+assert(html.includes("repeat(3, minmax(130px, 1fr))"),
+  "ホーム画面の検索・判定・段階・年度・条件クリアをPCで横一列にする指定がありません");
+assert(html.includes(".home-filter-bar { grid-template-columns: 1fr; }"),
+  "小画面でホーム画面の絞込欄を安全に縦並びへ戻す指定がありません");
 assert.equal($("#showArchived").length, 0,
   "受講者台帳に無効化済み表示チェックを残してはいけません");
 assert.equal(scriptMatch[1].includes("showArchived"), false,
