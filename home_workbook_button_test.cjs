@@ -20,15 +20,15 @@ function functionSource(name) {
   return script.slice(node.start, node.end);
 }
 
-const ledger = functionSource("renderLedger");
+const home = functionSource("renderHome");
 assert(
-  ledger.includes('data-artifacts="') &&
-    ledger.includes(">資料一式を作成・更新</button>"),
-  "更新記録の操作欄に資料一式を作成・更新ボタンが必要です"
+  home.includes('data-artifacts="') &&
+    home.includes(">資料一式を作成・更新</button>"),
+  "統合ホーム一覧の操作欄に資料一式を作成・更新ボタンが必要です"
 );
 assert(
-  ledger.includes("canCreateOrUpdatePersonWorkbook(record)") &&
-    ledger.includes(" disabled title="),
+  home.includes("canCreateOrUpdatePersonWorkbook(record)") &&
+    home.includes(" disabled title="),
   "管理者以外または無効化済み記録では資料作成ボタンを無効にする必要があります"
 );
 
@@ -70,4 +70,4 @@ assert(
   "資料一式ボタンの文字を不自然に分断しない指定が必要です"
 );
 
-console.log("ledger workbook button tests passed");
+console.log("home workbook button tests passed");

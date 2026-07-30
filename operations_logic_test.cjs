@@ -161,9 +161,9 @@ assert(readFormSource.includes("taskChecklist: existingRecord ? existingRecord.t
 assert(scriptMatch[1].includes('const DEFAULT_AIRCRAFT_TYPE = "回転翼航空機（マルチローター）"') &&
   scriptMatch[1].includes("aircraftType: DEFAULT_AIRCRAFT_TYPE"),
   "航空機の種類を画面から削除した後も、自動帳票の対応機種を内部既定値として固定してください");
-assert.equal($("#ledgerScreen thead th").filter((_, element) =>
-  $(element).text().trim() === "次の作業").length, 1,
-  "更新記録に次の作業列が必要です");
+assert.equal($("#homeScreen thead th").filter((_, element) =>
+  $(element).text().trim() === "次にやること").length, 1,
+  "統合ホーム一覧に次にやること列が必要です");
 assert(scriptMatch[1].includes('data-status="') &&
   scriptMatch[1].includes(">一覧</button>"),
   "タスク一覧を開く一覧ボタンが必要です");
@@ -291,8 +291,8 @@ assert(scriptMatch[1].includes("function sharedRecordListStatusMessage()") &&
   scriptMatch[1].includes("if (AppData.loadError)"),
   "対象者一覧は読込中・読込失敗・正常な0件を区別する必要があります");
 assert(scriptMatch[1].includes("AppData.ready = false;") &&
-  scriptMatch[1].includes("renderLedger();"),
-  "共有正本の再読込時も受講者台帳を読込中表示へ戻す必要があります");
+  scriptMatch[1].includes("renderHome();"),
+  "共有正本の再読込時も統合ホーム一覧を読込中表示へ戻す必要があります");
 const sharedStoreRefreshBlock = scriptMatch[1].slice(
   scriptMatch[1].indexOf("async function refreshSharedStore(options)"),
   scriptMatch[1].indexOf("async function persistRecord(record, action)")
@@ -323,8 +323,10 @@ assert(runtimeBannerBlock.includes("banner.hidden = true;") &&
   "Apps Script本番版では案内帯を隠し、公開Pages版では本番導線を表示する必要があります");
 const topNavigationLabels = $(".app-header .tabs > button").map((_, element) =>
   $(element).text().trim()).get();
-assert.deepEqual(topNavigationLabels, ["ホーム", "登録者一覧", "集計", "設定"],
-  "上部ナビゲーションはホーム・登録者一覧・集計・設定の4ボタンだけにしてください");
+assert.deepEqual(topNavigationLabels, ["ホーム", "集計", "設定"],
+  "一覧統合後の上部ナビゲーションはホーム・集計・設定の3ボタンだけにしてください");
+assert.equal($(".app-header .tabs > button[data-screen='ledger']").length, 0,
+  "上部ナビゲーションに重複する登録者一覧ボタンを残してはいけません");
 assert.equal($(".app-header .tabs > button[data-screen='entry']").length, 0,
   "上部ナビゲーションに登録・編集ボタンを残してはいけません");
 assert.equal($(".app-header .tabs > button[data-screen='finance']").length, 0,
@@ -333,12 +335,12 @@ assert(html.includes("「設定」から再読込してください。"),
   "共有正本の再読込案内は現在の設定ボタン名と一致させてください");
 assert.equal($(".home-filter-bar #homeSearch").length, 1,
   "ホーム画面の検索欄が横一列フィルタ内にありません");
-assert.equal($(".home-filter-bar select").length, 3,
-  "ホーム画面の判定・段階・年度が横一列フィルタ内にありません");
+assert.equal($(".home-filter-bar select").length, 4,
+  "ホーム画面の判定・段階・年度・区分が横一列フィルタ内にありません");
 assert.equal($(".home-filter-bar #clearHomeFilters").length, 1,
   "ホーム画面の条件クリアが横一列フィルタ内にありません");
-assert(html.includes("repeat(3, minmax(130px, 1fr))"),
-  "ホーム画面の検索・判定・段階・年度・条件クリアをPCで横一列にする指定がありません");
+assert(html.includes("repeat(4, minmax(130px, 1fr))"),
+  "ホーム画面の検索・判定・段階・年度・区分・条件クリアをPCで横一列にする指定がありません");
 assert(html.includes(".home-filter-bar { grid-template-columns: 1fr; }"),
   "小画面でホーム画面の絞込欄を安全に縦並びへ戻す指定がありません");
 assert.equal($("#homeScreen .home-list-toolbar h2").length, 0,
@@ -347,33 +349,48 @@ assert.equal($("#homeScreen .home-list-toolbar .record-totals").length, 1,
   "優先順見出し削除後も件数表示を保持してください");
 const homeRenderSource = extractFunction(scriptMatch[1], "renderHome");
 assert(homeRenderSource.includes('class="home-task-cell"') &&
+  homeRenderSource.indexOf('class="home-task-cell"') <
+    homeRenderSource.indexOf("data-status") &&
   homeRenderSource.indexOf("data-status") <
-    homeRenderSource.indexOf('class="status-text"'),
+    homeRenderSource.indexOf("<span>請求</span>"),
   "一覧ボタンは「次にやること」セル内へ配置してください");
 const homeOperationCellSource = homeRenderSource.slice(
-  homeRenderSource.indexOf("'<td><div class=\"row-actions\">'"),
-  homeRenderSource.indexOf('"</div></td></tr>"')
+  homeRenderSource.indexOf("'<td><div class=\"home-record-actions\">'"),
+  homeRenderSource.indexOf('"</div></div></td></tr>"')
 );
 assert.equal(homeOperationCellSource.includes("data-status"), false,
   "ホームの操作欄に一覧ボタンを残してはいけません");
 assert(homeOperationCellSource.includes("data-edit"),
   "一覧ボタン移動後も操作欄の編集ボタンを保持してください");
 assert.equal($("#showArchived").length, 0,
-  "受講者台帳に無効化済み表示チェックを残してはいけません");
+  "統合ホーム一覧に無効化済み表示チェックを残してはいけません");
 assert.equal(scriptMatch[1].includes("showArchived"), false,
   "削除した無効化済み表示チェックをJavaScriptから参照してはいけません");
-assert.equal($(".ledger-filter-bar #ledgerSearch").length, 1,
-  "受講者台帳の検索欄が横一列フィルタ内にありません");
-assert.equal($(".ledger-filter-bar select").length, 2,
-  "受講者台帳の年度・区分が横一列フィルタ内にありません");
-assert(html.includes("grid-template-columns: minmax(280px, 1fr) 180px 180px;"),
-  "受講者台帳の検索・年度・区分をPCで横一列にする指定がありません");
-const ledgerRenderBlock = scriptMatch[1].slice(
-  scriptMatch[1].indexOf("function renderLedger()"),
-  scriptMatch[1].indexOf("function currentFinanceRows()")
-);
-assert(ledgerRenderBlock.includes("return !record.archived &&"),
-  "無効化済み記録は表示切替なしで受講者台帳から除外する必要があります");
+assert.equal($("#ledgerScreen").length, 0,
+  "ホームと重複する受講者台帳画面を残してはいけません");
+assert.equal(scriptMatch[1].includes("function renderLedger()"), false,
+  "統合後に重複する受講者台帳描画処理を残してはいけません");
+["ledgerSearch", "ledgerFiscalFilter", "ledgerTypeFilter", "ledgerCount", "ledgerBody"]
+  .forEach((id) => assert.equal(html.includes(id), false,
+    "統合後に受講者台帳専用IDを残してはいけません: " + id));
+const homeHeaders = $("#homeScreen .home-record-table thead th")
+  .map((_, element) => $(element).text().trim()).get();
+assert.deepEqual(homeHeaders, [
+  "判定・対応期限", "登録者", "免許・証明期限", "更新状況",
+  "次にやること", "請求・更新", "操作"
+], "統合ホーム一覧は重複のない7列構成にしてください");
+assert.equal($("#homeRecordBody td.empty").attr("colspan"), "7",
+  "統合ホーム一覧の読込中表示は7列へ合わせてください");
+const activeRecordsSource = extractFunction(scriptMatch[1], "activeRecords");
+assert(activeRecordsSource.includes("!record.archived") &&
+  homeRenderSource.includes("const records = activeRecords();"),
+  "無効化済み記録は統合ホーム一覧から除外する必要があります");
+[
+  "financeForRecord(record)", "canCreateOrUpdatePersonWorkbook(record)",
+  "result.licenseExpiry", "result.certificateExpiry", "fmtDateTime(record.updatedAt)",
+  "basisHtml(result)", "data-artifacts", "data-detail", "data-edit", "data-archive"
+].forEach((marker) => assert(homeRenderSource.includes(marker),
+  "統合ホーム一覧に受講者台帳の情報または操作が不足しています: " + marker));
 assert(scriptMatch[1].includes('const LEGACY_STORAGE_KEYS = ["cdp-renewal-license-records-v3"]'), "旧版ブラウザ保存データの移行元がありません");
 assert.equal(
   /localStorage\.setItem\(\s*(?:STORAGE_KEY|AUDIT_KEY)\b/.test(scriptMatch[1]),
@@ -794,7 +811,7 @@ const publicUiSource = extractFunction(scriptMatch[1], "applyPublicReadOnlyUi");
   "[data-new-record]"
 ].forEach((marker) => assert(publicUiSource.includes(marker),
   "公開Pages版で変更導線を無効化する必要があります: " + marker));
-["renderHome", "renderLedger", "renderFinance"].forEach((name) => {
+["renderHome", "renderFinance"].forEach((name) => {
   assert(
     extractFunction(scriptMatch[1], name).includes("applyPublicReadOnlyUi()"),
     name + "の再描画後も公開Pages版の変更導線を再無効化する必要があります"

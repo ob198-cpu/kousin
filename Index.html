@@ -189,7 +189,7 @@
       display: grid;
       grid-template-columns:
         minmax(220px, 1.6fr)
-        repeat(3, minmax(130px, 1fr))
+        repeat(4, minmax(130px, 1fr))
         max-content;
       align-items: center;
     }
@@ -201,16 +201,6 @@
     .home-filter-bar button {
       min-height: 40px;
       white-space: nowrap;
-    }
-    .ledger-filter-bar {
-      display: grid;
-      grid-template-columns: minmax(280px, 1fr) 180px 180px;
-      align-items: center;
-    }
-    .ledger-filter-bar input,
-    .ledger-filter-bar select {
-      width: 100%;
-      min-width: 0;
     }
     .record-totals {
       color: var(--muted);
@@ -229,8 +219,7 @@
       border-collapse: collapse;
       table-layout: fixed;
     }
-    .priority-table { min-width: 1120px; }
-    .ledger-table { min-width: 1300px; }
+    .home-record-table { min-width: 1455px; }
     .finance-table { min-width: 1120px; }
     .report-table { min-width: 760px; }
     .finance-compact-table { min-width: 720px; table-layout: auto; }
@@ -291,6 +280,31 @@
     }
     .home-task-cell > div { min-width: 0; }
     .home-task-cell .status-button { flex: 0 0 auto; }
+    .home-risk-summary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 7px;
+    }
+    .home-due {
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .compact-line {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr);
+      gap: 6px;
+      align-items: start;
+      margin-top: 4px;
+      font-size: 13px;
+    }
+    .compact-line span {
+      color: var(--muted);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .compact-line strong { color: var(--ink); }
     .person-link {
       min-height: 0;
       border: 0;
@@ -335,6 +349,12 @@
       color: #fff;
     }
     td .row-actions { flex-wrap: nowrap; }
+    td .home-record-actions {
+      display: grid;
+      gap: 7px;
+    }
+    td .home-record-actions > .workbook-action-button { width: 100%; }
+    td .home-record-actions .row-actions { flex-wrap: wrap; }
     .form-panel {
       max-width: 1280px;
       padding: 14px;
@@ -778,7 +798,6 @@
       .filter-bar { align-items: stretch; flex-direction: column; }
       .filter-bar input,
       .filter-bar select { min-width: 0; width: 100%; }
-      .ledger-filter-bar { grid-template-columns: 1fr; }
       .task-row { grid-template-columns: 1fr; }
     }
   </style>
@@ -788,7 +807,6 @@
     <div class="brand">免許更新管理</div>
     <nav class="tabs" aria-label="画面切替">
       <button type="button" class="active" data-screen="home">ホーム</button>
-      <button type="button" data-screen="ledger">登録者一覧</button>
       <button type="button" data-screen="reports">集計</button>
       <button type="button" data-screen="data">設定</button>
     </nav>
@@ -810,7 +828,7 @@
   <main>
     <section id="homeScreen" class="screen active">
       <div class="page-head">
-        <h1>対応一覧</h1>
+        <h1>ホーム</h1>
         <button type="button" class="primary" data-new-record>新規登録</button>
       </div>
       <section class="summary" aria-label="期限リスク集計">
@@ -832,7 +850,7 @@
         </div>
       </section>
       <div class="filter-bar home-filter-bar">
-        <input id="homeSearch" type="search" placeholder="氏名・管理ID・免許番号で検索">
+        <input id="homeSearch" type="search" placeholder="氏名・管理ID・免許番号・会社名">
         <select id="riskFilter" aria-label="判定">
           <option value="">すべての判定</option>
           <option value="danger">危険</option>
@@ -846,86 +864,37 @@
         <select id="homeFiscalFilter" aria-label="年度">
           <option value="">すべての年度</option>
         </select>
+        <select id="homeTypeFilter" aria-label="区分">
+          <option value="">すべての区分</option>
+        </select>
         <button type="button" id="clearHomeFilters">条件クリア</button>
       </div>
       <div class="toolbar home-list-toolbar">
         <span class="record-totals"><b id="filteredCount">－</b>件 / 総人数 <b id="peopleCount">－</b>人 / 総回数 <b id="sessionCount">－</b>件</span>
       </div>
       <div class="table-wrap">
-        <table class="priority-table">
+        <table class="home-record-table">
           <colgroup>
-            <col style="width: 88px">
-            <col style="width: 128px">
             <col style="width: 190px">
-            <col style="width: 285px">
-            <col style="width: 210px">
-            <col style="width: 180px">
-            <col style="width: 105px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>判定</th>
-              <th>対応期限</th>
-              <th>対象</th>
-              <th>次にやること</th>
-              <th>状態</th>
-              <th>期限の根拠</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="priorityBody"><tr><td colspan="7" class="empty">専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section id="ledgerScreen" class="screen">
-      <div class="page-head">
-        <h1>受講者台帳</h1>
-        <button type="button" class="primary" data-new-record>新規登録</button>
-      </div>
-      <div class="filter-bar ledger-filter-bar">
-        <input id="ledgerSearch" type="search" placeholder="氏名・管理ID・免許番号・会社名で検索">
-        <select id="ledgerFiscalFilter" aria-label="年度">
-          <option value="">すべての年度</option>
-        </select>
-        <select id="ledgerTypeFilter" aria-label="区分">
-          <option value="">すべての区分</option>
-          <option>既存</option>
-          <option>新規</option>
-          <option>初学者</option>
-        </select>
-      </div>
-      <div class="toolbar">
-        <h2>更新記録</h2>
-        <span class="record-totals"><b id="ledgerCount">－</b>件</span>
-      </div>
-      <div class="table-wrap">
-        <table class="ledger-table">
-          <colgroup>
-            <col style="width: 120px">
-            <col style="width: 210px">
-            <col style="width: 130px">
-            <col style="width: 145px">
-            <col style="width: 210px">
-            <col style="width: 260px">
-            <col style="width: 150px">
+            <col style="width: 220px">
+            <col style="width: 170px">
+            <col style="width: 190px">
+            <col style="width: 250px">
             <col style="width: 155px">
-            <col style="width: 430px">
+            <col style="width: 280px">
           </colgroup>
           <thead>
             <tr>
-              <th>管理ID</th>
-              <th>対象</th>
-              <th>免許期限</th>
-              <th>修了証明書有効日</th>
-              <th>更新段階</th>
-              <th>次の作業</th>
-              <th>請求状態</th>
-              <th>更新日時</th>
+              <th>判定・対応期限</th>
+              <th>登録者</th>
+              <th>免許・証明期限</th>
+              <th>更新状況</th>
+              <th>次にやること</th>
+              <th>請求・更新</th>
               <th>操作</th>
             </tr>
           </thead>
-          <tbody id="ledgerBody"><tr><td colspan="9" class="empty">専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。</td></tr></tbody>
+          <tbody id="homeRecordBody"><tr><td colspan="7" class="empty">専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -4035,7 +4004,6 @@
         button.classList.toggle("active", button.dataset.screen === name && Boolean(button.closest(".tabs")));
       });
       if (name === "home") renderHome();
-      if (name === "ledger") renderLedger();
       if (name === "finance") renderFinance();
       if (name === "reports") renderReports();
       if (name === "data") {
@@ -4107,7 +4075,7 @@
           "filteredCount", "peopleCount", "sessionCount"].forEach(function (id) {
           document.getElementById(id).textContent = "－";
         });
-        document.getElementById("priorityBody").innerHTML =
+        document.getElementById("homeRecordBody").innerHTML =
           recordListStatusRow(7, statusMessage);
         return;
       }
@@ -4123,97 +4091,80 @@
       document.getElementById("sessionCount").textContent = records.length;
       populateSelect("homeFiscalFilter", fiscalYears(records), "すべての年度");
       populateSelect("stageFilter", Array.from(new Set(analyzed.map(function (row) { return row.result.stage; }))).sort(), "すべての段階");
+      populateSelect(
+        "homeTypeFilter",
+        Array.from(new Set(records.map(function (record) {
+          return record.customerType;
+        }).filter(Boolean))).sort(function (a, b) {
+          return String(a).localeCompare(String(b), "ja");
+        }),
+        "すべての区分"
+      );
 
       const search = document.getElementById("homeSearch").value.trim().toLowerCase();
       const risk = document.getElementById("riskFilter").value;
       const stage = document.getElementById("stageFilter").value;
       const fiscal = document.getElementById("homeFiscalFilter").value;
+      const type = document.getElementById("homeTypeFilter").value;
       const rows = sortByDue(analyzed.filter(function (row) {
         const record = row.record;
         const haystack = [record.targetName, record.personId, record.licenseNo, record.companyName].join(" ").toLowerCase();
         return (!search || haystack.includes(search)) &&
           (!risk || row.result.level === risk) &&
           (!stage || row.result.stage === stage) &&
-          (!fiscal || record.fiscalYear === fiscal);
+          (!fiscal || record.fiscalYear === fiscal) &&
+          (!type || record.customerType === type);
       }));
       document.getElementById("filteredCount").textContent = rows.length;
-      document.getElementById("priorityBody").innerHTML = rows.length ? rows.map(function (row) {
+      document.getElementById("homeRecordBody").innerHTML = rows.length ? rows.map(function (row) {
         const record = row.record;
         const result = row.result;
+        const finance = financeForRecord(record);
         const taskProgress = renewalTaskProgress(record);
+        const canCreateWorkbook = canCreateOrUpdatePersonWorkbook(record);
         const dueClass = result.level === "danger" || result.level === "warning" ? "due" : "";
         return "<tr>" +
-          '<td><span class="tag ' + result.level + '">' + escapeHtml(result.label) + "</span></td>" +
-          '<td><div class="' + dueClass + '">' + escapeHtml(result.dueDisplay || fmt(result.dueDate)) + "</div></td>" +
-          '<td><button type="button" class="person-link" data-detail="' + escapeHtml(record.id) + '">' +
-            escapeHtml(record.targetName) + '</button><div class="sub-info">' +
+          '<td><div class="home-risk-summary"><span class="tag ' + result.level + '">' +
+            escapeHtml(result.label) + '</span><div class="home-due ' + dueClass + '">' +
+            escapeHtml(result.dueDisplay || fmt(result.dueDate)) +
+            '</div></div><div class="basis-line">' + basisHtml(result) + "</div></td>" +
+          '<td><button type="button" class="person-link" data-detail="' +
+            escapeHtml(record.id) + '">' + escapeHtml(record.targetName) +
+            '</button><div class="compact-line"><span>管理ID</span><strong>' +
+            escapeHtml(record.personId) + '</strong></div><div class="sub-info">' +
+            escapeHtml(record.companyName || "-") + '</div><div class="sub-info">' +
+            escapeHtml(record.fiscalYear + "年度 / " + record.sessionNo + "回目") +
+            '</div><div class="sub-info">' +
             escapeHtml(record.customerType + " / " + record.courseProvider) + "</div></td>" +
+          '<td><div class="compact-line"><span>免許</span><strong>' +
+            escapeHtml(fmt(result.licenseExpiry)) +
+            '</strong></div><div class="compact-line"><span>証明書</span><strong>' +
+            escapeHtml(fmt(result.certificateExpiry)) + "</strong></div></td>" +
+          '<td><strong>' + escapeHtml(result.stage) +
+            '</strong><div class="sub-info status-text">' +
+            escapeHtml(result.status) + "</div></td>" +
           '<td><div class="home-task-cell"><div><div class="task">' +
             escapeHtml(taskProgress.nextLabel) +
             '</div><div class="sub-info">完了 ' + taskProgress.completedCount + " / " +
             taskProgress.totalCount + '</div></div>' +
             '<button type="button" class="small-button status-button" data-status="' +
             escapeHtml(record.id) + '">一覧</button></div></td>' +
-          '<td><div class="status-text">' + escapeHtml(result.status) + "</div></td>" +
-          '<td><div class="basis-line">' + basisHtml(result) + "</div></td>" +
-          '<td><div class="row-actions">' +
-            '<button type="button" class="small-button" data-edit="' + escapeHtml(record.id) + '">編集</button>' +
-          "</div></td></tr>";
-      }).join("") : '<tr><td colspan="7" class="empty">該当する記録はありません。</td></tr>';
-      applyPublicReadOnlyUi();
-    }
-
-    function renderLedger() {
-      const statusMessage = sharedRecordListStatusMessage();
-      if (statusMessage) {
-        document.getElementById("ledgerCount").textContent = "－";
-        document.getElementById("ledgerBody").innerHTML =
-          recordListStatusRow(9, statusMessage);
-        return;
-      }
-      const all = loadRecords();
-      populateSelect("ledgerFiscalFilter", fiscalYears(all), "すべての年度");
-      const search = document.getElementById("ledgerSearch").value.trim().toLowerCase();
-      const fiscal = document.getElementById("ledgerFiscalFilter").value;
-      const type = document.getElementById("ledgerTypeFilter").value;
-      const rows = all.filter(function (record) {
-        const haystack = [record.targetName, record.personId, record.licenseNo, record.companyName].join(" ").toLowerCase();
-        return !record.archived &&
-          (!search || haystack.includes(search)) &&
-          (!fiscal || record.fiscalYear === fiscal) &&
-          (!type || record.customerType === type);
-      }).sort(function (a, b) { return String(a.personId).localeCompare(String(b.personId), "ja"); });
-      document.getElementById("ledgerCount").textContent = rows.length;
-      document.getElementById("ledgerBody").innerHTML = rows.length ? rows.map(function (record) {
-        const result = analyze(record);
-        const finance = financeForRecord(record);
-        const taskProgress = renewalTaskProgress(record);
-        const canCreateWorkbook = canCreateOrUpdatePersonWorkbook(record);
-        return "<tr>" +
-          "<td><strong>" + escapeHtml(record.personId) + "</strong><div class=\"sub-info\">" +
-            escapeHtml(record.fiscalYear + "年度 / " + record.sessionNo + "回目") + "</div></td>" +
-          '<td><button type="button" class="person-link" data-detail="' + escapeHtml(record.id) + '">' +
-            escapeHtml(record.targetName) + '</button><div class="sub-info">' + escapeHtml(record.companyName || "-") + "</div></td>" +
-          "<td>" + fmt(result.licenseExpiry) + "</td>" +
-          "<td>" + fmt(result.certificateExpiry) + "</td>" +
-          "<td><strong>" + escapeHtml(result.stage) + '</strong><div class="sub-info">' + escapeHtml(result.status) + "</div></td>" +
-          '<td><strong>' + escapeHtml(taskProgress.nextLabel) +
-            '</strong><div class="sub-info">完了 ' + taskProgress.completedCount + " / " +
-            taskProgress.totalCount + "</div></td>" +
-          "<td>" + escapeHtml(finance.status) + "</td>" +
-          "<td>" + fmtDateTime(record.updatedAt) + "</td>" +
-          '<td><div class="row-actions">' +
-            '<button type="button" class="small-button status-button" data-status="' + escapeHtml(record.id) + '">一覧</button>' +
+          '<td><div class="compact-line"><span>請求</span><strong>' +
+            escapeHtml(finance.status) +
+            '</strong></div><div class="compact-line"><span>更新</span><strong>' +
+            escapeHtml(fmtDateTime(record.updatedAt)) + "</strong></div></td>" +
+          '<td><div class="home-record-actions">' +
             '<button type="button" class="small-button primary workbook-action-button" data-artifacts="' +
               escapeHtml(record.id) + '"' +
               (canCreateWorkbook ? "" : ' disabled title="管理者が有効な更新記録で使用できます"') +
-              '>資料一式を作成・更新</button>' +
-            '<button type="button" class="small-button" data-detail="' + escapeHtml(record.id) + '">詳細</button>' +
+              '>資料一式を作成・更新</button><div class="row-actions">' +
+            '<button type="button" class="small-button" data-detail="' +
+              escapeHtml(record.id) + '">詳細</button>' +
             '<button type="button" class="small-button" data-edit="' + escapeHtml(record.id) + '">編集</button>' +
-            '<button type="button" class="small-button danger-button" data-archive="' + escapeHtml(record.id) + '">' +
-              (record.archived ? "復元" : "無効化") + "</button>" +
-          "</div></td></tr>";
-      }).join("") : '<tr><td colspan="9" class="empty">該当する記録はありません。</td></tr>';
+            '<button type="button" class="small-button danger-button" data-archive="' +
+              escapeHtml(record.id) + '">無効化</button>' +
+          "</div></div></td></tr>";
+      }).join("") : '<tr><td colspan="7" class="empty">該当する記録はありません。</td></tr>';
       applyPublicReadOnlyUi();
     }
 
@@ -6432,8 +6383,7 @@
       if (AppData.mode === "server") return;
       const allowedIds = new Set([
         "homeSearch", "riskFilter", "stageFilter", "homeFiscalFilter",
-        "clearHomeFilters", "ledgerSearch", "ledgerFiscalFilter",
-        "ledgerTypeFilter", "financeSearch", "paymentFilter",
+        "homeTypeFilter", "clearHomeFilters", "financeSearch", "paymentFilter",
         "financeAccountingFrom", "financeAccountingTo", "reportFiscalFilter",
         "downloadTemplate", "exportCsv", "exportFinanceCsv",
         "exportLegacyBrowserData", "purgeLegacyBrowserData"
@@ -7659,7 +7609,6 @@
       AppData.loadError = "";
       if (options.render !== false) {
         renderHome();
-        renderLedger();
       }
       try {
         const response = await serverCall("apiGetDashboardData", { includeDeleted: true, auditLimit: 500 });
@@ -7729,7 +7678,7 @@
           false
         );
         renderRoleTable();
-        // 対象者台帳は会計・バックアップの追加読込を待たずに表示する。
+        // 統合ホーム一覧は会計・バックアップの追加読込を待たずに表示する。
         // 後続APIが遅い場合も、正常な対象者を0件表示で覆い隠さない。
         if (options.render !== false) renderAll();
         if (AppData.configured &&
@@ -10015,7 +9964,6 @@
 
     function renderAll() {
       renderHome();
-      renderLedger();
       renderFinance();
       renderReports();
       renderAudit();
@@ -10069,7 +10017,7 @@
       button.addEventListener("click", function () { clearForm(); showScreen("entry"); });
     });
 
-    ["homeSearch", "riskFilter", "stageFilter", "homeFiscalFilter"].forEach(function (id) {
+    ["homeSearch", "riskFilter", "stageFilter", "homeFiscalFilter", "homeTypeFilter"].forEach(function (id) {
       document.getElementById(id).addEventListener(id === "homeSearch" ? "input" : "change", renderHome);
     });
     document.getElementById("clearHomeFilters").addEventListener("click", function () {
@@ -10077,10 +10025,8 @@
       document.getElementById("riskFilter").value = "";
       document.getElementById("stageFilter").value = "";
       document.getElementById("homeFiscalFilter").value = "";
+      document.getElementById("homeTypeFilter").value = "";
       renderHome();
-    });
-    ["ledgerSearch", "ledgerFiscalFilter", "ledgerTypeFilter"].forEach(function (id) {
-      document.getElementById(id).addEventListener(id === "ledgerSearch" ? "input" : "change", renderLedger);
     });
     ["financeSearch", "paymentFilter", "financeAccountingFrom", "financeAccountingTo"].forEach(function (id) {
       document.getElementById(id).addEventListener(id === "financeSearch" ? "input" : "change", renderFinance);
