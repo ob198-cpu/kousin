@@ -50,6 +50,7 @@ function extractFunction(name) {
 
 const expectedCalendarModuleFunctions = [
   "artifactNormalizeIsoDateList_", "artifactParseCsvMatrixStrict_",
+  "artifactParseDipsOfficialTemplateHeader_", "artifactValidateDipsCsvTemplateSettings_",
   "artifactParseOfficialHolidayCsv_", "artifactAssertImportedHolidayCalendarStore_",
   "artifactLoadImportedHolidayCalendars_", "artifactLoadEffectiveHolidayMaster_",
   "artifactValidateDipsCalendarSettings_", "artifactAddIsoDaysUtc_",
@@ -127,6 +128,7 @@ const pureNames = [
   "artifactAssertEffectiveNumberRules_", "artifactAnyKind_", "artifactYyMm_",
   "artifactAssertPrivateSharingAccess_", "artifactRequireSafeOutputFolder_", "artifactPublicSettings_", "artifactLoadSettings_",
   "artifactSettingsDefaults_", "artifactNormalizeStoredSettings_", "artifactStoredSettingsObject_",
+  "artifactNormalizeArchivedOutputFolders_", "artifactOutputFolderForFiscalYear_",
   "artifactNormalizeLegacyOutputFolders_", "artifactNormalizeSettingsMutationHistory_",
   "artifactSettingsSemanticValue_", "artifactSettingsStateEnvelopeValue_",
   "artifactCleanupLegacySettingsProperties_", "artifactAssertLegacySettingsCleanupComplete_",
@@ -137,9 +139,11 @@ const pureNames = [
   "artifactDedicatedTemplatePinMatches_",
   "artifactSettingsForHash_", "artifactActiveActorEmail_",
   "artifactReferencePinKeysForKinds_", "artifactReferenceFingerprintForKind_",
+  "artifactAssertBillingReferenceSource_", "artifactSparseDisplayCells_", "artifactColumnLetters_",
   "artifactNormalizeAllowedEmails_", "artifactAssertAllowedOutputEmails_", "artifactResolveOutputAccessEmails_", "artifactAssertDriveItemAcl_", "artifactNormalizeSchedules_",
   "artifactNormalizeIsoDateList_", "artifactValidateDipsCalendarSettings_", "artifactAddIsoDaysUtc_",
-  "artifactParseCsvMatrixStrict_", "artifactParseOfficialHolidayCsv_", "artifactAssertImportedHolidayCalendarStore_",
+  "artifactParseCsvMatrixStrict_", "artifactParseDipsOfficialTemplateHeader_", "artifactValidateDipsCsvTemplateSettings_",
+  "artifactParseOfficialHolidayCsv_", "artifactAssertImportedHolidayCalendarStore_",
   "artifactDipsSubmissionDeadline_", "artifactValidateDipsSubmission_", "artifactErrorMessage_",
   "artifactTemplateId_", "artifactAssertRequiredTemplateSettings_",
   "artifactOriginalCertificateDates_", "artifactValidateCertificateDateContinuity_", "artifactAssertCertificateDateContinuity_",
@@ -165,7 +169,7 @@ const pureNames = [
   "artifactPreparedFinalIdentityPrefix_", "artifactAnnualLedgerFileName_", "artifactAssertNoStrayPreparedLedger_",
   "artifactRecoverPreparedFile_", "artifactRecoverPreparedLedger_", "artifactRecoverPreparedOutput_",
   "artifactBoolean_", "artifactExtractDriveId_", "artifactFiscalYearFromIso_", "artifactExtractDriveFileId_", "artifactFolderUrl_", "artifactIsEmail_",
-  "artifactCsvRow_", "artifactNumber_", "artifactStrictNumber_", "artifactSheetText_", "artifactRequireIsoDate_",
+  "artifactCsvRow_", "artifactDipsCsvHeaders_", "artifactNumber_", "artifactStrictNumber_", "artifactSheetText_", "artifactRequireIsoDate_",
   "artifactSafeSheetRow_", "artifactSafeSheetMatrix_", "artifactText_", "artifactClone_",
   "artifactNormalizeRecord_", "artifactNormalizeKinds_", "artifactComposeTemplateFingerprint_", "artifactCanonicalJson_", "artifactHashHex_", "artifactPad_",
   "artifactCanonicalRequestError_", "artifactLoadCanonicalArtifactRequest_", "artifactLoadFormalInvoiceForArtifact_",
@@ -310,6 +314,11 @@ const context = {
         revisionModifiedTime: "2026-07-14T13:46:53.063Z",
         kinds: ["ledger", "certificate", "dipsCsv", "guidance", "training", "billing"]
       }
+    },
+    BILLING_REFERENCE_SOURCE: {
+      version: "CDP_BILLING_REFERENCE_SEMANTIC_V1",
+      id: "billing-reference",
+      sheets: []
     }
   },
   RENEWAL_JAPAN_HOLIDAYS: {
@@ -1187,6 +1196,8 @@ let saveApiCurrent = {
   issuerEmail: "owner@example.com",
   invoiceRegistrationNo: "T1234567890123",
   outputFolderId: context.RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID,
+  outputFiscalYear: "2026",
+  archivedOutputFolders: [],
   templateFolderId: "template-folder",
   ledgerTemplateId: "ledger-template",
   certificateTemplateId: "certificate-template",
@@ -1194,6 +1205,9 @@ let saveApiCurrent = {
   dipsAdditionalClosedDates: "",
   dipsCalendarConfirmedDate: "2026-07-01",
   dipsCalendarConfirmedBy: "担当者",
+  dipsCsvTemplateHeaderHash: "",
+  dipsCsvTemplateConfirmedDate: "",
+  dipsCsvTemplateConfirmedBy: "",
   numberingInitialized: false,
   numberingCutoverMonth: "",
   certificateSequenceSeed: "",
@@ -1216,11 +1230,16 @@ const saveApiContext = {
   artifactResolveOutputAccessEmails_: () => ["owner@example.com"],
   artifactNormalizeIsoDateList_: (value) => String(value || "").split(/[\s,;]+/).filter(Boolean),
   artifactNormalizeSchedules_: (value) => Array.isArray(value) ? value : [],
+  artifactNormalizeArchivedOutputFolders_: (value) => Array.isArray(value) ? value : [],
   artifactBoolean_: (value) => value === true,
   artifactIsEmail_: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "")),
   artifactAssertNumberingSettings_() {},
   artifactTodayIso_: () => "2026-07-24",
   artifactValidateDipsCalendarSettings_() {},
+  artifactValidateDipsCsvTemplateSettings_() {},
+  artifactParseDipsOfficialTemplateHeader_() {
+    return { headerHash: "a".repeat(64) };
+  },
   artifactAssertRequiredTemplateSettings_() {},
   artifactAssertLedgerTemplateClean_() {},
   artifactAssertCertificateTemplateClean_() {},
@@ -1858,11 +1877,27 @@ logic.artifactValidateCommon_(
 );
 assert(fixedYearErrors.some((message) => message.includes("年度が一致しません")));
 fixedYearErrors = [];
+const multiYearSettings = Object.assign({}, logic.artifactSettingsDefaults_(), {
+  outputFiscalYear: "2027",
+  outputFolderId: "output-2027",
+  archivedOutputFolders: [{
+    fiscalYear: "2026",
+    folderId: context.RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID
+  }]
+});
 logic.artifactValidateCommon_(
   { recordId: "record-year", targetName: "年度確認", fiscalYear: "2027", courseDate: "" },
-  fixedYearErrors
+  fixedYearErrors,
+  multiYearSettings
 );
-assert(fixedYearErrors.some((message) => message.includes("2026年度専用")));
+assert.deepEqual(fixedYearErrors, [], "登録済み年度別保存先の対象者は作成可能である必要があります");
+fixedYearErrors = [];
+logic.artifactValidateCommon_(
+  { recordId: "record-year", targetName: "年度確認", fiscalYear: "2028", courseDate: "" },
+  fixedYearErrors,
+  multiYearSettings
+);
+assert(fixedYearErrors.some((message) => message.includes("承認済み成果物保存先")));
 fixedYearErrors = [];
 logic.artifactValidateCommon_(
   { recordId: "record-year", targetName: "年度確認", fiscalYear: "2026", courseDate: "2026-02-30" },
@@ -2739,6 +2774,36 @@ assert.equal(logic.artifactSheetText_("  =SUM(A1:A2)"), "'  =SUM(A1:A2)");
 assert.equal(logic.artifactSheetText_("通常文字"), "通常文字");
 assert.deepEqual(Array.from(logic.artifactSafeSheetRow_(["+1", 1, "氏名"])), ["'+1", 1, "氏名"]);
 assert.equal(logic.artifactCsvRow_(["a,b", 'a"b', "a\nb"]), '"a,b","a""b","a\nb"');
+const expectedDipsHeaders = Array.from(logic.artifactDipsCsvHeaders_());
+assert.equal(expectedDipsHeaders.length, 11, "DIPS公式CSVは11列で固定する必要があります");
+const verifiedDipsHeader = logic.artifactParseDipsOfficialTemplateHeader_(
+  "\uFEFF" + logic.artifactCsvRow_(expectedDipsHeaders) + "\r\n"
+);
+assert.equal(verifiedDipsHeader.headerHash, logic.artifactHashHex_(expectedDipsHeaders));
+assert.throws(
+  () => logic.artifactParseDipsOfficialTemplateHeader_(
+    logic.artifactCsvRow_(expectedDipsHeaders) + "\r\n" +
+    logic.artifactCsvRow_(new Array(11).fill("個人データ")) + "\r\n"
+  ),
+  /ヘッダー1行だけ/,
+  "申請者データ行を含むDIPS CSVを事業者設定へ取り込んではいけません"
+);
+const dipsTemplateSettingsErrors = [];
+assert.equal(logic.artifactValidateDipsCsvTemplateSettings_({
+  dipsCsvTemplateHeaderHash: verifiedDipsHeader.headerHash,
+  dipsCsvTemplateConfirmedDate: "2026-07-24",
+  dipsCsvTemplateConfirmedBy: "確認担当者"
+}, "2026-07-24", true, dipsTemplateSettingsErrors), true);
+assert.deepEqual(dipsTemplateSettingsErrors, []);
+const sparseCells = logic.artifactSparseDisplayCells_({
+  getRow: () => 1,
+  getColumn: () => 1,
+  getDisplayValues: () => [["見積書", ""], ["", "　"]]
+});
+assert.deepEqual(Array.from(sparseCells, (row) => Array.from(row)), [
+  ["A1", "見積書"],
+  ["B2", "　"]
+]);
 assert.equal(
   logic.artifactComposeTemplateFingerprint_("template-id", "2026-07-15T01:02:03.000Z", ""),
   "drive:template-id@2026-07-15T01:02:03.000Z"
@@ -3163,10 +3228,23 @@ const preflightBlock = source.slice(
   source.indexOf("function artifactBuildPreflight_"),
   source.indexOf("function artifactValidateCommon_")
 );
-assert(preflightBlock.includes("artifactRequireSafeOutputFolder_(settings.outputFolderId,"),
+assert(preflightBlock.includes("artifactRequireSafeOutputFolder_(") &&
+  preflightBlock.includes("runtime.outputFolderId"),
   "事前検査時に出力先の非公開検査がありません");
 assert(preflightBlock.includes("artifactAssertDedicatedTemplateStorageSafe_(settings)"),
   "事前検査時に専用原本フォルダと原本ファイルの所有者専用ACLを確認する必要があります");
+assert(
+  preflightBlock.indexOf("artifactValidateKind_") <
+    preflightBlock.indexOf("artifactAssertPinnedReferenceSources_") &&
+  preflightBlock.indexOf("hasLocalErrors") <
+    preflightBlock.indexOf("artifactAssertPinnedReferenceSources_"),
+  "入力不備がある場合は重いDrive・参照元検査より先に返す必要があります"
+);
+assert(source.includes("BILLING_REFERENCE_SOURCE") &&
+  source.includes("sheetId: 1126540312") &&
+  source.includes("sheetId: 646051952") &&
+  extractFunction("artifactAssertPinnedReferenceSources_").includes("artifactAssertBillingReferenceSource_"),
+  "見積書・請求書の指定タブを意味版固定で検査する必要があります");
 const createBlock = source.slice(
   source.indexOf("function apiCreateArtifacts"),
   source.indexOf("function artifactBuildPreflight_")
@@ -3259,10 +3337,18 @@ assert(validateKindBlock.includes('record.courseProvider) !== "CDP"'),
 assert(validateKindBlock.includes("artifactValidateDipsSubmission_"),
   "DIPS修了者情報の5営業日連携期限検査がありません");
 const validateCommonBlock = extractFunction("artifactValidateCommon_");
-assert(validateCommonBlock.includes("PINNED_OUTPUT_FISCAL_YEAR") &&
+assert(validateCommonBlock.includes("artifactOutputFolderForFiscalYear_") &&
   validateCommonBlock.includes("validCourseDate") &&
   validateCommonBlock.includes("artifactFiscalYearFromIso_(validCourseDate)"),
-  "2026年度固定フォルダへ別年度の成果物を誤保存しない検査が必要です");
+  "対象年度の承認済み保存先と講習修了日の年度一致検査が必要です");
+const annualOutputApiBlock = extractFunction("apiRegisterArtifactOutputYear");
+assert(
+  annualOutputApiBlock.includes("Number(currentYear) + 1") &&
+  annualOutputApiBlock.includes("artifactAssertNewAnnualOutputFolderEmpty_") &&
+  annualOutputApiBlock.includes("artifactRequireSafeOutputFolder_") &&
+  annualOutputApiBlock.includes("archivedOutputFolders"),
+  "次年度保存先は連続年度・空・非公開・ACLを検査し、旧年度を履歴保持する必要があります"
+);
 
 const autoRootBlock = source.slice(
   source.indexOf("function artifactEnsureAutoRoot_"),

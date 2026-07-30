@@ -224,6 +224,19 @@ assert(!samplePaymentRecordSource.includes("billing.base"));
   "apiPreflightComplianceArchive",
   "apiCreateComplianceArchive"
 ].forEach((name) => assert(source.includes("function " + name + "("), name + " API is missing"));
+assert(
+  source.includes("kind, request, authorization, { skipDriveValidation: true }"),
+  "preflight must defer the heavy Drive inspection"
+);
+assert(
+  source.includes("if (skipDriveValidation !== true)"),
+  "the complete context must retain the Drive safety inspection"
+);
+assert(
+  source.includes("artifactAssertNoUnresolvedCleanupFailures_();") &&
+    source.includes("var context = complianceBuildContext_(kind, request, authorization);"),
+  "creation must perform the full Drive validation under the lock before output"
+);
 
 [
   "事務規程、別添03 講習記録簿　保管",

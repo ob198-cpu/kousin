@@ -129,6 +129,8 @@ assert.deepEqual(Array.from(declarationContext.schema.CSV_COLUMNS, (column) => c
   "saveArtifactSettings", "reloadArtifactSettings", "saveScheduleMaster", "artifactOutputFolderId",
   "artifactCertificateTemplateId", "artifactLedgerTemplateId",
   "artifactDipsAdditionalClosedDates", "artifactDipsCalendarConfirmedDate", "artifactDipsCalendarConfirmedBy",
+  "dipsCsvOfficialTemplateFile", "artifactDipsCsvTemplateConfirmedDate", "artifactDipsCsvTemplateConfirmedBy",
+  "dipsCsvTemplateVerificationStatus",
   "artifactNumberingInitialized", "artifactNumberingCutoverMonth", "artifactCertificateSequenceSeed", "artifactDipsSequenceSeed",
   "paidTotal", "appliedTotal", "outstandingTotal", "overpaymentTotal", "financeAccountingFrom", "financeAccountingTo"
 ].forEach((id) => assert.equal($("#" + id).length, 1, id + "が画面にありません"));
@@ -142,11 +144,19 @@ assert.equal($("#artifactOutputFolderId").is("[readonly]"), true,
 assert.equal($("#artifactOutputFolderId").val(), pinnedOutputFolderId,
   "成果物の固定保存先表示が承認済み2026年度フォルダと一致しません");
 assert(scriptMatch[1].includes('const PINNED_ARTIFACT_OUTPUT_FOLDER_ID = "' + pinnedOutputFolderId + '"'),
-  "画面の固定保存先定数が承認済みIDと一致しません");
-assert(scriptMatch[1].includes('document.getElementById("artifactOutputFolderId").value = PINNED_ARTIFACT_OUTPUT_FOLDER_ID'),
-  "サーバー応答から別IDを受けても画面表示を固定IDへ戻す必要があります");
-assert(scriptMatch[1].includes("payload.outputFolderId !== PINNED_ARTIFACT_OUTPUT_FOLDER_ID"),
-  "設定保存直前にも固定保存先IDを検査する必要があります");
+  "初回互換の2026年度保存先IDが一致しません");
+assert(scriptMatch[1].includes("data.outputFolderId || PINNED_ARTIFACT_OUTPUT_FOLDER_ID"),
+  "画面はサーバーで承認済みの現行年度保存先を表示する必要があります");
+assert(scriptMatch[1].includes("artifactRuntimeSettings.outputFolderId || PINNED_ARTIFACT_OUTPUT_FOLDER_ID"),
+  "通常の設定保存で現行年度保存先を勝手に変更できない検査が必要です");
+assert.equal($("#artifactNextOutputFiscalYear").length, 1);
+assert.equal($("#artifactNextOutputFolderId").length, 1);
+assert.equal($("#artifactConfirmAnnualOutputFolder").length, 1);
+assert.equal($("#registerArtifactOutputYear").length, 1);
+assert(scriptMatch[1].includes('serverCall("apiRegisterArtifactOutputYear"') &&
+  scriptMatch[1].includes("confirmAnnualOutputFolder: true") &&
+  scriptMatch[1].includes("expectedVersion: artifactSettingsVersion"),
+  "次年度保存先は専用API・確認値・設定版を使って登録する必要があります");
 assert(scriptMatch[1].includes("旧保存先の設定あり（ID: ") &&
   scriptMatch[1].includes("監査済み旧保存先履歴: "),
   "旧保存先の監査付き移行が必要な警告表示がありません");

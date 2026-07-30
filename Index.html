@@ -1740,7 +1740,7 @@
       </section>
       <section class="data-section">
         <h2>自動作成の事業者設定</h2>
-        <p class="operation-note">修了証明書・案内・見積書・請求書に表示する発行者情報です。テンプレート原本は変更せず、アクセス制限済みの固定保存先「2026年度」内へシステムが作る「自動作成」に保存します。個人情報入りの既存原本は使用できません。銀行口座は請求書だけに使用し、画面の受講者データへ保存しません。</p>
+        <p class="operation-note">修了証明書・案内・見積書・請求書に表示する発行者情報です。テンプレート原本は変更せず、年度ごとに承認した非公開保存先の「自動作成」に保存します。個人情報入りの既存原本は使用できません。銀行口座は請求書だけに使用し、画面の受講者データへ保存しません。</p>
         <p class="operation-note"><strong>原本承認：</strong>機械検査だけでヘッダー・フッター・注釈を含む全領域の個人情報不存在を保証することはできません。専用原本を管理者が全ページ確認し、編集者を限定し、試作出力を確認してからIDを登録してください。</p>
         <div class="settings-grid">
           <div class="field wide"><label for="artifactIssuerCompany">事業者名</label><input id="artifactIssuerCompany"></div>
@@ -1752,9 +1752,9 @@
           <div class="field wide"><label for="artifactInvoiceRegistrationNo">適格請求書発行事業者登録番号</label><input id="artifactInvoiceRegistrationNo"></div>
           <div class="field full"><label for="artifactBankAccount">振込先（変更時のみ入力）</label><input id="artifactBankAccount" autocomplete="off" placeholder="保存済みの場合は空欄のままで維持"></div>
           <div class="field full">
-            <label for="artifactOutputFolderId">成果物の固定保存先（2026年度）</label>
+            <label for="artifactOutputFolderId" id="artifactOutputFolderLabel">成果物の現行保存先（2026年度）</label>
             <input id="artifactOutputFolderId" value="1XmQirjBrQR-uC_GuBVXAyRK5zfqtoQwN" readonly>
-            <small><a href="https://drive.google.com/drive/folders/1XmQirjBrQR-uC_GuBVXAyRK5zfqtoQwN" target="_blank" rel="noopener noreferrer">2026年度フォルダを開く</a>。成果物は「2026年度 / 自動作成 / 対象者別フォルダ」へ保存します。別フォルダは指定できません。</small>
+            <small id="artifactOutputFolderHelp">成果物は「年度 / 自動作成 / 対象者別フォルダ」へ保存します。通常の事業者設定保存では変更できません。</small>
           </div>
           <div class="field full"><label>成果物のアクセス権限</label><small>メールアドレスの手入力は使用しません。共有正本の有効利用者とGoogle Driveの所有者・編集者・閲覧者を作成前に自動照合し、未知の共有先、リンク・ドメイン公開、編集者による再共有があれば停止します。</small></div>
           <div class="field full"><label for="artifactCertificateTemplateId">無個人情報の修了証明書テンプレートID *</label><input id="artifactCertificateTemplateId" placeholder="「ベース」1タブだけの専用Googleドキュメント"></div>
@@ -1772,6 +1772,27 @@
             </label>
           </div>
         </div>
+        <details id="dipsCsvTemplateVerificationPanel">
+          <summary>DIPS最新公式CSVひな形の11列を検査</summary>
+          <p class="operation-note">DIPSへログインして取得した最新の空CSVひな形を選択します。ヘッダー1行だけを検査し、申請者データ行を含むCSVは受け付けません。CSV本文は保存せず、確認済み11列のhash・確認日・確認者だけを共有設定へ保存します。</p>
+          <div class="settings-grid">
+            <div class="field full"><label for="dipsCsvOfficialTemplateFile">DIPS公式の空CSVひな形</label><input id="dipsCsvOfficialTemplateFile" type="file" accept=".csv,text/csv"></div>
+            <div class="field"><label for="artifactDipsCsvTemplateConfirmedDate">確認日</label><input id="artifactDipsCsvTemplateConfirmedDate" type="date"></div>
+            <div class="field wide"><label for="artifactDipsCsvTemplateConfirmedBy">確認者</label><input id="artifactDipsCsvTemplateConfirmedBy" maxlength="100" placeholder="実際に11列を照合した担当者"></div>
+          </div>
+          <div id="dipsCsvTemplateVerificationStatus" class="operation-note server-status" role="status">未確認です。</div>
+        </details>
+        <details id="artifactOutputYearRegistrationPanel">
+          <summary>次年度の成果物保存先を登録</summary>
+          <p class="operation-note">年度末に1回だけ使用します。現行年度の次年度、名称が「YYYY年度」と完全一致する空の非公開フォルダだけを登録できます。旧年度の保存先と成果物は移動・削除せず、訂正作成用の履歴として保持します。</p>
+          <div class="settings-grid">
+            <div class="field"><label for="artifactNextOutputFiscalYear">次年度</label><input id="artifactNextOutputFiscalYear" type="number" min="2027" max="2099" readonly></div>
+            <div class="field full"><label for="artifactNextOutputFolderId">次年度専用の空フォルダID</label><input id="artifactNextOutputFolderId" placeholder="Google DriveフォルダID"></div>
+            <div class="field full"><label class="settings-confirmation"><input id="artifactConfirmAnnualOutputFolder" type="checkbox"><span>フォルダ名・非公開設定・中身が空であることを確認し、現行年度の次年度として登録します。</span></label></div>
+          </div>
+          <div class="actions"><button type="button" id="registerArtifactOutputYear">次年度保存先を検査して登録</button></div>
+          <div id="artifactOutputYearStatus" class="operation-note server-status" role="status"></div>
+        </details>
         <details id="holidayImportPanel">
           <summary>2028年以降の内閣府公式祝日CSVを登録</summary>
           <p class="operation-note">内閣府が公表したCSVを担当者が取得し、そのまま検査します。将来年を数式で推測しません。</p>
@@ -2121,6 +2142,7 @@
     let artifactSettingsLoaded = false;
     let artifactRuntimeSettings = {};
     let artifactSettingsVersion = 0;
+    let dipsCsvOfficialTemplateText = "";
     let scheduleDirty = false;
     let recordStorageCorruption = null;
     let auditStorageCorruption = null;
@@ -7863,6 +7885,8 @@
         artifactDipsAdditionalClosedDates: "dipsAdditionalClosedDates",
         artifactDipsCalendarConfirmedDate: "dipsCalendarConfirmedDate",
         artifactDipsCalendarConfirmedBy: "dipsCalendarConfirmedBy",
+        artifactDipsCsvTemplateConfirmedDate: "dipsCsvTemplateConfirmedDate",
+        artifactDipsCsvTemplateConfirmedBy: "dipsCsvTemplateConfirmedBy",
         artifactNumberingCutoverMonth: "numberingCutoverMonth",
         artifactCertificateSequenceSeed: "certificateSequenceSeed",
         artifactDipsSequenceSeed: "dipsSequenceSeed"
@@ -7871,9 +7895,30 @@
         const value = data[mapping[elementId]];
         document.getElementById(elementId).value = value == null ? "" : String(value);
       });
-      document.getElementById("artifactOutputFolderId").value = PINNED_ARTIFACT_OUTPUT_FOLDER_ID;
+      document.getElementById("artifactOutputFolderId").value =
+        data.outputFolderId || PINNED_ARTIFACT_OUTPUT_FOLDER_ID;
+      document.getElementById("artifactOutputFolderLabel").textContent =
+        "成果物の現行保存先（" + (data.outputFiscalYear || "2026") + "年度）";
+      const outputFolderHelp = document.getElementById("artifactOutputFolderHelp");
+      outputFolderHelp.textContent =
+        "成果物は「" + (data.outputFiscalYear || "2026") +
+        "年度 / 自動作成 / 対象者別フォルダ」へ保存します。通常の事業者設定保存では変更できません。";
+      document.getElementById("artifactNextOutputFiscalYear").value =
+        String(Number(data.outputFiscalYear || 2026) + 1);
+      document.getElementById("artifactNextOutputFolderId").value = "";
+      document.getElementById("artifactConfirmAnnualOutputFolder").checked = false;
+      document.getElementById("artifactOutputYearStatus").textContent =
+        "現行：" + (data.outputFiscalYear || "2026") + "年度／過年度保存先：" +
+        (Array.isArray(data.archivedOutputFolders) ? data.archivedOutputFolders.length : 0) + "件";
       document.getElementById("artifactNumberingInitialized").checked = data.numberingInitialized === true;
       document.getElementById("artifactBankAccount").value = "";
+      dipsCsvOfficialTemplateText = "";
+      document.getElementById("dipsCsvOfficialTemplateFile").value = "";
+      document.getElementById("dipsCsvTemplateVerificationStatus").textContent =
+        data.dipsCsvTemplateConfirmed
+          ? "照合済み：" + (data.dipsCsvTemplateConfirmedDate || "-") + "／" +
+            (data.dipsCsvTemplateConfirmedBy || "-")
+          : "未確認です。DIPSの最新の空CSVひな形を選択してください。";
     }
 
     async function loadArtifactSettings() {
@@ -8061,6 +8106,9 @@
         dipsAdditionalClosedDates: document.getElementById("artifactDipsAdditionalClosedDates").value.trim(),
         dipsCalendarConfirmedDate: document.getElementById("artifactDipsCalendarConfirmedDate").value,
         dipsCalendarConfirmedBy: document.getElementById("artifactDipsCalendarConfirmedBy").value.trim(),
+        dipsCsvOfficialTemplateCsv: dipsCsvOfficialTemplateText,
+        dipsCsvTemplateConfirmedDate: document.getElementById("artifactDipsCsvTemplateConfirmedDate").value,
+        dipsCsvTemplateConfirmedBy: document.getElementById("artifactDipsCsvTemplateConfirmedBy").value.trim(),
         numberingInitialized: document.getElementById("artifactNumberingInitialized").checked,
         numberingCutoverMonth: document.getElementById("artifactNumberingCutoverMonth").value,
         certificateSequenceSeed: document.getElementById("artifactCertificateSequenceSeed").value.trim(),
@@ -8069,8 +8117,8 @@
         expectedVersion: artifactSettingsVersion,
         idempotencyKey: makeId("artifact-settings")
       };
-      if (payload.outputFolderId !== PINNED_ARTIFACT_OUTPUT_FOLDER_ID) {
-        setArtifactSettingsStatus("成果物の保存先は承認済みの2026年度フォルダに固定されています。画面を再読み込みしてください。", true);
+      if (payload.outputFolderId !== String(artifactRuntimeSettings.outputFolderId || PINNED_ARTIFACT_OUTPUT_FOLDER_ID)) {
+        setArtifactSettingsStatus("通常保存では成果物の年度保存先を変更できません。画面を再読み込みしてください。", true);
         return;
       }
       if (!payload.certificateTemplateId || !payload.ledgerTemplateId) {
@@ -8088,6 +8136,16 @@
       }
       if (payload.dipsCalendarConfirmedDate && toDate(payload.dipsCalendarConfirmedDate) > today()) {
         setArtifactSettingsStatus("DIPS営業日暦の確認日に未来日は指定できません。", true);
+        return;
+      }
+      if (dipsCsvOfficialTemplateText &&
+          (!payload.dipsCsvTemplateConfirmedDate || !payload.dipsCsvTemplateConfirmedBy)) {
+        setArtifactSettingsStatus("DIPS公式CSVひな形を選択した場合は、実際の確認日と確認者を入力してください。", true);
+        return;
+      }
+      if (payload.dipsCsvTemplateConfirmedDate &&
+          toDate(payload.dipsCsvTemplateConfirmedDate) > today()) {
+        setArtifactSettingsStatus("DIPS公式CSVひな形の確認日に未来日は指定できません。", true);
         return;
       }
       if (payload.certificateSequenceSeed && !/^UC0157\d{8}$/.test(payload.certificateSequenceSeed)) {
@@ -8127,6 +8185,51 @@
         showToast("成果物の事業者設定を保存しました。");
       } catch (error) {
         setArtifactSettingsStatus(error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function registerArtifactOutputYear() {
+      if (AppData.role !== "admin") {
+        showToast("年度保存先は管理者だけが登録できます。");
+        return;
+      }
+      const fiscalYear = document.getElementById("artifactNextOutputFiscalYear").value;
+      const folderId = document.getElementById("artifactNextOutputFolderId").value.trim();
+      const confirmed = document.getElementById("artifactConfirmAnnualOutputFolder").checked;
+      const status = document.getElementById("artifactOutputYearStatus");
+      if (!folderId || !confirmed) {
+        status.textContent = "次年度専用の空フォルダIDを入力し、確認欄にチェックしてください。";
+        return;
+      }
+      if (!window.confirm(
+        fiscalYear + "年度の成果物保存先を登録します。旧年度の成果物は移動・削除しません。続行しますか。"
+      )) return;
+      const button = document.getElementById("registerArtifactOutputYear");
+      button.disabled = true;
+      status.textContent = "フォルダ名・空・非公開・権限・原本との分離を検査しています。";
+      try {
+        const response = await serverCall("apiRegisterArtifactOutputYear", {
+          fiscalYear: fiscalYear,
+          folderId: folderId,
+          confirmAnnualOutputFolder: true,
+          expectedVersion: artifactSettingsVersion,
+          idempotencyKey: makeId("artifact-output-year")
+        });
+        const errorMessage = responseError(response, "次年度保存先を登録できませんでした。");
+        if (errorMessage) throw new Error(errorMessage);
+        applyArtifactSettings(response.settings || {});
+        artifactSettingsLoaded = true;
+        status.textContent = response.message || "次年度保存先を登録しました。";
+        setArtifactSettingsStatus(
+          response.message || "次年度保存先を登録しました。",
+          response.recoveryRequired === true,
+          response.outputFolderUrl || ""
+        );
+        showToast(response.message || "次年度保存先を登録しました。");
+      } catch (error) {
+        status.textContent = "登録を中止しました：" + error.message;
       } finally {
         button.disabled = false;
       }
@@ -8924,6 +9027,19 @@
       return rows;
     }
 
+    async function readJapaneseCsvFile(file) {
+      const buffer = await file.arrayBuffer();
+      try {
+        return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+      } catch (utf8Error) {
+        try {
+          return new TextDecoder("shift_jis", { fatal: true }).decode(buffer);
+        } catch (shiftJisError) {
+          throw new Error("CSVの文字コードをUTF-8またはShift_JISとして読み取れませんでした。");
+        }
+      }
+    }
+
     function normalizeDateText(value) {
       const text = String(value || "").trim();
       if (!text) return "";
@@ -9381,9 +9497,29 @@
     document.getElementById("reloadArtifactSettings").addEventListener("click", loadArtifactSettings);
     document.getElementById("updateHolidayCalendar").addEventListener("click", updateHolidayCalendar);
     document.getElementById("dryRunNumberingMigration").addEventListener("click", dryRunNumberingMigration);
+    document.getElementById("registerArtifactOutputYear").addEventListener("click", registerArtifactOutputYear);
     document.getElementById("holidayCsvFile").addEventListener("change", async function (event) {
       const file = event.target.files[0];
-      if (file) document.getElementById("holidayCsvText").value = await file.text();
+      try {
+        if (file) document.getElementById("holidayCsvText").value = await readJapaneseCsvFile(file);
+      } catch (error) {
+        document.getElementById("holidayCsvText").value = "";
+        document.getElementById("holidayCalendarStatus").textContent = error.message;
+      }
+    });
+    document.getElementById("dipsCsvOfficialTemplateFile").addEventListener("change", async function (event) {
+      const file = event.target.files[0];
+      try {
+        dipsCsvOfficialTemplateText = file ? await readJapaneseCsvFile(file) : "";
+        document.getElementById("dipsCsvTemplateVerificationStatus").textContent =
+          file
+            ? "選択済み：" + file.name + "。事業者設定を保存すると、サーバーがヘッダー1行と11列を検査します。"
+            : "ファイル選択を解除しました。保存済みの照合結果は変更しません。";
+      } catch (error) {
+        dipsCsvOfficialTemplateText = "";
+        event.target.value = "";
+        document.getElementById("dipsCsvTemplateVerificationStatus").textContent = error.message;
+      }
     });
     document.getElementById("saveScheduleMaster").addEventListener("click", saveScheduleMaster);
     document.querySelectorAll(".schedule-table input").forEach(function (input) {

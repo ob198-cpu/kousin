@@ -68,6 +68,54 @@ function artifactParseCsvMatrixStrict_(value) {
   return rows;
 }
 
+function artifactParseDipsOfficialTemplateHeader_(csvText) {
+  var raw = String(csvText === null || csvText === undefined ? "" : csvText);
+  if (!raw || raw.length > 20000) {
+    throw new Error("DIPS公式CSVひな形は1文字以上20,000文字以内で指定してください。");
+  }
+  var matrix = artifactParseCsvMatrixStrict_(raw);
+  if (matrix.length !== 1) {
+    throw new Error(
+      "DIPS公式CSVひな形はヘッダー1行だけの空ファイルを使用してください。" +
+      "申請者データ行を含むCSVは事業者設定へ取り込めません。"
+    );
+  }
+  var actualHeaders = matrix[0].map(function(value) { return artifactText_(value); });
+  var expectedHeaders = artifactDipsCsvHeaders_();
+  if (artifactCanonicalJson_(actualHeaders) !== artifactCanonicalJson_(expectedHeaders)) {
+    throw new Error(
+      "DIPS公式CSVひな形の列名または順序が、このシステムの11列と一致しません。" +
+      "DIPSから最新の空ひな形を再取得し、担当部署で仕様変更を確認してください。"
+    );
+  }
+  return {
+    headers: expectedHeaders,
+    headerHash: artifactHashHex_(expectedHeaders)
+  };
+}
+
+function artifactValidateDipsCsvTemplateSettings_(settings, todayIso, required, errors) {
+  settings = settings || {};
+  errors = errors || [];
+  var expectedHash = artifactHashHex_(artifactDipsCsvHeaders_());
+  var storedHash = artifactText_(settings.dipsCsvTemplateHeaderHash);
+  var confirmedText = artifactText_(settings.dipsCsvTemplateConfirmedDate);
+  var confirmedDate = artifactValidIsoDateOrBlank_(confirmedText);
+  var confirmedBy = artifactText_(settings.dipsCsvTemplateConfirmedBy);
+  if (required && !storedHash) errors.push("DIPS最新公式CSVひな形のヘッダー照合が必要です。データ管理で空の公式CSVを検査・保存してください。");
+  if (storedHash && storedHash !== expectedHash) errors.push("保存済みのDIPS公式CSVヘッダーhashが現行11列と一致しません。公式ひな形を再照合してください。");
+  if (required && !confirmedText) errors.push("DIPS最新公式CSVひな形の確認日が必要です。");
+  if (confirmedText && !confirmedDate) errors.push("DIPS公式CSVひな形の確認日はyyyy-MM-dd形式の実在日で入力してください。");
+  var today = artifactValidIsoDateOrBlank_(todayIso);
+  if (confirmedDate && today && confirmedDate > today) errors.push("DIPS公式CSVひな形の確認日に未来日は指定できません。");
+  if (required && !confirmedBy) errors.push("DIPS最新公式CSVひな形の確認者が必要です。");
+  if (confirmedBy.length > 100) errors.push("DIPS公式CSVひな形の確認者は100文字以内で入力してください。");
+  if (!required && ((confirmedText && !confirmedBy) || (!confirmedText && confirmedBy) || (storedHash && (!confirmedText || !confirmedBy)))) {
+    errors.push("DIPS公式CSVひな形のheader hash・確認日・確認者は一式で保存してください。");
+  }
+  return storedHash === expectedHash && !!confirmedDate && !!confirmedBy;
+}
+
 function artifactParseOfficialHolidayCsv_(csvText, yearValue, sourceUrlValue) {
   var year = Number(yearValue);
   if (!isFinite(year) || Math.floor(year) !== year || year < 2028 || year > 2099) {

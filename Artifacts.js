@@ -73,6 +73,70 @@ var RENEWAL_ARTIFACT = {
       kinds: []
     }
   },
+  // 見積書・請求書の参照元は受講者等を含む業務ブックであり、無関係な
+  // シート更新まで止める「ファイル全体のrevision固定」にはしない。
+  // 指定された2つの雛形タブについて、承認時の非空セルと位置だけを
+  // 完全一致で照合し、追加・削除・文言変更があれば帳票作成を停止する。
+  BILLING_REFERENCE_SOURCE: {
+    version: "CDP_BILLING_REFERENCE_SEMANTIC_V1",
+    id: "1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30",
+    sheets: [
+      {
+        sheetId: 1126540312,
+        name: "見積書雛形",
+        range: "A1:Q60",
+        cells: [
+          ["A1", "御 見 積 書"],
+          ["B5", "請求先名"],
+          ["P5", "様"],
+          ["B8", "受講者：　　　　　　　　様"],
+          ["B10", "コース名"],
+          ["B14", "見積り有効期限：作成日から2か月後の末日"],
+          ["B15", "下記の通り御見積申し上げます。"],
+          ["B17", "コード"],
+          ["E17", "品名"],
+          ["Q17", "単価"],
+          ["E18", "講習コース名"],
+          ["E19", "コード・日数・リスキリング有無"],
+          ["E23", "割引き表記"],
+          ["Q29", "小計"],
+          ["Q30", "消費税（10%）"],
+          ["Q31", "御請求合計"],
+          ["B33", "備考"],
+          ["B34", "※注意事項：eラーニング送付後、実技講習開始日までに修了していただきますようお願いいたします。"],
+          ["B35", "講習日程①：実技：2日間　6月予定"],
+          ["B36", "講習日程②：実技：2日間　6月予定"],
+          ["B37", "受講予定者："]
+        ]
+      },
+      {
+        sheetId: 646051952,
+        name: "請求書雛形",
+        range: "A1:Q60",
+        cells: [
+          ["A1", "　"],
+          ["B5", "請求先名"],
+          ["B8", "受講者：　　　　　　　　様"],
+          ["B10", "コース名"],
+          ["B14", "　"],
+          ["B15", "支払期日：発行日の月末日（顧客によっては変動あり）"],
+          ["B16", "下記の通りご請求申し上げます。"],
+          ["B18", "コード"],
+          ["E18", "品名"],
+          ["Q18", "単価"],
+          ["E19", "講習コース名"],
+          ["E20", "コード・日数・リスキリング有無"],
+          ["Q42", "小計"],
+          ["Q43", "消費税（10%）"],
+          ["Q44", "御請求合計"],
+          ["B47", "備考"],
+          ["B49", "実技講習予定日：コード　　月　　日～　　月　　日にて実施　　講習日数：　　日間"],
+          ["B50", "eラーニング座学実施期間：2026年　　月　　日～"],
+          ["B52", "※実技講習日前までにeラーニングを完了しないと実技講習が実施できませんのでお願い申し上げます。"]
+        ]
+      }
+    ]
+  },
   BLOCKED_TEMPLATE_IDS: {
     ledger: "1lAO89hPt2FRu-EoqfkS_xCFKVkfrglz5o-ms-qD92yE",
     certificate: "1QNHWJMo94V1kfz3EGhdO8Y-5kEvVnbChePe1T52-ALY"
@@ -257,9 +321,7 @@ function apiGetArtifactSettings() {
     return {
       success: true,
       settings: artifactPublicSettings_(internal, authorization.role === "admin"),
-      outputFolderUrl: artifactFolderUrl_(
-        RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID
-      ),
+      outputFolderUrl: artifactFolderUrl_(internal.outputFolderId),
       templateFolderUrl: artifactFolderUrl_(internal.templateFolderId),
       recoveryRequired:
         internal._settingsAuditRecoveryRequired === true ||
@@ -435,19 +497,50 @@ function apiSaveArtifactSettings(input) {
     var current = artifactLoadSettings_();
     artifactAssertLegacySettingsCleanupComplete_(current);
     var outputFolderWasSupplied = input.outputFolderId !== undefined;
+    var currentOutputFiscalYear = artifactText_(current.outputFiscalYear) ||
+      RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR;
+    var currentOutputFolderId = artifactExtractDriveId_(current.outputFolderId);
+    var legacyOutputMigration = currentOutputFiscalYear === RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR &&
+      currentOutputFolderId !== RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID;
+    var allowedOutputFolderId = legacyOutputMigration
+      ? RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID
+      : currentOutputFolderId;
     var requestedOutputFolderRaw = artifactText_(
       outputFolderWasSupplied ?
-        input.outputFolderId : RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID
+        input.outputFolderId : allowedOutputFolderId
     );
     var requestedOutputFolderId = artifactExtractDriveId_(requestedOutputFolderRaw);
     if (
       (outputFolderWasSupplied && !requestedOutputFolderRaw) ||
-      requestedOutputFolderId !== RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID
+      requestedOutputFolderId !== allowedOutputFolderId
     ) {
       throw new Error(
-        "成果物の保存先は承認済みの「" +
-        RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_NAME +
-        "」フォルダに固定されています。別フォルダには保存できません。"
+        "通常の事業者設定保存では年度保存先を変更できません。" +
+        "専用の「次年度の成果物保存先を登録」を使用してください。"
+      );
+    }
+    var suppliedDipsCsvTemplate = artifactText_(input.dipsCsvOfficialTemplateCsv);
+    var nextDipsCsvTemplateHeaderHash = artifactText_(current.dipsCsvTemplateHeaderHash);
+    var nextDipsCsvTemplateConfirmedDate = artifactText_(
+      input.dipsCsvTemplateConfirmedDate !== undefined
+        ? input.dipsCsvTemplateConfirmedDate
+        : current.dipsCsvTemplateConfirmedDate
+    );
+    var nextDipsCsvTemplateConfirmedBy = artifactText_(
+      input.dipsCsvTemplateConfirmedBy !== undefined
+        ? input.dipsCsvTemplateConfirmedBy
+        : current.dipsCsvTemplateConfirmedBy
+    );
+    if (suppliedDipsCsvTemplate) {
+      nextDipsCsvTemplateHeaderHash =
+        artifactParseDipsOfficialTemplateHeader_(suppliedDipsCsvTemplate).headerHash;
+    } else if (
+      nextDipsCsvTemplateConfirmedDate !== artifactText_(current.dipsCsvTemplateConfirmedDate) ||
+      nextDipsCsvTemplateConfirmedBy !== artifactText_(current.dipsCsvTemplateConfirmedBy)
+    ) {
+      throw new Error(
+        "DIPS公式CSVひな形の確認日・確認者だけは変更できません。" +
+        "DIPSから取得した最新の空CSVひな形を選択して再検査してください。"
       );
     }
     var next = {
@@ -458,7 +551,9 @@ function apiSaveArtifactSettings(input) {
       issuerFax: artifactText_(input.issuerFax !== undefined ? input.issuerFax : current.issuerFax),
       issuerEmail: artifactText_(input.issuerEmail !== undefined ? input.issuerEmail : current.issuerEmail),
       invoiceRegistrationNo: artifactText_(input.invoiceRegistrationNo !== undefined ? input.invoiceRegistrationNo : current.invoiceRegistrationNo),
-      outputFolderId: RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID,
+      outputFolderId: allowedOutputFolderId,
+      outputFiscalYear: currentOutputFiscalYear,
+      archivedOutputFolders: artifactNormalizeArchivedOutputFolders_(current.archivedOutputFolders),
       templateFolderId: artifactExtractDriveId_(current.templateFolderId),
       ledgerTemplateId: artifactExtractDriveFileId_(input.ledgerTemplateId !== undefined ? input.ledgerTemplateId : current.ledgerTemplateId),
       certificateTemplateId: artifactExtractDriveFileId_(input.certificateTemplateId !== undefined ? input.certificateTemplateId : current.certificateTemplateId),
@@ -474,6 +569,9 @@ function apiSaveArtifactSettings(input) {
       dipsCalendarConfirmedBy: artifactText_(input.dipsCalendarConfirmedBy !== undefined
         ? input.dipsCalendarConfirmedBy
         : current.dipsCalendarConfirmedBy),
+      dipsCsvTemplateHeaderHash: nextDipsCsvTemplateHeaderHash,
+      dipsCsvTemplateConfirmedDate: nextDipsCsvTemplateConfirmedDate,
+      dipsCsvTemplateConfirmedBy: nextDipsCsvTemplateConfirmedBy,
       numberingInitialized: input.numberingInitialized !== undefined
         ? artifactBoolean_(input.numberingInitialized)
         : artifactBoolean_(current.numberingInitialized),
@@ -493,6 +591,7 @@ function apiSaveArtifactSettings(input) {
     var resolvedOutputAccessEmails = artifactResolveOutputAccessEmails_();
     var dipsSettingsErrors = [];
     artifactValidateDipsCalendarSettings_(next, artifactTodayIso_(), false, dipsSettingsErrors);
+    artifactValidateDipsCsvTemplateSettings_(next, artifactTodayIso_(), false, dipsSettingsErrors);
     if (dipsSettingsErrors.length) throw new Error(dipsSettingsErrors.join(" "));
     artifactAssertRequiredTemplateSettings_(next);
     artifactAssertLedgerTemplateClean_(next.ledgerTemplateId);
@@ -503,7 +602,8 @@ function apiSaveArtifactSettings(input) {
     artifactRequireSafeOutputFolder_(
       next.outputFolderId,
       [next.ledgerTemplateId, next.certificateTemplateId],
-      resolvedOutputAccessEmails
+      resolvedOutputAccessEmails,
+      next.outputFiscalYear
     );
     if (artifactText_(current.outputFolderId) && artifactText_(current.outputFolderId) !== artifactText_(next.outputFolderId)) {
       artifactAssertLegacyOutputFolderSwitchSafe_(current.outputFolderId);
@@ -527,7 +627,7 @@ function apiSaveArtifactSettings(input) {
       success: true,
       settings: artifactPublicSettings_(committedSettings, true),
       outputFolderUrl: artifactFolderUrl_(
-        RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID
+        committedSettings.outputFolderId
       ),
       templateFolderUrl: artifactFolderUrl_(committedSettings.templateFolderId),
       recoveryRequired: committedSettingsState.recoveryRequired === true,
@@ -540,6 +640,115 @@ function apiSaveArtifactSettings(input) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function apiRegisterArtifactOutputYear(input) {
+  var authorization;
+  try {
+    authorization = artifactRequireCapability_("artifacts.admin");
+  } catch (authorizationError) {
+    var authorizationMessage = artifactErrorMessage_(authorizationError);
+    return { success: false, error: authorizationMessage, message: authorizationMessage };
+  }
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { success: false, error: "別の成果物設定更新が実行中です。しばらく待って再実行してください。" };
+  }
+  try {
+    authorization = artifactRequireCapability_("artifacts.admin");
+    input = input || {};
+    if (input.confirmAnnualOutputFolder !== true) {
+      throw new Error("次年度保存先の登録確認がありません。内容を再確認してから実行してください。");
+    }
+    var current = artifactLoadSettings_();
+    artifactAssertLegacySettingsCleanupComplete_(current);
+    var currentYear = artifactText_(current.outputFiscalYear) ||
+      RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR;
+    var nextYear = artifactText_(input.fiscalYear);
+    if (!/^20\d{2}$/.test(nextYear) || Number(nextYear) !== Number(currentYear) + 1) {
+      throw new Error("登録できるのは現行" + currentYear + "年度の次年度だけです。飛び越し・過年度への切替はできません。");
+    }
+    var nextFolderId = artifactExtractDriveId_(input.folderId);
+    if (!nextFolderId || nextFolderId === artifactExtractDriveId_(current.outputFolderId)) {
+      throw new Error("次年度専用の別フォルダIDを指定してください。");
+    }
+    var archived = artifactNormalizeArchivedOutputFolders_(current.archivedOutputFolders);
+    if (archived.some(function(row) {
+      return row.fiscalYear === nextYear || row.folderId === nextFolderId;
+    })) {
+      throw new Error("同じ年度またはフォルダは既に年度別保存先履歴へ登録されています。");
+    }
+    var allowedEmails = artifactResolveOutputAccessEmails_();
+    var folder = artifactRequireSafeOutputFolder_(
+      nextFolderId,
+      [current.ledgerTemplateId, current.certificateTemplateId],
+      allowedEmails,
+      nextYear
+    );
+    artifactAssertNewAnnualOutputFolderEmpty_(folder);
+    archived.push({
+      fiscalYear: currentYear,
+      folderId: artifactExtractDriveId_(current.outputFolderId)
+    });
+    var next = artifactStoredSettingsObject_(current);
+    next.outputFiscalYear = nextYear;
+    next.outputFolderId = nextFolderId;
+    next.archivedOutputFolders = artifactNormalizeArchivedOutputFolders_(archived);
+    var committedState = artifactCommitSettingsState_(next, current._bankAccountText, {
+      currentSettings: current,
+      actor: authorization.email,
+      expectedVersion: input.expectedVersion,
+      idempotencyKey: input.idempotencyKey,
+      reasonCode: "ARTIFACT_OUTPUT_YEAR_REGISTER"
+    });
+    var committed = artifactSettingsFromState_(committedState);
+    return {
+      success: true,
+      settings: artifactPublicSettings_(committed, true),
+      outputFolderUrl: artifactFolderUrl_(committed.outputFolderId),
+      recoveryRequired: committedState.recoveryRequired === true,
+      warning: artifactText_(committedState.recoveryMessage),
+      message:
+        nextYear + "年度の成果物保存先を登録しました。" +
+        currentYear + "年度の保存先は履歴として保持し、過年度成果物の訂正作成に使用します。"
+    };
+  } catch (error) {
+    var message = artifactErrorMessage_(error);
+    return { success: false, error: message, message: message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function artifactAssertNewAnnualOutputFolderEmpty_(folder) {
+  if (!folder || typeof folder.getId !== "function") {
+    throw new Error("次年度保存先フォルダを検査できません。");
+  }
+  if (typeof Drive === "undefined" || !Drive.Files || typeof Drive.Files.list !== "function") {
+    throw new Error("次年度保存先の空フォルダ検査に必要なAdvanced Drive API v3が利用できません。");
+  }
+  var response;
+  try {
+    response = Drive.Files.list({
+      q: "'" + folder.getId() + "' in parents and trashed = false",
+      pageSize: 1,
+      fields: "nextPageToken,files(id,name,mimeType,trashed)",
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
+    });
+  } catch (listError) {
+    throw new Error("次年度保存先の内容を全件検査できないため登録を停止しました。");
+  }
+  if (!response || !Array.isArray(response.files)) {
+    throw new Error("次年度保存先の内容一覧が不完全なため登録を停止しました。");
+  }
+  if (response.files.length || artifactText_(response.nextPageToken)) {
+    throw new Error(
+      "次年度保存先は空の専用フォルダを指定してください。" +
+      "既存ファイルを推測で移動・削除・混在させません。"
+    );
+  }
+  return true;
 }
 
 /**
@@ -1510,7 +1719,8 @@ function apiCreateArtifacts(request) {
       );
     }
 
-    var settings = preflightRuntime.settings;
+    var settings = artifactClone_(preflightRuntime.settings);
+    settings.outputFolderId = preflightRuntime.outputFolderId;
     var record = artifactNormalizeRecord_(lockedCanonicalRequest.request.record);
     var kinds = artifactNormalizeKinds_(lockedCanonicalRequest.request.kinds);
     var effectiveHolidayMaster = kinds.indexOf("dipsCsv") >= 0
@@ -1961,15 +2171,76 @@ function artifactBuildPreflight_(request, runtime) {
   var globalErrors = [];
   var globalWarnings = [];
   if (!kinds.length) globalErrors.push("作成する成果物を1つ以上選択してください。");
-  try { artifactAssertNumberingSettings_(settings); }
-  catch (numberingSettingsError) { globalErrors.push(artifactErrorMessage_(numberingSettingsError)); }
+  if (artifactAnyKind_(kinds, ["ledger", "certificate", "dipsCsv"])) {
+    try { artifactAssertNumberingSettings_(settings); }
+    catch (numberingSettingsError) { globalErrors.push(artifactErrorMessage_(numberingSettingsError)); }
+  }
   var registryRows = Array.isArray(runtime.registryRows) ? runtime.registryRows : [];
+  // 先に入力・計算・設定だけを検査する。ここで不合格なら、Driveの版・ACL・
+  // レジストリ・原本を読む重い検査は行わない。作成APIは合格後に同じ完全検査を
+  // ロック内で再実行するため、安全性を下げずに操作待ち時間だけを短縮できる。
+  for (var i = 0; i < kinds.length; i++) {
+    var kind = kinds[i];
+    var item = { kind: kind, label: RENEWAL_ARTIFACT.LABELS[kind], ready: false, errors: [], warnings: [] };
+    artifactValidateCommon_(record, item.errors, settings);
+    artifactValidateKind_(kind, record, settings, schedules, item.errors, item.warnings);
+    if (kind === "dipsCsv") {
+      try {
+        item.dipsSubmissionDeadline = artifactDipsSubmissionDeadline_(
+          record.certificateIssuedDate, settings.dipsAdditionalClosedDates, artifactLoadEffectiveHolidayMaster_()
+        );
+      } catch (ignoredDeadlineError) {
+        item.dipsSubmissionDeadline = "";
+      }
+    }
+    try { artifactTemplateId_(kind, settings); }
+    catch (templateSettingError) { item.errors.push(artifactErrorMessage_(templateSettingError)); }
+    item.ready = item.errors.length === 0;
+    items.push(item);
+  }
+
+  if (!globalErrors.length && !items.some(function(item) { return item.errors.length > 0; })) {
+    try {
+      runtime.outputFolderId = artifactOutputFolderForFiscalYear_(
+        settings, artifactText_(record.fiscalYear)
+      );
+    } catch (outputYearError) {
+      globalErrors.push(artifactErrorMessage_(outputYearError));
+    }
+  }
+  var hasLocalErrors = globalErrors.length > 0 || items.some(function(item) {
+    return item.errors.length > 0;
+  });
+  if (hasLocalErrors) {
+    if (!runtime.skipDriveValidation) {
+      globalWarnings.push(
+        "入力・設定の不備を先に直してください。Drive版・原本・共有権限・監査台帳の検査は、" +
+        "入力検査合格後に自動実行します。"
+      );
+    }
+    return {
+      success: true,
+      ready: false,
+      items: items,
+      errors: globalErrors,
+      warnings: globalWarnings,
+      deferredDriveChecks: !runtime.skipDriveValidation
+    };
+  }
+
   if (!runtime.skipDriveValidation) {
     try { artifactAssertPinnedReferenceSources_(kinds); }
     catch (referenceError) { globalErrors.push(artifactErrorMessage_(referenceError)); }
     try { artifactAssertDedicatedTemplateStorageSafe_(settings); }
     catch (templateStorageError) { globalErrors.push(artifactErrorMessage_(templateStorageError)); }
-    try { artifactRequireSafeOutputFolder_(settings.outputFolderId, [settings.ledgerTemplateId, settings.certificateTemplateId], settings.allowedOutputEmails); }
+    try {
+      artifactRequireSafeOutputFolder_(
+        runtime.outputFolderId,
+        [settings.ledgerTemplateId, settings.certificateTemplateId],
+        settings.allowedOutputEmails,
+        artifactText_(record.fiscalYear)
+      );
+    }
     catch (folderError) { globalErrors.push(artifactErrorMessage_(folderError)); }
     try { registryRows = artifactReadAllRegistryRows_(settings.allowedOutputEmails); }
     catch (registryReadError) { globalErrors.push(artifactErrorMessage_(registryReadError)); }
@@ -1987,55 +2258,46 @@ function artifactBuildPreflight_(request, runtime) {
   }
 
   var checkedTemplates = {};
-  for (var i = 0; i < kinds.length; i++) {
-    var kind = kinds[i];
-    var item = { kind: kind, label: RENEWAL_ARTIFACT.LABELS[kind], ready: false, errors: [], warnings: [] };
-    artifactValidateCommon_(record, item.errors);
-    artifactValidateKind_(kind, record, settings, schedules, item.errors, item.warnings);
-    if (["ledger", "certificate", "dipsCsv"].indexOf(kind) >= 0) {
-      artifactValidateCertificateDateContinuity_(registryRows, record, item.errors, item.warnings);
-    }
-    if (kind === "dipsCsv") {
-      try {
-        item.dipsSubmissionDeadline = artifactDipsSubmissionDeadline_(
-          record.certificateIssuedDate, settings.dipsAdditionalClosedDates, artifactLoadEffectiveHolidayMaster_()
-        );
-      } catch (ignoredDeadlineError) {
-        item.dipsSubmissionDeadline = "";
-      }
+  for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
+    var currentItem = items[itemIndex];
+    var currentKind = currentItem.kind;
+    if (["ledger", "certificate", "dipsCsv"].indexOf(currentKind) >= 0) {
+      artifactValidateCertificateDateContinuity_(
+        registryRows, record, currentItem.errors, currentItem.warnings
+      );
     }
     var templateId = "";
     try {
-      templateId = artifactTemplateId_(kind, settings);
+      templateId = artifactTemplateId_(currentKind, settings);
       if (templateId && !checkedTemplates[templateId] && !runtime.skipDriveValidation) {
         DriveApp.getFileById(templateId).getName();
-        if (kind === "ledger") artifactAssertLedgerTemplateClean_(templateId);
-        if (kind === "certificate") artifactAssertCertificateTemplateClean_(templateId);
-        if (kind === "guidance") artifactAssertGuidanceTemplateClean_(templateId);
-        if (kind === "training") artifactAssertTrainingTemplateClean_(templateId);
+        if (currentKind === "ledger") artifactAssertLedgerTemplateClean_(templateId);
+        if (currentKind === "certificate") artifactAssertCertificateTemplateClean_(templateId);
+        if (currentKind === "guidance") artifactAssertGuidanceTemplateClean_(templateId);
+        if (currentKind === "training") artifactAssertTrainingTemplateClean_(templateId);
         checkedTemplates[templateId] = true;
       }
     } catch (templateError) {
-      item.errors.push(artifactErrorMessage_(templateError));
+      currentItem.errors.push(artifactErrorMessage_(templateError));
     }
-    item.ready = item.errors.length === 0;
-    items.push(item);
+    currentItem.ready = currentItem.errors.length === 0;
   }
   var ready = globalErrors.length === 0;
   for (var j = 0; j < items.length; j++) if (!items[j].ready) ready = false;
   return { success: true, ready: ready, items: items, errors: globalErrors, warnings: globalWarnings };
 }
 
-function artifactValidateCommon_(record, errors) {
+function artifactValidateCommon_(record, errors, settings) {
   if (record._recordIdMismatch) errors.push("保存データのidとrecordIdが一致しません。対象者を開いて保存し直してから作成してください。");
   if (!artifactText_(record.recordId)) errors.push("recordIdがありません。対象者をいったん保存してから作成してください。");
   if (!artifactText_(record.targetName || record.name || record.studentName)) errors.push("対象者名が必要です。");
   var recordFiscalYear = artifactText_(record.fiscalYear);
-  if (recordFiscalYear !== RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR) {
-    errors.push(
-      "固定保存先は" + RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR +
-      "年度専用です。対象者の年度を確認してください。別年度は承認済み保存先とコードを切り替えるまで作成できません。"
+  try {
+    artifactOutputFolderForFiscalYear_(
+      settings || artifactSettingsDefaults_(), recordFiscalYear
     );
+  } catch (outputYearError) {
+    errors.push(artifactErrorMessage_(outputYearError));
   }
   var courseDateText = artifactText_(record.courseDate);
   var validCourseDate = artifactValidIsoDateOrBlank_(courseDateText);
@@ -2121,7 +2383,16 @@ function artifactValidateKind_(kind, record, settings, schedules, errors, warnin
     if (["新規登録", "既存情報更新", "削除"].indexOf(dipsRecordMode) < 0) errors.push("DIPS状態フラグは「新規登録」「既存情報更新」「削除」のいずれかを選択してください。");
     if (dipsRecordMode === "削除") warnings.push("DIPS削除データです。対象IDと削除理由を担当者が再確認し、手動アップロード後もシステム状態は自動変更しません。");
     artifactValidateDipsSubmission_(settings, certificateIssuedDate, record.dipsCompletionLinkedDate, artifactTodayIso_(), errors, warnings);
-    warnings.push("DIPSからダウンロードする最新の公式CSVひな形とは未照合です。アップロード前に11列の名称・順序を公式ひな形と照合してください。");
+    var dipsCsvTemplateConfirmed = artifactValidateDipsCsvTemplateSettings_(
+      settings, artifactTodayIso_(), true, errors
+    );
+    if (dipsCsvTemplateConfirmed) {
+      warnings.push(
+        "DIPS公式CSVひな形は" + artifactText_(settings.dipsCsvTemplateConfirmedDate) +
+        "に" + artifactText_(settings.dipsCsvTemplateConfirmedBy) +
+        "が11列の名称・順序を照合しています。DIPS側の仕様変更告知がある場合は再検査してください。"
+      );
+    }
   } else if (kind === "guidance") {
     if (!classValue) errors.push("案内の対象資格として一等または二等を選択してください。");
     if (!artifactValidIsoDateOrBlank_(record.licenseExpiry)) errors.push("現在の免許期限が必要です。");
@@ -3001,14 +3272,100 @@ function artifactReferencePinKeysForKinds_(kinds) {
 function artifactAssertPinnedReferenceSources_(kinds) {
   var keys = artifactReferencePinKeysForKinds_(kinds);
   for (var i = 0; i < keys.length; i++) artifactAssertPinnedReferenceSource_(keys[i]);
+  if ((kinds || []).indexOf("billing") >= 0) artifactAssertBillingReferenceSource_();
   return keys;
 }
 
 function artifactReferenceFingerprintForKind_(kind) {
-  return artifactReferencePinKeysForKinds_([kind]).map(function(key) {
+  var fingerprints = artifactReferencePinKeysForKinds_([kind]).map(function(key) {
     var pin = RENEWAL_ARTIFACT.REFERENCE_SOURCE_PINS[key];
     return key + ":" + pin.id + "@" + pin.modifiedTime + "#rev=" + pin.revisionId + "@" + pin.revisionModifiedTime;
   });
+  if (kind === "billing") {
+    var billingSource = RENEWAL_ARTIFACT.BILLING_REFERENCE_SOURCE || {};
+    fingerprints.push(
+      "billing-semantic:" + artifactText_(billingSource.id) + "@" +
+      artifactText_(billingSource.version)
+    );
+  }
+  return fingerprints;
+}
+
+function artifactAssertBillingReferenceSource_() {
+  var source = RENEWAL_ARTIFACT.BILLING_REFERENCE_SOURCE || {};
+  if (!artifactExtractDriveFileId_(source.id) || !artifactText_(source.version) ||
+      !Array.isArray(source.sheets) || source.sheets.length !== 2) {
+    throw new Error("見積書・請求書参照元の承認済み意味版設定が不完全です。");
+  }
+  var spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(source.id);
+  } catch (openError) {
+    throw new Error("見積書・請求書参照元を読み取れないため帳票作成を停止しました。");
+  }
+  var seenSheetIds = {};
+  for (var sheetIndex = 0; sheetIndex < source.sheets.length; sheetIndex++) {
+    var spec = source.sheets[sheetIndex] || {};
+    var sheetId = Number(spec.sheetId);
+    if (!sheetId || seenSheetIds[sheetId] || !artifactText_(spec.name) ||
+        !/^[A-Z]+[1-9]\d*:[A-Z]+[1-9]\d*$/.test(artifactText_(spec.range)) ||
+        !Array.isArray(spec.cells)) {
+      throw new Error("見積書・請求書参照元のタブ承認設定が不正です。");
+    }
+    seenSheetIds[sheetId] = true;
+    var sheet = spreadsheet.getSheetById(sheetId);
+    if (!sheet || sheet.getName() !== spec.name) {
+      throw new Error(
+        "見積書・請求書参照元の「" + artifactText_(spec.name) +
+        "」タブをIDと名称の両方で確認できないため作成を停止しました。"
+      );
+    }
+    var actualCells = artifactSparseDisplayCells_(sheet.getRange(spec.range));
+    if (artifactCanonicalJson_(actualCells) !== artifactCanonicalJson_(spec.cells)) {
+      throw new Error(
+        "見積書・請求書参照元の「" + spec.name +
+        "」が承認内容から変更されています。差分・個人情報・税計算・日程文言を確認し、" +
+        "承認設定を更新するまで帳票作成を停止します。"
+      );
+    }
+  }
+  return true;
+}
+
+function artifactSparseDisplayCells_(range) {
+  if (!range || typeof range.getDisplayValues !== "function" ||
+      typeof range.getRow !== "function" || typeof range.getColumn !== "function") {
+    throw new Error("参照元のセル範囲を検査できません。");
+  }
+  var values = range.getDisplayValues();
+  var startRow = range.getRow();
+  var startColumn = range.getColumn();
+  var cells = [];
+  for (var rowIndex = 0; rowIndex < values.length; rowIndex++) {
+    for (var columnIndex = 0; columnIndex < values[rowIndex].length; columnIndex++) {
+      var value = values[rowIndex][columnIndex];
+      if (value === "") continue;
+      cells.push([
+        artifactColumnLetters_(startColumn + columnIndex) + String(startRow + rowIndex),
+        String(value).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+      ]);
+    }
+  }
+  return cells;
+}
+
+function artifactColumnLetters_(column) {
+  var value = Number(column);
+  if (!isFinite(value) || value < 1 || Math.floor(value) !== value) {
+    throw new Error("参照元の列番号が不正です。");
+  }
+  var letters = "";
+  while (value > 0) {
+    value--;
+    letters = String.fromCharCode(65 + value % 26) + letters;
+    value = Math.floor(value / 26);
+  }
+  return letters;
 }
 
 function artifactAssertTrustedSharedTemplate_(kind, templateId) {
@@ -4175,19 +4532,12 @@ function artifactCreateCertificate_(context) {
 
 function artifactCreateDipsCsv_(context) {
   var record = context.record;
-  var headers = [
-    "申請者ID",
-    "技能証明申請者番号",
-    "登録更新講習機関コード",
-    "登録更新講習機関事務所コード",
-    "区分",
-    "停止処分者向け講習受講有無",
-    "無人航空機操縦者身体適性検査証明書番号",
-    "更新講習修了証明書番号",
-    "更新講習修了日",
-    "有効期間満了日",
-    "状態フラグ"
-  ];
+  var headerErrors = [];
+  artifactValidateDipsCsvTemplateSettings_(
+    context.settings, artifactTodayIso_(), true, headerErrors
+  );
+  if (headerErrors.length) throw new Error(headerErrors.join(" "));
+  var headers = artifactDipsCsvHeaders_();
   var row = [
     record.dipsApplicantId,
     artifactText_(record.skillsApplicantNo),
@@ -4233,11 +4583,27 @@ function artifactCreateDipsCsv_(context) {
       url: file.getUrl(),
       fileName: fileName,
       documentNumbers: record.certificateNo + ";" + record.dipsApplicantId,
-      message: "マニュアル記載の11列・UTF-8 BOM付きで作成しました。DIPS公式ひな形との最終照合後にアップロードしてください。"
+      message: "確認済みのDIPS公式11列ヘッダーと同じ順序・UTF-8 BOM付きで作成しました。アップロード操作は担当者が行ってください。"
     };
   } catch (dipsCreateError) {
     artifactThrowAfterCleanup_(dipsCreateError, file, "新規DIPS CSV", "file");
   }
+}
+
+function artifactDipsCsvHeaders_() {
+  return [
+    "申請者ID",
+    "技能証明申請者番号",
+    "登録更新講習機関コード",
+    "登録更新講習機関事務所コード",
+    "区分",
+    "停止処分者向け講習受講有無",
+    "無人航空機操縦者身体適性検査証明書番号",
+    "更新講習修了証明書番号",
+    "更新講習修了日",
+    "有効期間満了日",
+    "状態フラグ"
+  ];
 }
 
 function artifactCreateGuidance_(context) {
@@ -4589,6 +4955,8 @@ function artifactSettingsDefaults_() {
     issuerEmail: "",
     invoiceRegistrationNo: "T9430001086920",
     outputFolderId: RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID,
+    outputFiscalYear: RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR,
+    archivedOutputFolders: [],
     templateFolderId: "",
     ledgerTemplateId: "",
     certificateTemplateId: "",
@@ -4596,6 +4964,9 @@ function artifactSettingsDefaults_() {
     dipsAdditionalClosedDates: "",
     dipsCalendarConfirmedDate: "",
     dipsCalendarConfirmedBy: "",
+    dipsCsvTemplateHeaderHash: "",
+    dipsCsvTemplateConfirmedDate: "",
+    dipsCsvTemplateConfirmedBy: "",
     numberingInitialized: false,
     numberingCutoverMonth: "",
     certificateSequenceSeed: "",
@@ -4621,6 +4992,13 @@ function artifactNormalizeStoredSettings_(stored) {
     defaults.outputFolderId =
       RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID;
   }
+  defaults.outputFiscalYear = artifactText_(defaults.outputFiscalYear);
+  if (!/^20\d{2}$/.test(defaults.outputFiscalYear)) {
+    throw new Error("保存済みの現行成果物年度が不正です。年度を推測せず設定監査を行ってください。");
+  }
+  defaults.archivedOutputFolders = artifactNormalizeArchivedOutputFolders_(
+    defaults.archivedOutputFolders
+  );
   var storedTemplateFolderRaw = artifactText_(defaults.templateFolderId);
   defaults.templateFolderId = artifactExtractDriveId_(storedTemplateFolderRaw);
   if (storedTemplateFolderRaw && !defaults.templateFolderId) {
@@ -4640,6 +5018,9 @@ function artifactNormalizeStoredSettings_(stored) {
   defaults.dipsAdditionalClosedDates = artifactNormalizeIsoDateList_(defaults.dipsAdditionalClosedDates).join("\n");
   defaults.dipsCalendarConfirmedDate = artifactText_(defaults.dipsCalendarConfirmedDate);
   defaults.dipsCalendarConfirmedBy = artifactText_(defaults.dipsCalendarConfirmedBy);
+  defaults.dipsCsvTemplateHeaderHash = artifactText_(defaults.dipsCsvTemplateHeaderHash);
+  defaults.dipsCsvTemplateConfirmedDate = artifactText_(defaults.dipsCsvTemplateConfirmedDate);
+  defaults.dipsCsvTemplateConfirmedBy = artifactText_(defaults.dipsCsvTemplateConfirmedBy);
   defaults.numberingInitialized = artifactBoolean_(defaults.numberingInitialized);
   defaults.numberingCutoverMonth = artifactText_(defaults.numberingCutoverMonth);
   defaults.certificateSequenceSeed = artifactText_(defaults.certificateSequenceSeed);
@@ -4658,6 +5039,53 @@ function artifactStoredSettingsObject_(settings) {
   // Script Propertiesへ二重保存しない。
   stored.allowedOutputEmails = "";
   return stored;
+}
+
+function artifactNormalizeArchivedOutputFolders_(rows) {
+  if (rows === undefined || rows === null) return [];
+  if (!Array.isArray(rows) || rows.length > 30) {
+    throw new Error("年度別成果物保存先の履歴が不正です。自動修復せず監査してください。");
+  }
+  var seenYears = {};
+  var seenFolders = {};
+  return rows.map(function(row) {
+    var fiscalYear = artifactText_(row && row.fiscalYear);
+    var folderId = artifactExtractDriveId_(row && row.folderId);
+    if (!/^20\d{2}$/.test(fiscalYear) || !folderId ||
+        seenYears[fiscalYear] || seenFolders[folderId]) {
+      throw new Error("年度別成果物保存先の履歴に不正・重複があります。自動修復せず監査してください。");
+    }
+    seenYears[fiscalYear] = true;
+    seenFolders[folderId] = true;
+    return { fiscalYear: fiscalYear, folderId: folderId };
+  }).sort(function(a, b) {
+    return a.fiscalYear < b.fiscalYear ? -1 : (a.fiscalYear > b.fiscalYear ? 1 : 0);
+  });
+}
+
+function artifactOutputFolderForFiscalYear_(settings, fiscalYearValue) {
+  settings = settings || {};
+  var fiscalYear = artifactText_(fiscalYearValue);
+  if (!/^20\d{2}$/.test(fiscalYear)) {
+    throw new Error("成果物の年度が不正です。対象者または対象期間の年度を確認してください。");
+  }
+  var currentYear = artifactText_(settings.outputFiscalYear) ||
+    RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR;
+  if (fiscalYear === currentYear) {
+    var currentFolderId = artifactExtractDriveId_(settings.outputFolderId);
+    if (!currentFolderId) throw new Error(currentYear + "年度の成果物保存先がありません。");
+    return currentFolderId;
+  }
+  var archived = artifactNormalizeArchivedOutputFolders_(
+    settings.archivedOutputFolders
+  );
+  for (var i = 0; i < archived.length; i++) {
+    if (archived[i].fiscalYear === fiscalYear) return archived[i].folderId;
+  }
+  throw new Error(
+    fiscalYear + "年度の承認済み成果物保存先がありません。" +
+    "データ管理で年度保存先を登録するまで作成を停止します。"
+  );
 }
 
 function artifactNormalizeLegacyOutputFolders_(rows) {
@@ -4934,16 +5362,17 @@ function artifactLoadSettingsState_() {
   ) {
     throw new Error("保存済みの成果物設定V2の版または識別情報が不正です。旧設定へ戻さず監査してください。");
   }
-  var legacyRepresentativeMissing = !parsed.settings ||
-    !Object.prototype.hasOwnProperty.call(parsed.settings, "issuerRepresentative");
+  var legacySettingsKeysMissing = Object.keys(artifactSettingsDefaults_()).filter(function(key) {
+    return !parsed.settings || !Object.prototype.hasOwnProperty.call(parsed.settings, key);
+  });
   var semantic = artifactSettingsSemanticValue_(
     parsed.settings,
     parsed.bankAccountText,
     parsed.legacyOutputFolders
   );
-  // V2の旧保存値は代表者項目を持たない。既存hashを改変せず検証し、
-  // 次回の明示保存時にだけ新項目を含むstateへ更新する。
-  if (legacyRepresentativeMissing) delete semantic.settings.issuerRepresentative;
+  // V2へ安全な追加項目を増やした場合、既存stateのhashは旧キー集合で検証する。
+  // 追加項目の既定値は読込後にだけ補い、次回の明示保存で新hashへ更新する。
+  legacySettingsKeysMissing.forEach(function(key) { delete semantic.settings[key]; });
   var contentHash = artifactHashHex_(semantic);
   if (contentHash !== artifactText_(parsed.contentHash)) {
     throw new Error("保存済みの成果物設定V2の内容hashが一致しません。旧設定へ戻さず監査してください。");
@@ -4973,7 +5402,7 @@ function artifactLoadSettingsState_() {
     throw new Error("保存済みの成果物設定V2の更新者または更新日時が不正です。旧設定へ戻さず監査してください。");
   }
   var envelopeValue = artifactSettingsStateEnvelopeValue_(normalizedState);
-  if (legacyRepresentativeMissing) delete envelopeValue.settings.issuerRepresentative;
+  legacySettingsKeysMissing.forEach(function(key) { delete envelopeValue.settings[key]; });
   var envelopeHash = artifactHashHex_(envelopeValue);
   if (envelopeHash !== artifactText_(parsed.envelopeHash)) {
     throw new Error("保存済みの成果物設定V2の封筒hashが一致しません。旧設定へ戻さず監査してください。");
@@ -5292,10 +5721,16 @@ function artifactLoadSettings_() {
 
 function artifactPublicSettings_(settings, includeAdminDetails) {
   var storedOutputFolderId = artifactText_(settings.outputFolderId);
+  var outputFiscalYear = artifactText_(settings.outputFiscalYear) ||
+    RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR;
   var outputFolderMigrationRequired = Boolean(
+    outputFiscalYear === RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR &&
     storedOutputFolderId &&
     storedOutputFolderId !== RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID
   );
+  var publicOutputFolderId = outputFolderMigrationRequired
+    ? RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID
+    : storedOutputFolderId;
   var result = {
     issuerCompany: settings.issuerCompany,
     issuerRepresentative: settings.issuerRepresentative,
@@ -5304,8 +5739,9 @@ function artifactPublicSettings_(settings, includeAdminDetails) {
     issuerFax: settings.issuerFax,
     issuerEmail: settings.issuerEmail,
     invoiceRegistrationNo: settings.invoiceRegistrationNo,
-    outputFolderId: RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID,
-    outputFolderName: RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_NAME,
+    outputFolderId: publicOutputFolderId,
+    outputFiscalYear: outputFiscalYear,
+    outputFolderName: outputFiscalYear + "年度",
     outputFolderMigrationRequired: outputFolderMigrationRequired,
     templateFolderId: artifactText_(settings.templateFolderId),
     ledgerTemplateId: artifactText_(settings.ledgerTemplateId),
@@ -5314,6 +5750,11 @@ function artifactPublicSettings_(settings, includeAdminDetails) {
     dipsAdditionalClosedDates: artifactNormalizeIsoDateList_(settings.dipsAdditionalClosedDates).join("\n"),
     dipsCalendarConfirmedDate: artifactText_(settings.dipsCalendarConfirmedDate),
     dipsCalendarConfirmedBy: artifactText_(settings.dipsCalendarConfirmedBy),
+    dipsCsvTemplateHeaderHash: artifactText_(settings.dipsCsvTemplateHeaderHash),
+    dipsCsvTemplateConfirmedDate: artifactText_(settings.dipsCsvTemplateConfirmedDate),
+    dipsCsvTemplateConfirmedBy: artifactText_(settings.dipsCsvTemplateConfirmedBy),
+    dipsCsvTemplateConfirmed: artifactText_(settings.dipsCsvTemplateHeaderHash) ===
+      artifactHashHex_(artifactDipsCsvHeaders_()),
     numberingInitialized: artifactBoolean_(settings.numberingInitialized),
     numberingCutoverMonth: artifactText_(settings.numberingCutoverMonth),
     certificateSequenceSeed: artifactText_(settings.certificateSequenceSeed),
@@ -5326,6 +5767,15 @@ function artifactPublicSettings_(settings, includeAdminDetails) {
     legacyOutputFolderCount: Array.isArray(settings._legacyOutputFolders)
       ? settings._legacyOutputFolders.length
       : 0,
+    archivedOutputFolders: artifactNormalizeArchivedOutputFolders_(
+      settings.archivedOutputFolders
+    ).map(function(row) {
+      return {
+        fiscalYear: row.fiscalYear,
+        folderId: row.folderId,
+        folderUrl: artifactFolderUrl_(row.folderId)
+      };
+    }),
     bankAccountConfigured: !!artifactText_(settings._bankAccountText),
     schedules: artifactNormalizeSchedules_(settings.schedules)
   };
@@ -5832,10 +6282,14 @@ function artifactValidateAutomaticNumberingForPreflight_(settings, courseDate, l
   }
 }
 
-function artifactRequireSafeOutputFolder_(folderId, additionalTemplateIds, allowedOutputEmails) {
+function artifactRequireSafeOutputFolder_(folderId, additionalTemplateIds, allowedOutputEmails, expectedFiscalYear) {
   var id = artifactExtractDriveId_(folderId);
   if (!id) throw new Error("成果物の出力先フォルダは必須です。個人情報用の非公開フォルダを指定してください。");
-  if (id !== RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID) {
+  var fiscalYear = artifactText_(expectedFiscalYear);
+  if (fiscalYear && !/^20\d{2}$/.test(fiscalYear)) {
+    throw new Error("成果物の出力先年度が不正です。");
+  }
+  if (!fiscalYear && id !== RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID) {
     throw new Error(
       "成果物の保存先は承認済みの「" +
       RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_NAME +
@@ -5846,8 +6300,16 @@ function artifactRequireSafeOutputFolder_(folderId, additionalTemplateIds, allow
   var folder;
   try {
     folder = DriveApp.getFolderById(id);
-    folder.getName();
+    var folderName = folder.getName();
+    if (fiscalYear && folderName !== fiscalYear + "年度") {
+      throw new Error(
+        "成果物保存先のフォルダ名は「" + fiscalYear + "年度」と完全一致させてください。"
+      );
+    }
   } catch (folderError) {
+    if (artifactText_(folderError && folderError.message).indexOf("完全一致") >= 0) {
+      throw folderError;
+    }
     throw new Error("出力先フォルダを確認できません。フォルダIDと編集権限を確認してください。");
   }
   try {
@@ -5956,6 +6418,9 @@ function artifactSettingsForHash_(kind, settings, holidayMaster, record) {
     base.holidayCalendarVersion = artifactText_((holidayMaster || RENEWAL_JAPAN_HOLIDAYS).version);
     base.dipsAdditionalClosedDates = artifactNormalizeIsoDateList_(settings.dipsAdditionalClosedDates);
     base.dipsCalendarConfirmedDate = artifactText_(settings.dipsCalendarConfirmedDate);
+    base.dipsCsvTemplateHeaderHash = artifactText_(settings.dipsCsvTemplateHeaderHash);
+    base.dipsCsvTemplateConfirmedDate = artifactText_(settings.dipsCsvTemplateConfirmedDate);
+    base.dipsCsvTemplateConfirmedBy = artifactText_(settings.dipsCsvTemplateConfirmedBy);
     base.dipsCalendarConfirmedBy = artifactText_(settings.dipsCalendarConfirmedBy);
   }
   if (kind === "certificate") {

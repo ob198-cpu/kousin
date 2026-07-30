@@ -131,7 +131,12 @@ function apiPreflightComplianceArchive(request) {
     request = request || {};
     var kind = complianceKind_(request.kind);
     var authorization = complianceRequireKindCapability_(kind, false);
-    var context = complianceBuildContext_(kind, request, authorization);
+    // 確認画面では入力・正本版・年度対応だけを検査する。
+    // DriveのACL・原本・出力先実体は作成確定後、書込みより前にロック内で
+    // 必ず再検査する。確認と作成で同じ重いDrive検査を重複させない。
+    var context = complianceBuildContext_(
+      kind, request, authorization, { skipDriveValidation: true }
+    );
     return {
       success: true,
       ready: true,
@@ -160,7 +165,11 @@ function apiCreateComplianceArchive(request) {
   try {
     kind = complianceKind_(request.kind);
     firstAuthorization = complianceRequireKindCapability_(kind, true);
-    complianceBuildContext_(kind, request, firstAuthorization);
+    // ロック待ちの前は入力・正本版だけを検査する。Drive安全性は下の
+    // ロック内の完全検査で確認し、合格するまでファイルを作成しない。
+    complianceBuildContext_(
+      kind, request, firstAuthorization, { skipDriveValidation: true }
+    );
   } catch (preflightError) {
     return complianceErrorResult_(preflightError);
   }
@@ -350,14 +359,10 @@ function complianceRequireKindCapability_(kind, write) {
   return artifactRequireCapability_(write ? "artifacts.write" : "artifacts.read");
 }
 
-function complianceBuildContext_(kind, request, authorization) {
+function complianceBuildContext_(kind, request, authorization, runtime) {
+  runtime = runtime || {};
   var settings = artifactLoadSettings_();
   artifactAssertAllowedOutputEmails_(settings.allowedOutputEmails);
-  artifactRequireSafeOutputFolder_(
-    settings.outputFolderId,
-    [settings.ledgerTemplateId, settings.certificateTemplateId],
-    settings.allowedOutputEmails
-  );
   var context = {
     kind: kind,
     request: request,
@@ -373,9 +378,21 @@ function complianceBuildContext_(kind, request, authorization) {
     context.sampleCanonical = sample.canonical;
     context.warnings.push("これはサンプル出力です。正式提出・正式保管・採番・会計処理には使用できません。");
   }
-  if (kind === "implementationPlan") return complianceBuildPlanContext_(context);
-  if (kind === "implementationStatus") return complianceBuildStatusContext_(context);
-  if (context.sampleMode) return complianceBuildSampleRecordContext_(context);
+  if (kind === "implementationPlan") {
+    return complianceBindOutputFolder_(
+      complianceBuildPlanContext_(context), runtime.skipDriveValidation === true
+    );
+  }
+  if (kind === "implementationStatus") {
+    return complianceBindOutputFolder_(
+      complianceBuildStatusContext_(context), runtime.skipDriveValidation === true
+    );
+  }
+  if (context.sampleMode) {
+    return complianceBindOutputFolder_(
+      complianceBuildSampleRecordContext_(context), runtime.skipDriveValidation === true
+    );
+  }
   if (["training", "ledger", "certificate", "dipsCsv"].indexOf(kind) >= 0) {
     throw new Error("正式成果物は成果物専用の作成前検査・作成処理を使用してください。");
   }
@@ -395,7 +412,7 @@ function complianceBuildContext_(kind, request, authorization) {
   };
   if (kind === "applicationEvidence") {
     if (!artifactRecordName_(context.record)) throw new Error("対象者名が必要です。");
-    return context;
+    return complianceBindOutputFolder_(context, runtime.skipDriveValidation === true);
   }
   context.finance = complianceFinanceSnapshotForRecord_(context.record.recordId);
   if (!context.finance.invoices.length && !context.finance.payments.length) {
@@ -404,6 +421,30 @@ function complianceBuildContext_(kind, request, authorization) {
   context.summary.invoiceCount = context.finance.invoices.length;
   context.summary.paymentCount = context.finance.payments.length;
   context.summary.financeRevision = context.finance.revision;
+  return complianceBindOutputFolder_(context, runtime.skipDriveValidation === true);
+}
+
+function complianceBindOutputFolder_(context, skipDriveValidation) {
+  var fiscalYear = "";
+  if (context.kind === "implementationPlan") {
+    fiscalYear = artifactFiscalYearFromIso_(context.planMonth + "-01");
+  } else if (context.kind === "implementationStatus") {
+    fiscalYear = artifactFiscalYearFromIso_(context.reportStartDate);
+  } else {
+    fiscalYear = artifactText_((context.record || context.sampleRecord || {}).fiscalYear);
+  }
+  var outputFolderId = artifactOutputFolderForFiscalYear_(context.settings, fiscalYear);
+  if (skipDriveValidation !== true) {
+    artifactRequireSafeOutputFolder_(
+      outputFolderId,
+      [context.settings.ledgerTemplateId, context.settings.certificateTemplateId],
+      context.settings.allowedOutputEmails,
+      fiscalYear
+    );
+  }
+  context.settings = artifactClone_(context.settings);
+  context.settings.outputFolderId = outputFolderId;
+  context.outputFiscalYear = fiscalYear;
   return context;
 }
 
@@ -463,9 +504,9 @@ function complianceBuildPlanContext_(context) {
   if (!/^20\d{2}-(?:0[1-9]|1[0-2])$/.test(month)) {
     throw new Error("実施計画書の対象月をYYYY-MM形式で指定してください。");
   }
-  if (artifactFiscalYearFromIso_(month + "-01") !== RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR) {
-    throw new Error("別添04の対象月は固定保存先と同じ2026年度内にしてください。");
-  }
+  artifactOutputFolderForFiscalYear_(
+    context.settings, artifactFiscalYearFromIso_(month + "-01")
+  );
   var counts = {
     firstStart: complianceNonNegativeInteger_(input.firstStartCount, "一等の開始予定人数"),
     firstFinish: complianceNonNegativeInteger_(input.firstFinishCount, "一等の修了予定人数"),
@@ -502,12 +543,12 @@ function complianceBuildStatusContext_(context) {
   if (startDate > endDate) throw new Error("実施状況報告書の対象開始日は対象終了日以前にしてください。");
   if (endDate > today || reportDate > today) throw new Error("実施状況報告書に未来の終了日・報告日は指定できません。");
   if (reportDate < endDate) throw new Error("実施状況報告書の報告日は対象終了日以後にしてください。");
-  if (
-    artifactFiscalYearFromIso_(startDate) !== RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR ||
-    artifactFiscalYearFromIso_(endDate) !== RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR
-  ) {
-    throw new Error("別添05の対象期間は固定保存先と同じ2026年度内にしてください。");
+  var startFiscalYear = artifactFiscalYearFromIso_(startDate);
+  var endFiscalYear = artifactFiscalYearFromIso_(endDate);
+  if (startFiscalYear !== endFiscalYear) {
+    throw new Error("別添05の対象開始日と対象終了日は同じ年度内にしてください。");
   }
+  artifactOutputFolderForFiscalYear_(context.settings, startFiscalYear);
   var state = context.sampleMode ? null : complianceRequireTemplatesReady_();
   // サンプル出力へ実在者の人数・会場を混ぜない。サンプル対象者1件だけで集計する。
   var records = context.sampleMode
