@@ -87,10 +87,50 @@ const ledgerRenderer = source.slice(
 });
 assert(ledgerRenderer.includes("artifactLedgerOutputFields_(context.record)"),
   "対象者資料ブックの発行台帳は共通転記規則を使用する必要があります");
-assert(ledgerRenderer.includes('"A3:H3"') && ledgerRenderer.includes('"A4:H4"'),
-  "対象者資料ブックの発行台帳は正式8列だけを表示する必要があります");
+assert(ledgerRenderer.includes("artifactAssertLedgerTemplateClean_") &&
+  ledgerRenderer.includes(".copyTo(spreadsheet)"),
+  "対象者資料ブックの発行台帳は検査済み専用原本を複製する必要があります");
+assert(ledgerRenderer.includes("artifactApplyLedgerOutputHeaders_") &&
+  ledgerRenderer.includes('"B3:I3"'),
+  "発行台帳は原本のB:I列へ正式8項目を転記する必要があります");
 assert(!ledgerRenderer.includes("certificateDeliveredDate") && !ledgerRenderer.includes("record.recordId"),
   "発行台帳の可視列へ実交付日や内部recordIdを混在させてはいけません");
+
+const planRenderer = source.slice(
+  source.indexOf("function personWorkbookRenderPlan_("),
+  source.indexOf("function personWorkbookRenderStatus_(")
+);
+assert(planRenderer.includes("complianceAssertPlanTemplateClean_") &&
+  planRenderer.includes(".copyTo(spreadsheet)"),
+  "別添04は検査済み専用原本のレイアウトを複製する必要があります");
+
+const statusRenderer = source.slice(
+  source.indexOf("function personWorkbookRenderStatus_("),
+  source.indexOf("function personWorkbookRenderLedger_(")
+);
+assert(statusRenderer.includes("登録更新講習機関実施状況報告書") &&
+  statusRenderer.includes("国土交通大臣　殿") &&
+  statusRenderer.includes("添付資料：講習修了者一覧") &&
+  statusRenderer.includes('"A12:L23"'),
+  "別添05は公式様式の見出し・宛名・12行相当の表構造を再現する必要があります");
+
+const certificateRenderer = source.slice(
+  source.indexOf("function personWorkbookRenderCertificate_("),
+  source.indexOf("function personWorkbookRenderDips_(")
+);
+assert(certificateRenderer.includes("航空法第132条の51") &&
+  certificateRenderer.includes('"B15:K22"') &&
+  certificateRenderer.includes("限定解除") === false &&
+  certificateRenderer.includes('"限 定\\n解 除\\n事 項"'),
+  "修了証明書は原本の法令文と区分・限定解除事項の表構造を再現する必要があります");
+
+const titleRenderer = source.slice(
+  source.indexOf("function personWorkbookTitle_("),
+  source.indexOf("function personWorkbookApplyDocumentStyle_(")
+);
+assert(!titleRenderer.includes("#0b4f8a") &&
+  titleRenderer.includes('.setBackground("#ffffff")'),
+  "帳票見出しをアプリ風の濃紺帯にしてはいけません");
 
 const updateStart = source.indexOf("function personWorkbookUpdate_(");
 const updateEnd = source.indexOf("function personWorkbookEnsureSystemSheet_(");

@@ -27,6 +27,11 @@ function apiPreflightPersonWorkbook(request) {
       personWorkbookCanonicalRequest_(request)
     );
     var settings = artifactLoadSettings_();
+    var complianceTemplateState = complianceLoadTemplateState_(true);
+    complianceAssertPlanTemplateClean_(
+      complianceTemplateState.planTemplateId
+    );
+    artifactAssertLedgerTemplateClean_(settings.ledgerTemplateId);
     personWorkbookAssertAdminOnlyAcl_(authorization.email);
     var record = artifactNormalizeRecord_(canonicalRequest.request.record);
     var fiscalYear = artifactText_(record.fiscalYear);
@@ -106,6 +111,7 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       personWorkbookCanonicalRequest_(request)
     );
     var settings = artifactLoadSettings_();
+    var complianceTemplateState = complianceLoadTemplateState_(true);
     var allowedEmails = personWorkbookAssertAdminOnlyAcl_(authorization.email);
     settings.allowedOutputEmails = allowedEmails;
     var record = artifactNormalizeRecord_(canonicalRequest.request.record);
@@ -139,6 +145,7 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       canonical: canonicalRequest.canonical,
       record: record,
       settings: settings,
+      complianceTemplateState: complianceTemplateState,
       finance: finance,
       sampleMode: sampleMode,
       autoRoot: workbookRoot,
@@ -754,11 +761,15 @@ function personWorkbookRenderPrepared_(spreadsheet, tempName, key, context) {
   if (key === "training") {
     return personWorkbookRenderTraining_(spreadsheet, tempName, context);
   }
+  if (key === "plan") {
+    return personWorkbookRenderPlan_(spreadsheet, tempName, context);
+  }
+  if (key === "ledger") {
+    return personWorkbookRenderLedger_(spreadsheet, tempName, context);
+  }
   var sheet = spreadsheet.insertSheet(tempName);
   if (key === "overview") personWorkbookRenderOverview_(sheet, context);
-  else if (key === "plan") personWorkbookRenderPlan_(sheet, context);
   else if (key === "status") personWorkbookRenderStatus_(sheet, context);
-  else if (key === "ledger") personWorkbookRenderLedger_(sheet, context);
   else if (key === "evidence") personWorkbookRenderEvidence_(sheet, context);
   else if (key === "certificate") personWorkbookRenderCertificate_(sheet, context);
   else if (key === "dips") personWorkbookRenderDips_(sheet, context);
@@ -773,13 +784,37 @@ function personWorkbookTitle_(sheet, rangeA1, title, context) {
     (context.sampleMode ? "【サンプル・正式使用禁止】" : "") + title
   );
   range
-    .setBackground(context.sampleMode ? "#b91c1c" : "#0b4f8a")
-    .setFontColor("#ffffff")
+    .setBackground("#ffffff")
+    .setFontColor(context.sampleMode ? "#b91c1c" : "#111827")
     .setFontWeight("bold")
-    .setFontSize(14)
-    .setVerticalAlignment("middle");
-  sheet.setRowHeight(range.getRow(), 34);
+    .setFontSize(16)
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setBorder(null, null, true, null, null, null, "#111827",
+      SpreadsheetApp.BorderStyle.SOLID);
+  sheet.setRowHeight(range.getRow(), 38);
   if (context.sampleMode) sheet.setTabColor("#b91c1c");
+}
+
+function personWorkbookApplyDocumentStyle_(sheet, rows, columns) {
+  personWorkbookPrepareGrid_(sheet, rows, columns);
+  try { sheet.setHiddenGridlines(true); } catch (ignoredGridlines) {}
+  sheet.getRange(1, 1, rows, columns)
+    .setBackground("#ffffff")
+    .setFontFamily("Noto Serif JP")
+    .setFontColor("#111827");
+}
+
+function personWorkbookSampleNotice_(sheet, rangeA1, context) {
+  if (!context.sampleMode) return;
+  sheet.getRange(rangeA1)
+    .merge()
+    .setValue("【サンプル・正式使用禁止】")
+    .setFontColor("#b91c1c")
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setBackground("#fff1f2");
+  sheet.setTabColor("#b91c1c");
 }
 
 function personWorkbookPrepareGrid_(sheet, rows, columns) {
@@ -799,7 +834,7 @@ function personWorkbookPrepareGrid_(sheet, rows, columns) {
 }
 
 function personWorkbookRenderOverview_(sheet, context) {
-  personWorkbookPrepareGrid_(sheet, 42, 8);
+  personWorkbookApplyDocumentStyle_(sheet, 42, 8);
   personWorkbookTitle_(sheet, "A1:H1", "対象者資料一式　概要", context);
   var record = context.record;
   var expiry = artifactValidIsoDateOrBlank_(record.certificateExpiry) ||
@@ -838,8 +873,11 @@ function personWorkbookRenderOverview_(sheet, context) {
   sheet.getRange(3, 1, rows.length, 2).setValues(
     artifactSafeSheetMatrix_(rows)
   );
-  sheet.getRange("A3:B3").setBackground("#dbeafe").setFontWeight("bold");
-  sheet.getRange(3, 1, rows.length, 2).setWrap(true);
+  sheet.getRange("A3:B3").setBackground("#e5e7eb").setFontWeight("bold");
+  sheet.getRange(3, 1, rows.length, 2)
+    .setBorder(true, true, true, true, true, true)
+    .setWrap(true);
+  sheet.getRange(4, 1, rows.length - 1, 1).setBackground("#f8fafc");
   sheet.setColumnWidth(1, 210);
   sheet.setColumnWidth(2, 520);
   sheet.setFrozenRows(3);
@@ -850,7 +888,7 @@ function personWorkbookRenderTraining_(spreadsheet, tempName, context) {
   var classValue = Number(artifactClassValue_(record.licenseClass));
   if ([1, 2].indexOf(classValue) < 0) {
     var blank = spreadsheet.insertSheet(tempName);
-    personWorkbookPrepareGrid_(blank, 34, 8);
+    personWorkbookApplyDocumentStyle_(blank, 34, 8);
     personWorkbookTitle_(blank, "A1:H1", "別添03 講習記録簿", context);
     blank.getRange("A3:H3").merge().setValue(
       "資格区分が未入力のため、講習記録欄は空欄です。"
@@ -983,108 +1021,232 @@ function personWorkbookWriteTrainingModule_(
   );
 }
 
-function personWorkbookRenderPlan_(sheet, context) {
-  personWorkbookPrepareGrid_(sheet, 28, 10);
-  personWorkbookTitle_(sheet, "A1:J1", "事務規程、別添04 登録更新講習機関実施計画書", context);
+function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
+  var templateState = context.complianceTemplateState ||
+    complianceLoadTemplateState_(true);
+  complianceAssertPlanTemplateClean_(templateState.planTemplateId);
+  var template = SpreadsheetApp.openById(templateState.planTemplateId);
+  var base = template.getSheetByName("ベース");
+  if (!base) {
+    throw new Error("別添04専用原本の「ベース」シートがありません。");
+  }
+  var sheet = base.copyTo(spreadsheet);
+  sheet.setName(tempName);
   var record = context.record;
   var plannedDate = artifactValidIsoDateOrBlank_(
     record.courseScheduledDate || record.courseDate
   );
   var plannedClass = Number(artifactClassValue_(record.licenseClass));
   var hasPlan = !!plannedDate && [1, 2].indexOf(plannedClass) >= 0;
-  sheet.getRange("A3:B9").setValues(artifactSafeSheetMatrix_([
-    ["項目", "記入内容"],
-    ["対象月", plannedDate ? plannedDate.slice(0, 7) : ""],
-    ["登録更新講習機関", context.settings.issuerCompany],
-    ["一等・開始予定人数", hasPlan && plannedClass === 1 ? 1 : ""],
-    ["一等・修了予定人数", hasPlan && plannedClass === 1 ? 1 : ""],
-    ["二等・開始予定人数", hasPlan && plannedClass === 2 ? 1 : ""],
-    ["二等・修了予定人数", hasPlan && plannedClass === 2 ? 1 : ""]
+  var planMonth = plannedDate ? plannedDate.slice(0, 7) : "";
+  var year = planMonth ? Number(planMonth.slice(0, 4)) : "";
+  var month = planMonth ? Number(planMonth.slice(5, 7)) : "";
+  var lastDay = planMonth ? new Date(year, month, 0).getDate() : 0;
+  var days = [];
+  var weekdays = [];
+  var weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
+  for (var day = 1; day <= 31; day++) {
+    days.push(day <= lastDay ? day : "");
+    weekdays.push(
+      day <= lastDay
+        ? weekdayLabels[new Date(year, month - 1, day).getDay()]
+        : ""
+    );
+  }
+  sheet.getRange("D1").setValue(
+    (context.sampleMode ? "【サンプル・正式使用禁止】" : "") +
+    "登録更新講習機関実施計画書" +
+    (month ? "　" + month + "月" : "")
+  );
+  sheet.getRange(2, 4, 1, 31).setValues([days]);
+  sheet.getRange(3, 4, 1, 31).setValues([weekdays]);
+  sheet.getRange("B4:C5").setValues(artifactSafeSheetMatrix_([
+    [
+      hasPlan && plannedClass === 2 ? 1 : "",
+      hasPlan && plannedClass === 2 ? 1 : ""
+    ],
+    [
+      hasPlan && plannedClass === 1 ? 1 : "",
+      hasPlan && plannedClass === 1 ? 1 : ""
+    ]
   ]));
-  sheet.getRange("A3:B3").setBackground("#dbeafe").setFontWeight("bold");
-  sheet.getRange("D3:F6").setValues(artifactSafeSheetMatrix_([
-    ["対象者の参考情報", "", ""],
-    ["対象者", artifactRecordName_(record), ""],
-    ["講習予定日", record.courseScheduledDate, ""],
-    ["講習修了日", record.courseDate, ""]
-  ]));
-  sheet.getRange("D3:F3").setBackground("#fef3c7").setFontWeight("bold");
-  sheet.getRange("A12:J12").merge().setValue(
-    "この対象者の保存済み講習予定から作成しています。未入力部分は空欄です。" +
-    "情報を登録・編集後、同じ作成ボタンで更新してください。"
-  ).setWrap(true).setFontColor("#92400e");
-  sheet.setColumnWidth(1, 220);
-  sheet.setColumnWidth(2, 260);
-  sheet.setColumnWidths(4, 3, 150);
-  sheet.setFrozenRows(3);
+  sheet.getRange("D1").setNote(
+    "対象者：" + artifactRecordName_(record) +
+    " / 管理ID：" + artifactText_(record.personId) +
+    "。保存済み予定から作成し、未入力値は空欄です。"
+  );
+  if (context.sampleMode) {
+    sheet.getRange("D1").setFontColor("#b91c1c").setFontWeight("bold");
+    sheet.setTabColor("#b91c1c");
+  }
+  try { sheet.setHiddenGridlines(true); } catch (ignoredPlanGridlines) {}
+  return sheet;
 }
 
 function personWorkbookRenderStatus_(sheet, context) {
-  personWorkbookPrepareGrid_(sheet, 28, 10);
-  personWorkbookTitle_(sheet, "A1:J1", "事務規程、別添05 登録更新講習機関実施状況報告書", context);
+  personWorkbookApplyDocumentStyle_(sheet, 32, 12);
   var record = context.record;
   var completedDate = artifactValidIsoDateOrBlank_(record.courseDate);
+  var issuedDate = artifactValidIsoDateOrBlank_(record.certificateIssuedDate);
   var completedClass = Number(artifactClassValue_(record.licenseClass));
-  var firstCompleted = completedDate && completedClass === 1;
-  var secondCompleted = completedDate && completedClass === 2;
-  sheet.getRange("A3:C12").setValues(artifactSafeSheetMatrix_([
-    ["項目", "一等", "二等"],
-    ["報告日", "", ""],
-    ["対象期間", firstCompleted ? completedDate : "", secondCompleted ? completedDate : ""],
-    ["修了人数", firstCompleted ? 1 : "", secondCompleted ? 1 : ""],
-    ["実施場所", firstCompleted ? record.courseVenue : "", secondCompleted ? record.courseVenue : ""],
-    ["対象者氏名", firstCompleted ? artifactRecordName_(record) : "",
-      secondCompleted ? artifactRecordName_(record) : ""],
-    ["対象者講習修了日", firstCompleted ? completedDate : "",
-      secondCompleted ? completedDate : ""],
-    ["対象者講習会場", firstCompleted ? record.courseVenue : "",
-      secondCompleted ? record.courseVenue : ""],
-    ["対象者管理ID", firstCompleted ? record.personId : "",
-      secondCompleted ? record.personId : ""],
-    ["備考", "", ""]
-  ]));
-  sheet.getRange("A3:C3").setBackground("#dbeafe").setFontWeight("bold");
-  sheet.getRange("A15:J15").merge().setValue(
-    "この対象者の保存済み講習修了記録から作成しています。報告日は登録項目がないため空欄です。"
-  ).setWrap(true).setFontColor("#92400e");
-  sheet.setColumnWidth(1, 220);
-  sheet.setColumnWidths(2, 2, 280);
-  sheet.setFrozenRows(3);
+  var firstCompleted = !!completedDate && completedClass === 1;
+  var secondCompleted = !!completedDate && completedClass === 2;
+  var fiscalYear = Number(artifactText_(record.fiscalYear)) ||
+    (completedDate ? artifactFiscalYearFromIso_(completedDate) : "");
+  var reportDateText = issuedDate
+    ? artifactFormatJapaneseLongDate_(issuedDate)
+    : "";
+  var periodText = completedDate
+    ? artifactFormatJapaneseLongDate_(completedDate)
+    : "";
+
+  personWorkbookSampleNotice_(sheet, "A1:L1", context);
+  sheet.getRange(context.sampleMode ? "A2:L2" : "A1:L2").merge()
+    .setValue("登録更新講習機関実施状況報告書")
+    .setFontSize(16)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center");
+  sheet.setRowHeight(2, 34);
+  sheet.getRange("H4:L4").merge()
+    .setValue(reportDateText)
+    .setHorizontalAlignment("right");
+  sheet.getRange("A5:D5").merge()
+    .setValue("国土交通大臣　殿")
+    .setFontSize(12);
+  sheet.getRange("G5:L5").merge()
+    .setValue(artifactText_(context.settings.issuerCompany))
+    .setHorizontalAlignment("right");
+  sheet.getRange("G6:L6").merge()
+    .setValue(artifactText_(context.settings.issuerAddress))
+    .setHorizontalAlignment("right")
+    .setWrap(true);
+  sheet.getRange("G7:L7").merge()
+    .setValue(
+      artifactText_(context.settings.issuerPhone)
+        ? "電話番号　" + artifactText_(context.settings.issuerPhone)
+        : ""
+    )
+    .setHorizontalAlignment("right");
+  sheet.getRange("A9:L10").merge()
+    .setValue(
+      "航空法第132条の51の規定に基づき、登録更新講習機関における" +
+      "無人航空機更新講習の実施状況を次のとおり報告します。"
+    )
+    .setWrap(true)
+    .setVerticalAlignment("middle");
+
+  sheet.getRange("A12:C12").merge().setValue("登録更新講習機関の登録番号");
+  sheet.getRange("D12:L12").merge()
+    .setValue("一等：国空無機第325175号　　二等：国空無機第325176号");
+  sheet.getRange("A13:C13").merge().setValue("事務所の名称");
+  sheet.getRange("D13:L13").merge()
+    .setValue(artifactText_(context.settings.issuerCompany));
+  sheet.getRange("A14:C14").merge().setValue("事務所の所在地");
+  sheet.getRange("D14:L14").merge()
+    .setValue(artifactText_(context.settings.issuerAddress));
+  sheet.getRange("A15:C15").merge().setValue("電話番号");
+  sheet.getRange("D15:L15").merge()
+    .setValue(artifactText_(context.settings.issuerPhone));
+  sheet.getRange("A16:C16").merge().setValue("報告対象年度");
+  sheet.getRange("D16:L16").merge().setValue(
+    fiscalYear
+      ? (Number(fiscalYear) - 2018) + "年度" +
+        (completedDate ? "（" + periodText + "開始分）" : "")
+      : ""
+  );
+  sheet.getRange("A17:C17").merge().setValue("講習の内容");
+  sheet.getRange("D17:L17").merge().setValue("無人航空機更新講習");
+
+  sheet.getRange("A18:A20").merge().setValue("一等").setVerticalAlignment("middle");
+  sheet.getRange("B18:C18").merge().setValue("実施場所");
+  sheet.getRange("D18:L18").merge()
+    .setValue(firstCompleted ? artifactText_(record.courseVenue) : "");
+  sheet.getRange("B19:C19").merge().setValue("実施期間");
+  sheet.getRange("D19:L19").merge()
+    .setValue(firstCompleted ? periodText : "");
+  sheet.getRange("B20:C20").merge().setValue("修了人数");
+  sheet.getRange("D20:L20").merge()
+    .setValue(firstCompleted ? "1人" : "");
+
+  sheet.getRange("A21:A23").merge().setValue("二等").setVerticalAlignment("middle");
+  sheet.getRange("B21:C21").merge().setValue("実施場所");
+  sheet.getRange("D21:L21").merge()
+    .setValue(secondCompleted ? artifactText_(record.courseVenue) : "");
+  sheet.getRange("B22:C22").merge().setValue("実施期間");
+  sheet.getRange("D22:L22").merge()
+    .setValue(secondCompleted ? periodText : "");
+  sheet.getRange("B23:C23").merge().setValue("修了人数");
+  sheet.getRange("D23:L23").merge()
+    .setValue(secondCompleted ? "1人" : "");
+
+  sheet.getRange("A12:L23")
+    .setBorder(
+      true, true, true, true, true, true,
+      "#111827", SpreadsheetApp.BorderStyle.SOLID
+    )
+    .setWrap(true)
+    .setVerticalAlignment("middle");
+  sheet.getRange("A12:C23").setHorizontalAlignment("center");
+  sheet.getRange("A25:L25").merge()
+    .setValue("添付資料：講習修了者一覧");
+  sheet.getRange("A27:L27").merge()
+    .setValue(
+      "対象者：" + artifactRecordName_(record) +
+      "　管理ID：" + artifactText_(record.personId)
+    )
+    .setFontSize(8)
+    .setFontColor("#475569");
+  sheet.setColumnWidths(1, 12, 52);
+  sheet.setColumnWidths(4, 9, 64);
+  sheet.setRowHeights(12, 12, 30);
+  sheet.setRowHeight(14, 42);
+  sheet.setRowHeight(18, 36);
+  sheet.setRowHeight(19, 36);
+  sheet.setRowHeight(20, 36);
+  sheet.setRowHeight(21, 36);
+  sheet.setRowHeight(22, 36);
+  sheet.setRowHeight(23, 36);
 }
 
-function personWorkbookRenderLedger_(sheet, context) {
-  personWorkbookPrepareGrid_(sheet, 20, 8);
-  personWorkbookTitle_(sheet, "A1:H1", "事務規程、別添13 無人航空機更新講習修了証明書発行台帳", context);
+function personWorkbookRenderLedger_(spreadsheet, tempName, context) {
+  artifactAssertLedgerTemplateClean_(context.settings.ledgerTemplateId);
+  var template = SpreadsheetApp.openById(context.settings.ledgerTemplateId);
+  var base = template.getSheetByName("ベース");
+  if (!base) {
+    throw new Error("別添13専用原本の「ベース」シートがありません。");
+  }
+  var sheet = base.copyTo(spreadsheet);
+  sheet.setName(tempName);
+  if (sheet.getMaxColumns() > 9) {
+    sheet.deleteColumns(10, sheet.getMaxColumns() - 9);
+  }
+  artifactApplyLedgerOutputHeaders_(sheet);
   var values = artifactLedgerOutputFields_(context.record);
   [3, 5, 6].forEach(function(index) {
     values[index] = values[index] ? artifactDateObject_(values[index]) : "";
   });
-  sheet.getRange("A3:H3").setValues([
-    RENEWAL_ARTIFACT.LEDGER_OUTPUT_HEADERS.slice()
-  ])
-    .setBackground("#dbeafe").setFontWeight("bold");
-  sheet.getRange("A4:H4").setValues(artifactSafeSheetMatrix_([values]));
-  sheet.getRange("D4").setNumberFormat('yyyy"年"m"月"d"日');
-  sheet.getRange("F4:G4").setNumberFormat('yyyy"年"m"月"d"日');
-  sheet.getRange("A3:H4")
-    .setBorder(true, true, true, true, true, true)
-    .setWrap(true);
-  sheet.setRowHeight(3, 54);
-  sheet.setFrozenRows(3);
-  [190, 160, 130, 125, 170, 165, 185, 210]
-    .forEach(function(width, index) {
-      sheet.setColumnWidth(index + 1, width);
-    });
+  sheet.getRange("B3:I3").setValues(artifactSafeSheetMatrix_([values]));
+  sheet.getRange("E3").setNumberFormat('yyyy"年"m"月"d"日');
+  sheet.getRange("G3:H3").setNumberFormat('yyyy"年"m"月"d"日');
+  if (context.sampleMode) {
+    sheet.getRange("A1").setValue(
+      "【サンプル・正式使用禁止】 " +
+      "別添13　無人航空機更新講習講習修了証明書発行台帳"
+    ).setFontColor("#b91c1c").setFontWeight("bold");
+    sheet.setTabColor("#b91c1c");
+  }
+  try { sheet.setHiddenGridlines(true); } catch (ignoredLedgerGridlines) {}
+  return sheet;
 }
 
 function personWorkbookRenderEvidence_(sheet, context) {
-  personWorkbookPrepareGrid_(sheet, 24, 8);
+  personWorkbookApplyDocumentStyle_(sheet, 24, 8);
   personWorkbookTitle_(sheet, "A1:H1", "申込書・技能証明書・身分証　保管", context);
   var record = context.record;
   sheet.getRange("A3:H3").setValues([[
     "書類", "状態", "確認情報", "原本・証憑参照",
     "受領日", "確認日", "確認者", "備考"
-  ]]).setBackground("#dbeafe").setFontWeight("bold");
+  ]]).setBackground("#e5e7eb").setFontWeight("bold");
   sheet.getRange("A4:H6").setValues(artifactSafeSheetMatrix_([
     [
       "申込書",
@@ -1130,73 +1292,110 @@ function personWorkbookRenderEvidence_(sheet, context) {
 }
 
 function personWorkbookRenderCertificate_(sheet, context) {
-  personWorkbookPrepareGrid_(sheet, 36, 12);
+  personWorkbookApplyDocumentStyle_(sheet, 34, 12);
   var record = context.record;
   var aircraftType = artifactOperationalAircraftType_(record);
   var expiry = artifactValidIsoDateOrBlank_(record.certificateExpiry) ||
     (artifactValidIsoDateOrBlank_(record.courseDate)
       ? artifactAddCalendarMonthsMinusOne_(record.courseDate)
       : "");
-  personWorkbookTitle_(sheet, "A1:L1", "無人航空機更新講習修了証明書", context);
-  sheet.getRange("A3:L3").merge().setValue(
+  var courseDate = artifactValidIsoDateOrBlank_(record.courseDate);
+  var classValue = Number(artifactClassValue_(record.licenseClass));
+  personWorkbookSampleNotice_(sheet, "A1:L1", context);
+  sheet.getRange(context.sampleMode ? "A2:L2" : "A1:L2").merge()
+    .setValue("無人航空機更新講習修了証明書")
+    .setFontSize(16)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center");
+  sheet.getRange("H4:L4").merge().setValue(
     "第　" + artifactText_(record.certificateNo) + "　号"
   ).setHorizontalAlignment("right");
-  sheet.getRange("A5:L5").merge().setValue(
-    artifactRecordName_(record) + (artifactRecordName_(record) ? "　殿" : "")
-  ).setHorizontalAlignment("center").setFontSize(16).setFontWeight("bold");
-  sheet.getRange("A7:L7").merge().setValue(
-    artifactValidIsoDateOrBlank_(record.courseDate)
-      ? artifactFormatJapaneseLongDate_(record.courseDate) + "　修了"
-      : ""
-  ).setHorizontalAlignment("center");
-  sheet.getRange("A8:L8").merge().setValue(
+  sheet.getRange("H5:L5").merge().setValue(
+    courseDate ? artifactFormatJapaneseLongDate_(courseDate) + "　修了" : ""
+  ).setHorizontalAlignment("right");
+  sheet.getRange("H6:L6").merge().setValue(
     expiry ? artifactFormatJapaneseLongDate_(expiry) + "　まで有効" : ""
-  ).setHorizontalAlignment("center");
+  ).setHorizontalAlignment("right");
+  sheet.getRange("A8:L8").merge().setValue(
+    artifactRecordName_(record) + (artifactRecordName_(record) ? "　殿" : "")
+  ).setHorizontalAlignment("center").setFontSize(18).setFontWeight("bold");
   sheet.getRange("A10:L10").merge().setValue(
     "技能証明申請者番号：" +
       personWorkbookOptionalIdentifier_(record.skillsApplicantNo)
+  ).setHorizontalAlignment("center");
+  sheet.getRange("A12:L13").merge().setValue(
+    "航空法第132条の51の規定に関し、登録更新講習機関が行う無人航空機" +
+    "更新講習を修了したことを証明する。"
+  ).setHorizontalAlignment("center").setVerticalAlignment("middle").setWrap(true);
+
+  sheet.getRange("B15:E16").merge().setValue("");
+  sheet.getRange("F15:K15").merge().setValue("区分");
+  sheet.getRange("F16:H16").merge().setValue("一等");
+  sheet.getRange("I16:K16").merge().setValue("二等");
+  sheet.getRange("B17:C22").merge()
+    .setValue("限 定\n解 除\n事 項")
+    .setWrap(true);
+  sheet.getRange("D17:E18").merge()
+    .setValue("回転翼航空機\n（マルチローター）")
+    .setWrap(true);
+  sheet.getRange("D19:E20").merge()
+    .setValue("回転翼航空機\n（ヘリコプター）")
+    .setWrap(true);
+  sheet.getRange("D21:E22").merge().setValue("飛行機");
+  sheet.getRange("F17:H18").merge().setValue(
+    aircraftType === "回転翼航空機（マルチローター）" && classValue === 1
+      ? "○" : ""
   );
-  sheet.getRange("A12:F16").setValues(artifactSafeSheetMatrix_([
-    ["航空機の種類", "一等", "二等", "", "", ""],
-    ["回転翼航空機（マルチローター）",
-      aircraftType === "回転翼航空機（マルチローター）" &&
-        Number(artifactClassValue_(record.licenseClass)) === 1 ? "〇" : "",
-      aircraftType === "回転翼航空機（マルチローター）" &&
-        Number(artifactClassValue_(record.licenseClass)) === 2 ? "〇" : "", "", "", ""],
-    ["回転翼航空機（ヘリコプター）",
-      aircraftType === "回転翼航空機（ヘリコプター）" &&
-        Number(artifactClassValue_(record.licenseClass)) === 1 ? "〇" : "",
-      aircraftType === "回転翼航空機（ヘリコプター）" &&
-        Number(artifactClassValue_(record.licenseClass)) === 2 ? "〇" : "", "", "", ""],
-    ["飛行機",
-      aircraftType === "飛行機" &&
-        Number(artifactClassValue_(record.licenseClass)) === 1 ? "〇" : "",
-      aircraftType === "飛行機" &&
-        Number(artifactClassValue_(record.licenseClass)) === 2 ? "〇" : "", "", "", ""],
-    ["停止処分者向け講習", record.suspensionCourse, "", "", "", ""]
-  ]));
-  sheet.getRange("A12:C16")
-    .setBorder(true, true, true, true, true, true)
-    .setHorizontalAlignment("center");
-  sheet.getRange("A12:C12").setBackground("#dbeafe").setFontWeight("bold");
-  sheet.getRange("G19:L19").merge().setValue(
+  sheet.getRange("I17:K18").merge().setValue(
+    aircraftType === "回転翼航空機（マルチローター）" && classValue === 2
+      ? "○" : ""
+  );
+  sheet.getRange("F19:H20").merge().setValue(
+    aircraftType === "回転翼航空機（ヘリコプター）" && classValue === 1
+      ? "○" : ""
+  );
+  sheet.getRange("I19:K20").merge().setValue(
+    aircraftType === "回転翼航空機（ヘリコプター）" && classValue === 2
+      ? "○" : ""
+  );
+  sheet.getRange("F21:H22").merge().setValue(
+    aircraftType === "飛行機" && classValue === 1 ? "○" : ""
+  );
+  sheet.getRange("I21:K22").merge().setValue(
+    aircraftType === "飛行機" && classValue === 2 ? "○" : ""
+  );
+  sheet.getRange("B15:K22")
+    .setBorder(
+      true, true, true, true, true, true,
+      "#111827", SpreadsheetApp.BorderStyle.SOLID
+    )
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
+
+  sheet.getRange("G25:L25").merge().setValue(
     "登録更新講習機関名　" + artifactText_(context.settings.issuerCompany)
   );
-  sheet.getRange("G20:L20").merge().setValue(
+  sheet.getRange("G26:L26").merge().setValue(
     "登録更新講習機関コード：" +
       (context.sampleMode ? "SAMPLE" : RENEWAL_ARTIFACT.ORGANIZATION_CODE)
   );
-  sheet.getRange("G21:L21").merge().setValue(
+  sheet.getRange("G27:L27").merge().setValue(
     "担当講師：" + artifactText_(record.certificateInstructor)
   );
-  sheet.getRange("A24:L24").merge().setValue(
-    "このシートは対象者資料ブック用の印刷確認欄です。正式な押印・交付は担当者が確認してください。"
-  ).setFontColor("#475569").setWrap(true);
-  sheet.setColumnWidths(1, 12, 78);
+  sheet.getRange("A30:L30").merge().setValue(
+    "印刷・交付前に、番号・氏名・日付・区分・担当講師を確認してください。"
+  ).setFontColor("#475569").setFontSize(8);
+  sheet.setColumnWidths(1, 12, 54);
+  sheet.setColumnWidths(2, 10, 64);
+  sheet.setRowHeight(2, 34);
+  sheet.setRowHeight(8, 40);
+  sheet.setRowHeights(12, 2, 34);
+  sheet.setRowHeights(15, 8, 28);
+  sheet.setRowHeights(17, 6, 34);
 }
 
 function personWorkbookRenderDips_(sheet, context) {
-  personWorkbookPrepareGrid_(sheet, 16, 11);
+  personWorkbookApplyDocumentStyle_(sheet, 16, 11);
   personWorkbookTitle_(sheet, "A1:K1", "CSVファイル　保管（DIPS提出11列）", context);
   var record = context.record;
   var expiry = artifactValidIsoDateOrBlank_(record.certificateExpiry) ||
@@ -1220,7 +1419,7 @@ function personWorkbookRenderDips_(sheet, context) {
     ? "SAMPLE-PA"
     : "PA000000000000";
   sheet.getRange(3, 1, 1, 11).setValues([artifactDipsCsvHeaders_()])
-    .setBackground("#dbeafe").setFontWeight("bold").setWrap(true);
+    .setBackground("#e5e7eb").setFontWeight("bold").setWrap(true);
   sheet.getRange(4, 1, 1, 11).setValues(artifactSafeSheetMatrix_([[
     personWorkbookOptionalIdentifier_(record.dipsApplicantId),
     personWorkbookOptionalIdentifier_(record.skillsApplicantNo),
@@ -1252,7 +1451,7 @@ function personWorkbookRenderDips_(sheet, context) {
 }
 
 function personWorkbookRenderPayment_(sheet, context) {
-  personWorkbookPrepareGrid_(sheet, 80, 10);
+  personWorkbookApplyDocumentStyle_(sheet, 80, 10);
   personWorkbookTitle_(sheet, "A1:J1", "講習料金収納記録　保管", context);
   var finance = context.finance;
   var position = finance ? finance.position : null;
@@ -1283,7 +1482,7 @@ function personWorkbookRenderPayment_(sheet, context) {
   sheet.getRange("A7:J7").setValues([[
     "請求日", "請求書番号", "請求ID", "状態", "税込請求額",
     "消込額", "反対取引・相殺等", "請求残高", "役務提供日", "入金期限"
-  ]]).setBackground("#dbeafe").setFontWeight("bold");
+  ]]).setBackground("#e5e7eb").setFontWeight("bold");
   var invoiceRows = finance ? finance.invoices.map(function(invoice) {
     var invoicePosition = financeInvoicePosition_(finance.state, invoice.id);
     return [
@@ -1310,7 +1509,7 @@ function personWorkbookRenderPayment_(sheet, context) {
   sheet.getRange(paymentStart, 1, 1, 10).setValues([[
     "取引日", "入金ID", "取引区分", "金額", "符号付金額",
     "入金方法", "参照", "消込額", "未消込額", "記録者・時刻"
-  ]]).setBackground("#dbeafe").setFontWeight("bold");
+  ]]).setBackground("#e5e7eb").setFontWeight("bold");
   var allocationTotals = {};
   if (finance) {
     finance.allocations.forEach(function(row) {
