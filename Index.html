@@ -1912,6 +1912,17 @@
       </div>
       <div class="modal-body">
         <p id="artifactTarget" class="operation-note"></p>
+        <h3>対象者別の資料ブック</h3>
+        <p class="operation-note">
+          同じ対象者はrecordIdで判定し、1つのGoogleスプレッドシート内へ各資料を別シートで保存します。
+          未入力項目は空欄です。再実行すると同じファイルIDの固定シートを上書き更新し、原本と従来の個別成果物は変更しません。
+        </p>
+        <div class="modal-actions">
+          <button type="button" id="createOrUpdatePersonWorkbook" class="primary">資料一式を作成・更新</button>
+        </div>
+        <div id="personWorkbookResult" class="artifact-result" role="status"></div>
+        <details>
+          <summary>個別ファイル作成（従来方式・必要な場合のみ）</summary>
         <h3>事務規程・監査保管</h3>
         <p class="operation-note">各ボタンは最初に作成前検査を行い、確認後にGoogle Driveへ作成・保管します。既存ファイルや原本は上書きしません。</p>
         <div class="compliance-period-fields">
@@ -1945,6 +1956,7 @@
           <button type="button" class="compliance-create-button" data-compliance-kind="paymentRecord"><strong>講習料金収納記録　保管</strong><small>正式会計台帳から請求・入金・消込を集計</small></button>
         </div>
         <div id="complianceArchiveResult" class="artifact-result" role="status"></div>
+        </details>
         <details>
           <summary>その他の成果物・複数選択で作成</summary>
           <div class="artifact-options">
@@ -2139,6 +2151,7 @@
     let financeInvoiceId = "";
     let artifactPreflightState = null;
     let complianceArchiveBusy = false;
+    let personWorkbookBusy = false;
     let artifactSettingsLoaded = false;
     let artifactRuntimeSettings = {};
     let artifactSettingsVersion = 0;
@@ -5697,7 +5710,7 @@
         '<div class="table-wrap"><table class="report-table"><thead><tr><th>講習項目</th><th>受講日</th><th>時間</th><th>担当者</th></tr></thead><tbody>' +
           trainingRows + "</tbody></table></div>" +
         '<div class="modal-actions"><button type="button" class="primary" data-artifacts="' + escapeHtml(record.id) +
-          '" data-close-modal="detailModal">成果物を作成</button><button type="button" data-edit="' + escapeHtml(record.id) +
+          '" data-close-modal="detailModal">資料一式を作成・更新</button><button type="button" data-edit="' + escapeHtml(record.id) +
           '" data-close-modal="detailModal">編集</button></div>';
       openModal("detailModal");
     }
@@ -8336,6 +8349,127 @@
       document.querySelectorAll(".compliance-create-button").forEach(function (button) {
         button.disabled = disabled;
       });
+      document.getElementById("createOrUpdatePersonWorkbook").disabled = disabled;
+    }
+
+    function personWorkbookRequest(record) {
+      return {
+        recordId: record ? record.id : "",
+        expectedVersion: record ? Number(record._storeVersion || 0) : 0,
+        expectedPayloadHash: record ? String(record._storeHash || "") : ""
+      };
+    }
+
+    function renderPersonWorkbookResponse(result, phase) {
+      const container = document.getElementById("personWorkbookResult");
+      const label = (result && result.label) || "対象者資料一式";
+      const url = result && (result.url || result.fileUrl);
+      if (!result || result.success === false || result.ready === false) {
+        const messages = messageList(
+          result && (result.errors || result.message || result.error)
+        );
+        if (result && result.preservationRequired) {
+          messages.push(
+            "ファイルは更新済み、または作成済みの可能性があります。" +
+            "表示されたファイルを確認するまで同じ操作を繰り返さないでください。"
+          );
+        }
+        container.innerHTML = artifactResultRow(
+          result && result.preservationRequired ? "warning" : "error",
+          label,
+          messages.length ? messages : "処理結果を確認できませんでした。",
+          url
+        );
+        return;
+      }
+      const warnings = messageList(result.warnings);
+      if (phase === "preflight") {
+        const summary = result.summary || {};
+        const messages = [
+          "対象者: " + (summary.targetName || "名称未設定") +
+            "／管理ID: " + (summary.managementId || "未設定"),
+          "同じファイル内の固定" + Number(summary.sheetCount || 9) +
+            "シートを作成・更新します。未入力項目は空欄にします。"
+        ].concat(warnings);
+        container.innerHTML = artifactResultRow(
+          warnings.length ? "warning" : "ready",
+          label + "（作成前検査）",
+          messages
+        );
+        return;
+      }
+      const messages = messageList(result.message).concat(warnings);
+      messages.push(
+        result.status === "updated"
+          ? "同じファイルIDを維持して更新しました。"
+          : "対象者専用のファイルを新規作成しました。"
+      );
+      container.innerHTML = artifactResultRow(
+        warnings.length ? "warning" : "ready",
+        label,
+        messages,
+        url
+      );
+    }
+
+    async function runPersonWorkbook(record) {
+      if (personWorkbookBusy || complianceArchiveBusy) return;
+      const currentRecord = record || findRecord(artifactRecordId);
+      const request = personWorkbookRequest(currentRecord);
+      if (
+        !currentRecord ||
+        AppData.mode !== "server" ||
+        request.expectedVersion < 1 ||
+        !/^[0-9a-f]{64}$/i.test(request.expectedPayloadHash)
+      ) {
+        renderPersonWorkbookResponse({
+          success: false,
+          message: "共有正本の対象者・版・内容hashを確認できません。一覧を再読込してください。"
+        });
+        return;
+      }
+      personWorkbookBusy = true;
+      setComplianceArchiveButtonsDisabled(true);
+      document.getElementById("personWorkbookResult").innerHTML =
+        artifactResultRow(
+          "warning",
+          "対象者資料一式",
+          "作成前検査を実行しています。"
+        );
+      try {
+        const preflight = await serverCall(
+          "apiPreflightPersonWorkbook", request
+        );
+        renderPersonWorkbookResponse(preflight || {}, "preflight");
+        if (!preflight || preflight.success === false || preflight.ready !== true) {
+          return;
+        }
+        document.getElementById("personWorkbookResult").innerHTML +=
+          artifactResultRow(
+            "warning",
+            "対象者資料一式",
+            "同じ対象者の資料を1つのGoogleスプレッドシートへ作成・更新しています。"
+          );
+        const result = await serverCall(
+          "apiCreateOrUpdatePersonWorkbook", request
+        );
+        renderPersonWorkbookResponse(result || {}, "create");
+        showToast(
+          result && result.success !== false
+            ? "対象者資料一式を作成・更新しました。"
+            : "作成結果に確認事項があります。"
+        );
+      } catch (error) {
+        renderPersonWorkbookResponse({
+          success: false,
+          message:
+            error.message +
+            " 同じ操作を直ちに繰り返さず、表示結果と保存先を確認してください。"
+        });
+      } finally {
+        personWorkbookBusy = false;
+        setComplianceArchiveButtonsDisabled(false);
+      }
     }
 
     function isSyntheticSampleRecord(record) {
@@ -8647,6 +8781,7 @@
         }
       }
       document.getElementById("complianceReportDate").value = today();
+      document.getElementById("personWorkbookResult").innerHTML = "";
       document.getElementById("complianceArchiveResult").innerHTML = "";
       document.getElementById("artifactPreflight").innerHTML = "";
       document.getElementById("artifactCreateResults").innerHTML = "";
@@ -9373,7 +9508,10 @@
       }
       if (target.dataset.artifacts) {
         const record = findRecord(target.dataset.artifacts);
-        if (record) openArtifactModal(record);
+        if (record) {
+          openArtifactModal(record);
+          runPersonWorkbook(record);
+        }
       }
       if (target.dataset.finance) {
         const record = findRecord(target.dataset.finance);
@@ -9531,6 +9669,9 @@
     });
     document.getElementById("preflightArtifacts").addEventListener("click", runArtifactPreflight);
     document.getElementById("createArtifacts").addEventListener("click", runArtifactCreate);
+    document.getElementById("createOrUpdatePersonWorkbook").addEventListener("click", function () {
+      runPersonWorkbook(findRecord(artifactRecordId));
+    });
     document.querySelectorAll("[data-existing-compliance-kind]").forEach(function (button) {
       button.addEventListener("click", function () {
         runExistingComplianceArchive(button.getAttribute("data-existing-compliance-kind"));
