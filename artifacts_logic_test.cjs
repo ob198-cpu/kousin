@@ -173,7 +173,8 @@ const pureNames = [
   "artifactSafeSheetRow_", "artifactSafeSheetMatrix_", "artifactText_", "artifactClone_",
   "artifactNormalizeRecord_", "artifactNormalizeKinds_", "artifactComposeTemplateFingerprint_", "artifactCanonicalJson_", "artifactHashHex_", "artifactPad_",
   "artifactCanonicalRequestError_", "artifactLoadCanonicalArtifactRequest_", "artifactLoadFormalInvoiceForArtifact_",
-  "artifactValidateFormalBillingSnapshot_", "artifactBuildFormalBillingSnapshotForFinance_", "artifactSelectFormalInvoiceForArtifact_",
+  "artifactValidateFormalBillingSnapshot_", "artifactNormalizeFormalBillingSnapshotInput_",
+  "artifactBuildFormalBillingSnapshotForFinance_", "artifactSelectFormalInvoiceForArtifact_",
   "artifactFormalInvoiceEffectiveBilled_", "artifactAssertFormalInvoiceNewGenerationAllowed_",
   "artifactApplyFormalInvoiceToRecord_", "artifactBillingRenderInputs_",
   "artifactFormalInvoiceRecordUpdates_", "artifactFormalInvoiceMetadata_",
@@ -1404,6 +1405,36 @@ assert.equal(serverBillingSnapshot.traineeName, "受講 太郎");
 assert.equal(serverBillingSnapshot.issuerCompany, snapshotSettings.issuerCompany);
 assert.equal(serverBillingSnapshot.issuerRepresentative, snapshotSettings.issuerRepresentative);
 assert.equal(serverBillingSnapshot.bankAccountText, snapshotSettings._bankAccountText);
+const fullWidthSnapshotSettings = Object.assign({}, snapshotSettings, {
+  issuerCompany: "\u682a\u5f0f\u4f1a\u793e\uff23\uff24\uff30\u5317\u6d77\u9053",
+  _bankAccountText: "\u5317\u6d77\u9053\u9280\u884c\uff080116\uff09 \u666e\u901a\uff11 1226349"
+});
+context.artifactLoadSettings_ = () => JSON.parse(JSON.stringify(fullWidthSnapshotSettings));
+context.storeReadRecords_ = () => [{
+  recordId: "record-1",
+  deleted: false,
+  payload: {
+    targetName: "\u30b5\u30f3\u30d7\u30eb\u592a\u90ce",
+    billingRecipientName: "\u30b5\u30f3\u30d7\u30eb\u682a\u5f0f\u4f1a\u793e\uff08\u8a66\u9a13\u7528\uff09",
+    billingHonorific: "\u5fa1\u4e2d",
+    billingAddress: "\u5317\u6d77\u9053\u672d\u5e4c\u5e02\uff08\u8a66\u9a13\u7528\uff09"
+  }
+}];
+const normalizedFullWidthSnapshot =
+  logic.artifactBuildFormalBillingSnapshotForFinance_("store-sheet", "record-1");
+assert.equal(
+  normalizedFullWidthSnapshot.issuerCompany,
+  "\u682a\u5f0f\u4f1a\u793eCDP\u5317\u6d77\u9053"
+);
+assert.equal(
+  normalizedFullWidthSnapshot.recipientName,
+  "\u30b5\u30f3\u30d7\u30eb\u682a\u5f0f\u4f1a\u793e(\u8a66\u9a13\u7528)"
+);
+assert.equal(
+  normalizedFullWidthSnapshot.bankAccountText,
+  "\u5317\u6d77\u9053\u9280\u884c(0116) \u666e\u901a1 1226349"
+);
+context.artifactLoadSettings_ = () => JSON.parse(JSON.stringify(snapshotSettings));
 context.storeReadRecords_ = () => [{
   recordId: "record-1", deleted: false,
   payload: { billingRecipientName: "株式会社受講者", billingHonorific: "御中", billingAddress: "" }

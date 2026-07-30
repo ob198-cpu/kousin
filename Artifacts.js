@@ -1089,6 +1089,24 @@ function artifactValidateFormalBillingSnapshot_(input) {
 }
 
 /**
+ * Normalize canonical record and settings text before the strict snapshot
+ * validator compares the stored representation.  User-facing Japanese text
+ * commonly contains full-width ASCII or parentheses; those values are valid,
+ * but the immutable finance snapshot itself must be stored in NFKC form.
+ */
+function artifactNormalizeFormalBillingSnapshotInput_(input) {
+  var normalized = {};
+  Object.keys(input || {}).forEach(function (field) {
+    var text = String(
+      input[field] === undefined || input[field] === null ? "" : input[field]
+    );
+    if (typeof text.normalize === "function") text = text.normalize("NFKC");
+    normalized[field] = text.replace(/\r\n?/g, "\n").trim();
+  });
+  return normalized;
+}
+
+/**
  * Build the immutable finance billing snapshot only from the canonical shared
  * record and server-side artifact settings.  Browser-supplied issuer/payee
  * values are deliberately excluded from this trust boundary.
@@ -1112,7 +1130,8 @@ function artifactBuildFormalBillingSnapshotForFinance_(spreadsheet, customerId) 
   if (!artifactText_(settings.issuerRepresentative)) {
     throw new Error("正式請求の発行前に、事業者設定へ帳票に表示する代表者名を登録してください。");
   }
-  return artifactValidateFormalBillingSnapshot_({
+  return artifactValidateFormalBillingSnapshot_(
+    artifactNormalizeFormalBillingSnapshotInput_({
     recipientName: artifactText_(payload.billingRecipientName),
     recipientHonorific: artifactText_(payload.billingHonorific),
     recipientAddress: artifactText_(payload.billingAddress),
@@ -1125,7 +1144,8 @@ function artifactBuildFormalBillingSnapshotForFinance_(spreadsheet, customerId) 
     issuerEmail: artifactText_(settings.issuerEmail),
     invoiceRegistrationNo: artifactText_(settings.invoiceRegistrationNo),
     bankAccountText: artifactText_(settings._bankAccountText)
-  });
+    })
+  );
 }
 
 function artifactSelectFormalInvoiceForArtifact_(state, financeInvoiceId, recordId, stateHash) {
