@@ -27,10 +27,7 @@ function apiPreflightPersonWorkbook(request) {
       personWorkbookCanonicalRequest_(request)
     );
     var settings = artifactLoadSettings_();
-    var complianceTemplateState = complianceLoadTemplateState_(true);
-    complianceAssertPlanTemplateClean_(
-      complianceTemplateState.planTemplateId
-    );
+    artifactAssertPinnedReferenceSource_("implementationPlanSource");
     artifactAssertLedgerTemplateClean_(settings.ledgerTemplateId);
     personWorkbookAssertAdminOnlyAcl_(authorization.email);
     var record = artifactNormalizeRecord_(canonicalRequest.request.record);
@@ -111,7 +108,6 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       personWorkbookCanonicalRequest_(request)
     );
     var settings = artifactLoadSettings_();
-    var complianceTemplateState = complianceLoadTemplateState_(true);
     var allowedEmails = personWorkbookAssertAdminOnlyAcl_(authorization.email);
     settings.allowedOutputEmails = allowedEmails;
     var record = artifactNormalizeRecord_(canonicalRequest.request.record);
@@ -145,7 +141,6 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       canonical: canonicalRequest.canonical,
       record: record,
       settings: settings,
-      complianceTemplateState: complianceTemplateState,
       finance: finance,
       sampleMode: sampleMode,
       autoRoot: workbookRoot,
@@ -1022,13 +1017,23 @@ function personWorkbookWriteTrainingModule_(
 }
 
 function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
-  var templateState = context.complianceTemplateState ||
-    complianceLoadTemplateState_(true);
-  complianceAssertPlanTemplateClean_(templateState.planTemplateId);
-  var template = SpreadsheetApp.openById(templateState.planTemplateId);
-  var base = template.getSheetByName("ベース");
+  artifactAssertPinnedReferenceSource_("implementationPlanSource");
+  var source = SpreadsheetApp.openById(
+    RENEWAL_COMPLIANCE_ARCHIVE.PLAN_SOURCE_ID
+  );
+  var base = source.getSheetByName("ベース");
   if (!base) {
-    throw new Error("別添04専用原本の「ベース」シートがありません。");
+    throw new Error("別添04参照元の「ベース」シートがありません。");
+  }
+  var sourceHeadings = base.getRange("A1:D8").getDisplayValues();
+  if (
+    artifactText_(sourceHeadings[0][0]) !== "講習区分" ||
+    artifactText_(sourceHeadings[0][1]).replace(/\s+/g, "") !== "開始(人)" ||
+    artifactText_(sourceHeadings[0][2]).replace(/\s+/g, "") !== "修了(人)" ||
+    artifactText_(sourceHeadings[3][0]).indexOf("二等無人航空機操縦士") < 0 ||
+    artifactText_(sourceHeadings[4][0]).indexOf("一等無人航空機操縦士") < 0
+  ) {
+    throw new Error("別添04参照元の固定見出しが一致しません。");
   }
   var sheet = base.copyTo(spreadsheet);
   sheet.setName(tempName);

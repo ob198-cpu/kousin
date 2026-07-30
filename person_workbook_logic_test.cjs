@@ -100,9 +100,11 @@ const planRenderer = source.slice(
   source.indexOf("function personWorkbookRenderPlan_("),
   source.indexOf("function personWorkbookRenderStatus_(")
 );
-assert(planRenderer.includes("complianceAssertPlanTemplateClean_") &&
-  planRenderer.includes(".copyTo(spreadsheet)"),
-  "別添04は検査済み専用原本のレイアウトを複製する必要があります");
+assert(planRenderer.includes('artifactAssertPinnedReferenceSource_("implementationPlanSource")') &&
+  planRenderer.includes("RENEWAL_COMPLIANCE_ARCHIVE.PLAN_SOURCE_ID") &&
+  planRenderer.includes(".copyTo(spreadsheet)") &&
+  planRenderer.includes("別添04参照元の固定見出しが一致しません"),
+  "別添04は版固定・見出し検査済み参照元のレイアウトを複製する必要があります");
 
 const statusRenderer = source.slice(
   source.indexOf("function personWorkbookRenderStatus_("),
