@@ -4187,16 +4187,19 @@ function artifactClearPublishedOutputDriveAttempt_(
 
 function artifactLedgerOutputFields_(record) {
   var source = record || {};
+  var certificateNo = artifactText_(source.certificateNo);
   var courseDate = artifactValidIsoDateOrBlank_(source.courseDate);
+  var classValue = artifactClassValue_(source.licenseClass);
+  var hasIssuedCertificate = !!(certificateNo && courseDate);
   var expiry = artifactValidIsoDateOrBlank_(source.certificateExpiry) ||
     (courseDate ? artifactAddCalendarMonthsMinusOne_(courseDate) : "");
   return [
-    artifactText_(source.certificateNo),
+    certificateNo,
     artifactRecordName_(source),
-    artifactClassLabel_(source.licenseClass),
+    classValue === 1 ? "一等" : (classValue === 2 ? "二等" : ""),
     courseDate,
-    "☑有り　・　□無し",
-    courseDate,
+    hasIssuedCertificate ? "☑有り　・　□無し" : "",
+    hasIssuedCertificate ? courseDate : "",
     expiry,
     artifactText_(source.certificateLedgerMemo)
   ];

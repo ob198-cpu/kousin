@@ -3202,6 +3202,13 @@ assert.deepEqual(
   ],
   "発行台帳は証明書右上の番号・講習修了日・有効期限へ一意に対応させる必要があります"
 );
+assert.deepEqual(
+  Array.from(logic.artifactLedgerOutputFields_({
+    targetName: "未入力者"
+  })),
+  ["", "未入力者", "", "", "", "", "", ""],
+  "未発行・未入力の対象者資料ブックへ二等や交付済みを推測表示してはいけません"
+);
 const dipsHashRecord = logic.artifactRecordForHash_("dipsCsv", {
   certificateIssuedDate: "2026-07-15", fitnessCertificateNo: "PA999999999999",
   dipsDate: "2026-06-01", dipsCompletionLinkedDate: "2026-07-16", courseProvider: "CDP"
