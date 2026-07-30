@@ -53,6 +53,7 @@ vm.createContext(context);
   "complianceJapanesePeriod_",
   "complianceDateParts_",
   "complianceOutputFileName_",
+  "complianceOutputMimeType_",
   "complianceIsSyntheticSampleRecord_"
 ].forEach((name) => vm.runInContext(extractFunction(name), context));
 
@@ -113,6 +114,29 @@ assert.match(
     "abcdef0123456789"
   ),
   /^サンプル_正式使用禁止_別添04_登録更新講習機関実施計画書_2026-07_abcdef012345$/
+);
+assert.match(
+  context.complianceOutputFileName_(
+    "ledger",
+    {
+      sampleMode: true,
+      record: { personId: "SAMPLE-001" },
+      canonical: { version: 1 }
+  },
+  "abcdef0123456789"
+  ),
+  /^サンプル_正式使用禁止_別添13_修了証明書発行台帳_SAMPLE-001_abcdef012345\.csv$/
+);
+context.RENEWAL_COMPLIANCE_ARCHIVE = {
+  MIME_TYPES: { ledger: "application/vnd.google-apps.spreadsheet" }
+};
+assert.strictEqual(
+  context.complianceOutputMimeType_("ledger", { sampleMode: true }),
+  "text/csv"
+);
+assert.strictEqual(
+  context.complianceOutputMimeType_("ledger", { sampleMode: false }),
+  "application/vnd.google-apps.spreadsheet"
 );
 assert.strictEqual(context.complianceIsSyntheticSampleRecord_({
   targetName: "サンプル太郎",
@@ -180,8 +204,24 @@ assert(source.includes("【サンプル・正式使用禁止】"));
 assert(source.includes("function complianceSampleRequestContext_"));
 assert(source.includes("function complianceCreateSamplePlan_"));
 assert(source.includes("function complianceCreateSampleStatus_"));
+assert(source.includes("function complianceCreateSampleTraining_"));
+assert(source.includes("function complianceCreateSampleLedger_"));
+assert(source.includes("function complianceCreateSampleCertificate_"));
+assert(source.includes("function complianceCreateSampleDipsCsv_"));
+assert(source.includes("function complianceCreateSamplePaymentRecord_"));
+const sampleLedgerSource = extractFunction("complianceCreateSampleLedger_");
+assert(sampleLedgerSource.includes("artifactCreateDriveItemInFolder_"));
+assert(sampleLedgerSource.includes("artifactUpdateBlobFileContent_"));
+assert(!sampleLedgerSource.includes("SpreadsheetApp"));
+assert(sampleLedgerSource.includes('"更新講習修了証明書番号"'));
+assert(sampleLedgerSource.includes('"CREATE", "", fileName'));
+assert(!extractFunction("complianceDriveOperation_").includes(
+  'context.sampleMode && kind === "ledger"'
+));
 assert(source.includes("context.sampleMode ? null : complianceRequireTemplatesReady_()"));
 assert(source.includes("value.sampleGeneratorVersion = 2"));
+assert(html.includes("sampleMode: base.sampleMode"));
+assert(html.includes("if (base.sampleMode)"));
 assert(source.includes("var sheet = base.copyTo(spreadsheet).setName("));
 assert(source.includes('sheet.getRange("D1")'));
 assert(!source.includes('sheet.getRange("A1:AF1").merge()'));

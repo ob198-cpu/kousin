@@ -1900,7 +1900,7 @@
           <button type="button" class="compliance-create-button" data-existing-compliance-kind="training"><strong>事務規程、別添03 講習記録簿　保管</strong><small>対象者の保存済み講習記録から作成</small></button>
           <button type="button" class="compliance-create-button" data-compliance-kind="implementationPlan"><strong>事務規程、別添04 実施計画書　保管</strong><small>対象月と予定人数を記入して作成</small></button>
           <button type="button" class="compliance-create-button" data-compliance-kind="implementationStatus"><strong>事務規程、別添05 実施状況報告書　保管</strong><small>指定期間の共有正本を集計して作成</small></button>
-          <button type="button" class="compliance-create-button" data-existing-compliance-kind="ledger"><strong>事務規程、別添13 修了証明書発行台帳　保管</strong><small>年度別台帳へ監査付きで記録</small></button>
+          <button type="button" class="compliance-create-button" data-existing-compliance-kind="ledger"><strong>事務規程、別添13 修了証明書発行台帳　保管</strong><small>サンプルは確認用CSV／正式時は年度別台帳へ記録</small></button>
           <button type="button" class="compliance-create-button" data-compliance-kind="applicationEvidence"><strong>申込書・技能証明書・身分証　保管</strong><small>対象者フォルダと提出チェック表を作成</small></button>
           <button type="button" class="compliance-create-button" data-existing-compliance-kind="certificate"><strong>無人航空機更新講習修了証明書　保管</strong><small>清浄な専用原本から作成</small></button>
           <button type="button" class="compliance-create-button" data-existing-compliance-kind="dipsCsv"><strong>CSVファイル　保管</strong><small>DIPS提出用11列CSVを作成</small></button>
@@ -8235,8 +8235,7 @@
         recordId: base.recordId,
         expectedVersion: base.expectedVersion,
         expectedPayloadHash: base.expectedPayloadHash,
-        sampleMode: base.sampleMode &&
-          (kind === "implementationPlan" || kind === "implementationStatus")
+        sampleMode: base.sampleMode
       };
       if (kind === "implementationPlan") {
         request.planMonth = document.getElementById("compliancePlanMonth").value;
@@ -8342,6 +8341,10 @@
       if (complianceArchiveBusy) return;
       const label = COMPLIANCE_ARCHIVE_LABELS[kind] || ARTIFACT_LABELS[kind] || kind;
       const base = complianceRecordRequest_();
+      if (base.sampleMode) {
+        await runComplianceArchive(kind);
+        return;
+      }
       const request = {
         recordId: base.recordId,
         expectedVersion: base.expectedVersion,
@@ -8426,7 +8429,7 @@
       const label = COMPLIANCE_ARCHIVE_LABELS[kind] || ARTIFACT_LABELS[kind] || kind;
       const request = complianceArchiveRequest(kind);
       if (
-        (kind === "applicationEvidence" || kind === "paymentRecord") &&
+        (request.sampleMode || kind === "applicationEvidence" || kind === "paymentRecord") &&
         (
           !request.recordId ||
           AppData.mode !== "server" ||

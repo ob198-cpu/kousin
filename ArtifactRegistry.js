@@ -707,7 +707,27 @@ function artifactCreateDriveItemInFolder_(
   }
 }
 
+function artifactOpenSpreadsheetByIdWithRetry_(fileId) {
+  var id = artifactText_(fileId);
+  if (!id) throw new Error("開くスプレッドシートIDがありません。");
+  var lastError = null;
+  for (var attempt = 0; attempt < 2; attempt++) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (openError) {
+      lastError = openError;
+      if (attempt === 0) Utilities.sleep(1500);
+    }
+  }
+  throw lastError || new Error("スプレッドシートを開けません。");
+}
+
 function artifactCreateSpreadsheetInFolder_(name, parentFolder, label, allowedOutputEmails, ownerOnly) {
+  // Drive APIでGoogleスプレッドシートのメタデータだけを作ると、作成直後の
+  // SpreadsheetApp.openById() が空のネイティブ文書を開けず長時間待機することがある。
+  // 空セル1個のCSVを同じ作成要求でGoogleスプレッドシートへ変換し、親指定・
+  // 既定公開無効化・ACL監査を維持したまま、直ちに開ける正規文書として作る。
+  var seedBlob = Utilities.newBlob('""\n', "text/csv", "cdp-empty-spreadsheet.csv");
   var file = artifactCreateDriveItemInFolder_(
     name,
     "application/vnd.google-apps.spreadsheet",
@@ -715,10 +735,25 @@ function artifactCreateSpreadsheetInFolder_(name, parentFolder, label, allowedOu
     label || "スプレッドシート",
     allowedOutputEmails,
     ownerOnly === true,
-    null
+    seedBlob
   );
   try {
-    return { file: file, spreadsheet: SpreadsheetApp.openById(file.getId()) };
+    var spreadsheet = artifactOpenSpreadsheetByIdWithRetry_(file.getId());
+    var sheets = spreadsheet.getSheets();
+    if (sheets.length !== 1) throw new Error("新規スプレッドシートの初期シート数が一致しません。");
+    var sheet = sheets[0];
+    if (sheet.getMaxRows() < 1000) {
+      sheet.insertRowsAfter(sheet.getMaxRows(), 1000 - sheet.getMaxRows());
+    }
+    if (sheet.getMaxColumns() < 26) {
+      sheet.insertColumnsAfter(sheet.getMaxColumns(), 26 - sheet.getMaxColumns());
+    }
+    sheet.getRange("A1").clearContent();
+    SpreadsheetApp.flush();
+    if (artifactText_(sheet.getRange("A1").getDisplayValue())) {
+      throw new Error("新規スプレッドシートの初期セルを清浄化できません。");
+    }
+    return { file: file, spreadsheet: spreadsheet };
   } catch (openError) {
     artifactThrowAfterCleanup_(openError, file, artifactText_(label) || "スプレッドシート", "file");
   }
@@ -728,8 +763,16 @@ function artifactUpdateBlobFileContent_(file, name, mimeType, blob, parentFolder
   var itemLabel = artifactText_(label) || "新規ファイル";
   if (!file || !blob) throw new Error(itemLabel + "のファイルまたは内容がありません。");
   var parentId = artifactText_(parentFolder && parentFolder.getId ? parentFolder.getId() : parentFolder);
+  var expectedBytes = blob.getBytes();
+  var expectedMd5 = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.MD5,
+    expectedBytes
+  ).map(function(byte) {
+    var normalized = byte < 0 ? byte + 256 : byte;
+    return ("0" + normalized.toString(16)).slice(-2);
+  }).join("");
   var updated = Drive.Files.update({}, file.getId(), blob, {
-    fields: "id,name,mimeType,parents",
+    fields: "id,name,mimeType,parents,size,md5Checksum",
     supportsAllDrives: true
   });
   var updatedParents = updated && Array.isArray(updated.parents) ? updated.parents.map(artifactText_) : [];
@@ -738,9 +781,11 @@ function artifactUpdateBlobFileContent_(file, name, mimeType, blob, parentFolder
     artifactText_(updated && updated.name) !== artifactText_(name) ||
     artifactText_(updated && updated.mimeType) !== artifactText_(mimeType) ||
     updatedParents.length !== 1 ||
-    updatedParents[0] !== parentId
+    updatedParents[0] !== parentId ||
+    Number(updated && updated.size) !== expectedBytes.length ||
+    artifactText_(updated && updated.md5Checksum).toLowerCase() !== expectedMd5
   ) {
-    throw new Error(itemLabel + "へ内容を保存した結果を確認できません。");
+    throw new Error(itemLabel + "へ保存した内容のサイズ・MD5・保存先を確認できません。");
   }
   return file;
 }
@@ -974,12 +1019,15 @@ function artifactRegistryRowsIssue_(values) {
     var sheetRow = rowIndex + 2;
     var hasAnyValue = row.some(function(value) { return !!artifactText_(value); });
     if (!hasAnyValue) return sheetRow + "行目が空行です。監査ログの途中に空行は置けません。";
-    var timestampMatch = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})$/.exec(artifactText_(row[0]));
+    // Google Sheets は同じ時刻文字列でも、再読込時に先頭の 0 を省略して
+    // "0:58:42" と表示することがある。年月日・時分秒を厳密検査しつつ、
+    // 0～9時だけは1桁表示も同一時刻として受け入れる。
+    var timestampMatch = /^(\d{4}-\d{2}-\d{2}) ([01]?\d|2[0-3]):([0-5]\d):([0-5]\d)$/.exec(
+      artifactText_(row[0])
+    );
     if (
       !timestampMatch ||
-      !artifactValidIsoDateOrBlank_(timestampMatch[1]) ||
-      !artifactValidTime_(timestampMatch[2].slice(0, 5)) ||
-      Number(timestampMatch[2].slice(6, 8)) > 59
+      !artifactValidIsoDateOrBlank_(timestampMatch[1])
     ) {
       return sheetRow + "行目の作成日時が正しくありません。";
     }
@@ -1164,7 +1212,10 @@ function artifactReadAllRegistryRows_(allowedOutputEmails) {
       var sheet = artifactAssertRegistryStructure_(registryFile, ss, autoRootId);
       rows = rows.concat(artifactReadRegistryRows_(sheet));
     } catch (registryReadError) {
-      throw new Error("保存済みの成果物レジストリを読み込めません。生成台帳を復元し、権限を修復してください。");
+      throw new Error(
+        "保存済みの成果物レジストリを読み込めません。既存データは変更していません。ID=" +
+        artifactText_(props[key]) + " / 原因: " + artifactErrorMessage_(registryReadError)
+      );
     }
   });
   var globalIssue = artifactRegistryGlobalRowsIssue_(rows);

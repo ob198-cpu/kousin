@@ -15,17 +15,28 @@ var RENEWAL_COMPLIANCE_ARCHIVE = {
   PLAN_TEMPLATE_NAME: "別添04_登録更新講習機関実施計画書_清浄原本",
   STATUS_TEMPLATE_NAME: "別添05_登録更新講習機関実施状況報告書_清浄原本",
   STATUS_TEMP_TEMPLATE_NAME: "一時_別添05原本清浄化_PREPARED",
-  KINDS: ["implementationPlan", "implementationStatus", "applicationEvidence", "paymentRecord"],
+  KINDS: [
+    "training", "implementationPlan", "implementationStatus", "ledger",
+    "applicationEvidence", "certificate", "dipsCsv", "paymentRecord"
+  ],
   LABELS: {
+    training: "事務規程、別添03 講習記録簿　保管",
     implementationPlan: "事務規程、別添04 実施計画書　保管",
     implementationStatus: "事務規程、別添05 実施状況報告書　保管",
+    ledger: "事務規程、別添13 修了証明書発行台帳　保管",
     applicationEvidence: "申込書・技能証明書・身分証　保管",
+    certificate: "無人航空機更新講習修了証明書　保管",
+    dipsCsv: "CSVファイル　保管",
     paymentRecord: "講習料金収納記録　保管"
   },
   MIME_TYPES: {
+    training: "application/vnd.google-apps.spreadsheet",
     implementationPlan: "application/vnd.google-apps.spreadsheet",
     implementationStatus: "application/vnd.google-apps.document",
+    ledger: "application/vnd.google-apps.spreadsheet",
     applicationEvidence: "application/vnd.google-apps.spreadsheet",
+    certificate: "application/vnd.google-apps.document",
+    dipsCsv: "text/csv",
     paymentRecord: "application/vnd.google-apps.spreadsheet"
   }
 };
@@ -179,7 +190,7 @@ function apiCreateComplianceArchive(request) {
     var reusable = complianceFindReusableFile_(
       targetFolder,
       fileName,
-      RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind],
+      complianceOutputMimeType_(kind, context),
       identity,
       settings.allowedOutputEmails
     );
@@ -355,6 +366,10 @@ function complianceBuildContext_(kind, request, authorization) {
   }
   if (kind === "implementationPlan") return complianceBuildPlanContext_(context);
   if (kind === "implementationStatus") return complianceBuildStatusContext_(context);
+  if (context.sampleMode) return complianceBuildSampleRecordContext_(context);
+  if (["training", "ledger", "certificate", "dipsCsv"].indexOf(kind) >= 0) {
+    throw new Error("正式成果物は成果物専用の作成前検査・作成処理を使用してください。");
+  }
   var canonicalRequest = artifactLoadCanonicalArtifactRequest_({
     recordId: request.recordId,
     expectedVersion: request.expectedVersion,
@@ -385,9 +400,6 @@ function complianceBuildContext_(kind, request, authorization) {
 
 function complianceSampleRequestContext_(kind, request) {
   if (!request || request.sampleMode !== true) return null;
-  if (kind !== "implementationPlan" && kind !== "implementationStatus") {
-    throw new Error("この成果物はサンプル出力に対応していません。");
-  }
   var canonicalRequest = artifactLoadCanonicalArtifactRequest_({
     recordId: request.recordId,
     expectedVersion: request.expectedVersion,
@@ -402,6 +414,25 @@ function complianceSampleRequestContext_(kind, request) {
     record: record,
     canonical: canonicalRequest.canonical
   };
+}
+
+function complianceBuildSampleRecordContext_(context) {
+  context.canonical = context.sampleCanonical;
+  context.record = context.sampleRecord;
+  context.scopeKey = "sample:" + context.kind + ":" + context.record.recordId;
+  context.summary = {
+    targetName: artifactRecordName_(context.record),
+    managementId: artifactText_(context.record.personId || context.record.managementId),
+    recordVersion: Number(context.canonical.version || 0),
+    sampleMode: true
+  };
+  if (!artifactRecordName_(context.record)) throw new Error("サンプル対象者名がありません。");
+  if (context.kind === "paymentRecord") {
+    context.summary.invoiceCount = artifactText_(context.record.invoiceNo) ? 1 : 0;
+    context.summary.paymentCount = artifactText_(context.record.paymentDate) ? 1 : 0;
+    context.summary.financeRevision = 0;
+  }
+  return context;
 }
 
 function complianceIsSyntheticSampleRecord_(record) {
@@ -469,7 +500,10 @@ function complianceBuildStatusContext_(context) {
     throw new Error("別添05の対象期間は固定保存先と同じ2026年度内にしてください。");
   }
   var state = context.sampleMode ? null : complianceRequireTemplatesReady_();
-  var records = storeListRecords_({ includeDeleted: false });
+  // サンプル出力へ実在者の人数・会場を混ぜない。サンプル対象者1件だけで集計する。
+  var records = context.sampleMode
+    ? [context.sampleRecord]
+    : storeListRecords_({ includeDeleted: false });
   var summary = complianceStatusSummary_(records, startDate, endDate);
   if (context.sampleMode) {
     var sampleClass = artifactClassValue_(context.sampleRecord.licenseClass);
@@ -579,6 +613,7 @@ function complianceOutputIdentity_(kind, context) {
     value.sampleRecordId = context.sampleRecord.recordId;
     value.sampleRecordVersion = Number(context.sampleCanonical.version);
     value.sampleRecordPayloadHash = artifactText_(context.sampleCanonical.payloadHash);
+    value.sampleGeneratorVersion = 1;
   }
   if (kind === "implementationPlan") {
     value.planMonth = context.planMonth;
@@ -633,11 +668,34 @@ function complianceOutputFileName_(kind, context, hash) {
       context.reportStartDate + "_" + context.reportEndDate + "_" + suffix).slice(0, 180);
   }
   var personId = artifactSafeName_(context.record.personId || context.record.recordId);
+  if (kind === "training") {
+    return (prefix + "別添03_講習記録簿_" + personId + "_" + suffix).slice(0, 180);
+  }
+  if (kind === "ledger") {
+    return (
+      prefix + "別添13_修了証明書発行台帳_" + personId + "_" + suffix +
+      (context.sampleMode ? ".csv" : "")
+    ).slice(0, 180);
+  }
+  if (kind === "certificate") {
+    return (prefix + "更新講習修了証明書_" + personId + "_" + suffix).slice(0, 180);
+  }
+  if (kind === "dipsCsv") {
+    return (prefix + "DIPS提出11列CSV_" + personId + "_" + suffix + ".csv").slice(0, 180);
+  }
   if (kind === "applicationEvidence") {
-    return ("申込書・技能証明書・身分証_保管チェックリスト_" + personId + "_v" +
+    return (prefix + "申込書・技能証明書・身分証_保管チェックリスト_" + personId + "_v" +
       context.canonical.version + "_" + suffix).slice(0, 180);
   }
+  if (context.sampleMode) {
+    return (prefix + "講習料金収納記録_" + personId + "_" + suffix).slice(0, 180);
+  }
   return ("講習料金収納記録_" + personId + "_会計r" + context.finance.revision + "_" + suffix).slice(0, 180);
+}
+
+function complianceOutputMimeType_(kind, context) {
+  if (kind === "ledger" && context && context.sampleMode === true) return "text/csv";
+  return RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind];
 }
 
 function complianceIdentityDescription_(identity) {
@@ -679,11 +737,26 @@ function complianceFindReusableFile_(folder, name, mimeType, identity, allowedOu
 }
 
 function complianceCreateOutput_(kind, context, folder, fileName) {
+  if (context.sampleMode && kind === "training") {
+    return complianceCreateSampleTraining_(context, folder, fileName);
+  }
   if (context.sampleMode && kind === "implementationPlan") {
     return complianceCreateSamplePlan_(context, folder, fileName);
   }
   if (context.sampleMode && kind === "implementationStatus") {
     return complianceCreateSampleStatus_(context, folder, fileName);
+  }
+  if (context.sampleMode && kind === "ledger") {
+    return complianceCreateSampleLedger_(context, folder, fileName);
+  }
+  if (context.sampleMode && kind === "certificate") {
+    return complianceCreateSampleCertificate_(context, folder, fileName);
+  }
+  if (context.sampleMode && kind === "dipsCsv") {
+    return complianceCreateSampleDipsCsv_(context, folder, fileName);
+  }
+  if (context.sampleMode && kind === "paymentRecord") {
+    return complianceCreateSamplePaymentRecord_(context, folder, fileName);
   }
   if (kind === "implementationPlan") return complianceCreatePlan_(context, folder, fileName);
   if (kind === "implementationStatus") return complianceCreateStatus_(context, folder, fileName);
@@ -695,7 +768,13 @@ function complianceCreateOutput_(kind, context, folder, fileName) {
 function complianceDriveOperation_(kind, context, folder, fileName) {
   var sourceId = "";
   var operationType = "CREATE";
-  if (!context.sampleMode && kind === "implementationPlan") {
+  if (context.sampleMode && kind === "training") {
+    operationType = "COPY";
+    sourceId = RENEWAL_ARTIFACT.TEMPLATE_IDS.training;
+  } else if (context.sampleMode && kind === "certificate") {
+    operationType = "COPY";
+    sourceId = context.settings.certificateTemplateId;
+  } else if (!context.sampleMode && kind === "implementationPlan") {
     operationType = "COPY";
     sourceId = context.templateState.planTemplateId;
   } else if (!context.sampleMode && kind === "implementationStatus") {
@@ -706,9 +785,347 @@ function complianceDriveOperation_(kind, context, folder, fileName) {
     operationType,
     sourceId,
     fileName,
-    RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind],
+    complianceOutputMimeType_(kind, context),
     folder.getId()
   );
+}
+
+function complianceSampleRecord_(context) {
+  var record = artifactClone_(context.sampleRecord || context.record || {});
+  record.recordId = artifactText_(record.recordId || record.id || "SAMPLE");
+  record.personId = artifactText_(record.personId || "SAMPLE-001");
+  record.targetName = artifactRecordName_(record) || "サンプル太郎";
+  record.certificateNo = /^SAMPLE-/i.test(artifactText_(record.certificateNo))
+    ? artifactText_(record.certificateNo) : "SAMPLE-CERT-001";
+  record.dipsApplicantId = "SAMPLE1";
+  record.skillsApplicantNo = "0000000000";
+  record.courseDate = artifactValidIsoDateOrBlank_(record.courseDate) || "2026-07-15";
+  record.certificateIssuedDate =
+    artifactValidIsoDateOrBlank_(record.certificateIssuedDate) || record.courseDate;
+  record.certificateExpiry =
+    artifactValidIsoDateOrBlank_(record.certificateExpiry) ||
+    artifactAddCalendarMonthsMinusOne_(record.certificateIssuedDate);
+  record.certificateDeliveredDate =
+    artifactValidIsoDateOrBlank_(record.certificateDeliveredDate) || record.certificateIssuedDate;
+  record.certificateDelivered = "有り";
+  record.certificateInstructor = artifactText_(record.certificateInstructor) || "サンプル講師";
+  record.courseVenue = artifactText_(record.courseVenue) || "サンプル会場（正式使用禁止）";
+  record.practicalVenue = artifactText_(record.practicalVenue) || record.courseVenue;
+  record.dipsRecordMode = "新規登録";
+  return record;
+}
+
+function complianceCreateSampleTraining_(context, folder, fileName) {
+  var kind = "training";
+  var label = complianceResultLabel_(kind, true);
+  var sourceId = RENEWAL_ARTIFACT.TEMPLATE_IDS.training;
+  artifactAssertTrainingTemplateClean_(sourceId);
+  var file = artifactCopyFileInFolder_(
+    sourceId, fileName, RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind],
+    folder, label, context.settings.allowedOutputEmails, false
+  );
+  try {
+    var record = complianceSampleRecord_(context);
+    var firstClass = artifactClassValue_(record.licenseClass) === 1;
+    var requiresPractical = artifactText_(record.suspensionCourse) === "あり";
+    var sourceSheetName = firstClass ? "一等無人航空機操縦士" : "二等無人航空機操縦士";
+    var keepColumns = firstClass ? 8 : 6;
+    var ss = artifactOpenSpreadsheetByIdWithRetry_(file.getId());
+    ss.setSpreadsheetTimeZone("Asia/Tokyo");
+    var sheet = ss.getSheetByName(sourceSheetName);
+    if (!sheet) throw new Error("講習記録簿参照元の対象区分シートがありません。");
+    ss.getSheets().forEach(function(candidate) {
+      if (candidate.getSheetId() !== sheet.getSheetId()) ss.deleteSheet(candidate);
+    });
+    if (sheet.getMaxRows() > 32) sheet.deleteRows(33, sheet.getMaxRows() - 32);
+    if (sheet.getMaxColumns() > keepColumns) {
+      sheet.deleteColumns(keepColumns + 1, sheet.getMaxColumns() - keepColumns);
+    }
+    if (!firstClass && requiresPractical) artifactReplaceSecondClassPracticalMinimum_(sheet);
+    sheet.setName(sourceSheetName + "（サンプル）");
+    sheet.setTabColor("#b91c1c");
+    sheet.getRange("A1").setValue(artifactSheetText_(
+      "【サンプル・正式使用禁止】講習記録簿　受講者氏名（　" + record.targetName + "　）"
+    )).setNote("入力・出力確認用です。正式保管・提出・実績集計には使用できません。");
+    sheet.getRange("A4").setValue(artifactSheetText_(artifactClassLongLabel_(record.licenseClass)));
+    sheet.getRange("A5").setValue(artifactSheetText_("受講日（" + artifactSlashDate_(record.courseDate) + "）"));
+    sheet.getRange("A7").setValue(artifactSheetText_("場所（" + record.courseVenue + "）"));
+    var modules = [
+      "academicOverview", "academicRules", "academicLawUpdate", "academicAccident",
+      "academicSafety", "academicVideo"
+    ];
+    if (firstClass) modules.push("academicFirstClass", "academicFirstClassVideo");
+    modules.forEach(function(prefix, index) {
+      if (!record[prefix + "Date"]) record[prefix + "Date"] = record.courseDate;
+      if (!record[prefix + "Start"]) record[prefix + "Start"] = "09:00";
+      if (!record[prefix + "End"]) record[prefix + "End"] = "09:30";
+      if (!record[prefix + "Instructor"]) record[prefix + "Instructor"] = "サンプル講師";
+      artifactWriteTrainingModule_(sheet, index + 1, prefix, record, 12, 15, 17);
+    });
+    if (requiresPractical) {
+      sheet.getRange("A21").setValue(artifactSheetText_("場所（" + record.practicalVenue + "）実地講習"));
+      ["practicalExercise1", "practicalDiscussion"].forEach(function(prefix, index) {
+        record[prefix + "Date"] = record[prefix + "Date"] || record.courseDate;
+        record[prefix + "Start"] = record[prefix + "Start"] || "13:00";
+        record[prefix + "End"] = record[prefix + "End"] || "13:30";
+        record[prefix + "Instructor"] = record[prefix + "Instructor"] || "サンプル講師";
+        artifactWriteTrainingModule_(sheet, index + 1, prefix, record, 26, 29, 31);
+      });
+    } else {
+      sheet.getRange("A21").setValue(artifactSheetText_("実地講習：対象外（サンプル）"));
+    }
+    try { sheet.setHiddenGridlines(true); } catch (ignoredGrid) {}
+    SpreadsheetApp.flush();
+    if (sheet.getRange("A1").getDisplayValue().indexOf("サンプル・正式使用禁止") < 0) {
+      throw new Error("講習記録簿サンプルの警告表示を確認できません。");
+    }
+    return {
+      file: file,
+      driveOperation: artifactDriveAttemptOperation_(
+        "COPY", sourceId, fileName, RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind], folder.getId()
+      )
+    };
+  } catch (error) {
+    artifactThrowAfterCleanup_(error, file, label, "file");
+  }
+}
+
+function complianceCreateSampleLedger_(context, folder, fileName) {
+  var kind = "ledger";
+  var label = complianceResultLabel_(kind, true);
+  var mimeType = complianceOutputMimeType_(kind, context);
+  var record = complianceSampleRecord_(context);
+  var headers = [
+    "番号",
+    "更新講習修了証明書番号",
+    "氏名",
+    "区分",
+    "更新講習修了日",
+    "交付",
+    "修了証明書交付日",
+    "有効期間満了日",
+    "備考"
+  ];
+  var row = [
+    1,
+    record.certificateNo,
+    record.targetName,
+    artifactClassLabel_(record.licenseClass),
+    artifactSlashDate_(record.courseDate),
+    "有り",
+    artifactSlashDate_(record.certificateDeliveredDate),
+    artifactSlashDate_(record.certificateExpiry),
+    "【サンプル・正式使用禁止】正式台帳・採番・監査履歴には登録されません。"
+  ];
+  var csv = "\uFEFF" +
+    artifactCsvRow_(["【サンプル・正式使用禁止】別添13　無人航空機更新講習修了証明書発行台帳"]) +
+    "\r\n" + artifactCsvRow_(headers) + "\r\n" + artifactCsvRow_(row) + "\r\n";
+  var file = artifactCreateDriveItemInFolder_(
+    fileName,
+    mimeType,
+    folder,
+    label,
+    context.settings.allowedOutputEmails,
+    false,
+    null
+  );
+  try {
+    artifactUpdateBlobFileContent_(
+      file,
+      fileName,
+      mimeType,
+      Utilities.newBlob(csv, mimeType, fileName),
+      folder,
+      label
+    );
+    return {
+      file: file,
+      driveOperation: artifactDriveAttemptOperation_(
+        "CREATE", "", fileName, mimeType, folder.getId()
+      )
+    };
+  } catch (error) {
+    artifactThrowAfterCleanup_(error, file, label, "file");
+  }
+}
+
+function complianceCreateSampleCertificate_(context, folder, fileName) {
+  var kind = "certificate";
+  var label = complianceResultLabel_(kind, true);
+  var sourceId = artifactTemplateId_(kind, context.settings);
+  artifactAssertCertificateTemplateClean_(sourceId);
+  var file = artifactCopyFileInFolder_(
+    sourceId, fileName, RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind],
+    folder, label, context.settings.allowedOutputEmails, false
+  );
+  try {
+    var record = complianceSampleRecord_(context);
+    var doc = DocumentApp.openById(file.getId());
+    var tab = artifactGetDocumentTab_(doc, RENEWAL_ARTIFACT.CERTIFICATE_BASE_TAB_ID);
+    var body = tab.asDocumentTab().getBody();
+    body.insertParagraph(0, "【サンプル・正式使用禁止】")
+      .editAsText().setBold(true).setForegroundColor("#c62828");
+    artifactReplaceRequiredText_(
+      body, "第[ 　\\t]*UC0157[ 　\\t]*号",
+      "第　" + record.certificateNo + "　号", "修了証明書番号"
+    );
+    artifactReplaceRequiredText_(
+      body, "2000年[ 　\\t]*1月[ 　\\t]*1日[ 　\\t]*修了",
+      artifactFormatJapaneseLongDate_(record.courseDate) + "　修了", "講習修了日"
+    );
+    artifactReplaceRequiredText_(
+      body, "2000年[ 　\\t]*4月[ 　\\t]*1日[ 　\\t]*まで有効",
+      artifactFormatJapaneseLongDate_(record.certificateExpiry) + "　まで有効", "有効期限"
+    );
+    artifactReplaceRequiredText_(body, "^[ 　\\t]*殿$", record.targetName + "　殿", "受講者氏名");
+    artifactReplaceRequiredText_(
+      body, "技能証明申請者番号：[ 　\\t]*0000000000",
+      "技能証明申請者番号：0000000000（サンプル）", "技能証明申請者番号"
+    );
+    artifactReplaceRequiredText_(
+      body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.certificateInstructor,
+      "担当講師：" + record.certificateInstructor + "（サンプル）", "担当講師"
+    );
+    artifactReplaceRequiredText_(
+      body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.certificateIssuer,
+      "登録更新講習機関名 サンプル登録更新講習機関（正式使用禁止）", "登録更新講習機関名"
+    );
+    artifactReplaceRequiredText_(
+      body, RENEWAL_ARTIFACT_DOC_TEXT_BLOCK_PATTERNS.organizationCode,
+      "登録更新講習機関コード：SAMPLE", "登録更新講習機関コード"
+    );
+    var matches = [];
+    body.getTables().forEach(function(table) {
+      try {
+        matches.push({
+          table: table,
+          selection: artifactCertificateTableSelection_(
+            artifactDocTableMatrix_(table), record.aircraftType, record.licenseClass
+          )
+        });
+      } catch (ignoredTable) {}
+    });
+    if (matches.length !== 1) throw new Error("修了証明書原本の区分表を一意に確認できません。");
+    matches[0].selection.allCells.forEach(function(position) {
+      artifactSetDocCellText_(
+        matches[0].table.getRow(position.row).getCell(position.column), ""
+      );
+    });
+    artifactSetDocCellText_(
+      matches[0].table.getRow(matches[0].selection.row).getCell(matches[0].selection.column), "〇"
+    );
+    doc.saveAndClose();
+    var verify = DocumentApp.openById(file.getId());
+    var text = artifactGetDocumentTab_(
+      verify, RENEWAL_ARTIFACT.CERTIFICATE_BASE_TAB_ID
+    ).asDocumentTab().getBody().getText();
+    verify.saveAndClose();
+    if (
+      text.indexOf("サンプル・正式使用禁止") < 0 ||
+      text.indexOf(record.certificateNo) < 0 ||
+      text.indexOf(record.targetName) < 0
+    ) throw new Error("修了証明書サンプルの作成後読戻し検証に失敗しました。");
+    return {
+      file: file,
+      driveOperation: artifactDriveAttemptOperation_(
+        "COPY", sourceId, fileName, RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind], folder.getId()
+      )
+    };
+  } catch (error) {
+    artifactThrowAfterCleanup_(error, file, label, "file");
+  }
+}
+
+function complianceCreateSampleDipsCsv_(context, folder, fileName) {
+  var kind = "dipsCsv";
+  var label = complianceResultLabel_(kind, true);
+  var record = complianceSampleRecord_(context);
+  var headers = [
+    "申請者ID", "技能証明申請者番号", "登録更新講習機関コード",
+    "登録更新講習機関事務所コード", "区分", "停止処分者向け講習受講有無",
+    "無人航空機操縦者身体適性検査証明書番号", "更新講習修了証明書番号",
+    "更新講習修了日", "有効期間満了日", "状態フラグ"
+  ];
+  var row = [
+    "SAMPLE1", "0000000000", "SAMPLE", "SAMPLE",
+    String(artifactClassValue_(record.licenseClass)),
+    artifactText_(record.suspensionCourse) === "あり" ? "2" : "1",
+    "SAMPLE-PA", record.certificateNo, artifactSlashDate_(record.courseDate),
+    artifactSlashDate_(record.certificateExpiry), "1"
+  ];
+  var csv = "\uFEFF" + artifactCsvRow_(headers) + "\r\n" + artifactCsvRow_(row) + "\r\n";
+  var file = artifactCreateDriveItemInFolder_(
+    fileName, RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind],
+    folder, label, context.settings.allowedOutputEmails, false, null
+  );
+  try {
+    artifactUpdateBlobFileContent_(
+      file, fileName, RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind],
+      Utilities.newBlob(csv, RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind], fileName),
+      folder, label
+    );
+    return {
+      file: file,
+      driveOperation: artifactDriveAttemptOperation_(
+        "CREATE", "", fileName, RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind], folder.getId()
+      )
+    };
+  } catch (error) {
+    artifactThrowAfterCleanup_(error, file, label, "file");
+  }
+}
+
+function complianceCreateSamplePaymentRecord_(context, folder, fileName) {
+  var kind = "paymentRecord";
+  var label = complianceResultLabel_(kind, true);
+  var created = artifactCreateSpreadsheetInFolder_(
+    fileName, folder, label, context.settings.allowedOutputEmails, false
+  );
+  var file = created.file;
+  try {
+    var record = complianceSampleRecord_(context);
+    var billing = artifactCalculateBilling_(record);
+    var paid = Math.max(0, Number(record.paidAmount || 0));
+    var sheet = created.spreadsheet.getSheets()[0];
+    created.spreadsheet.setSpreadsheetTimeZone("Asia/Tokyo");
+    sheet.setName("収納記録（サンプル）");
+    sheet.setTabColor("#b91c1c");
+    sheet.getRange("A1:H1").merge().setValue(
+      "【サンプル・正式使用禁止】講習料金収納記録"
+    ).setBackground("#fee2e2").setFontColor("#991b1b").setFontWeight("bold");
+    sheet.getRange("A3:H3").setValues([[
+      "対象者", "請求書番号", "請求日", "税抜額", "消費税", "税込額", "入金日", "入金額"
+    ]]).setBackground("#dbeafe").setFontWeight("bold");
+    sheet.getRange("A4:H4").setValues([[
+      record.targetName,
+      artifactText_(record.invoiceNo) || "SAMPLE-INV-001",
+      artifactText_(record.invoiceDate) || record.courseDate,
+      billing.base,
+      billing.tax,
+      billing.total,
+      artifactText_(record.paymentDate) || record.courseDate,
+      paid || billing.total
+    ]]);
+    sheet.getRange("D4:F4").setNumberFormat("¥#,##0");
+    sheet.getRange("H4").setNumberFormat("¥#,##0");
+    sheet.getRange("A6:H6").merge().setValue(
+      "正式会計台帳・請求・入金・消込には登録していません。入力・出力確認専用です。"
+    ).setFontColor("#991b1b");
+    sheet.setFrozenRows(3);
+    sheet.autoResizeColumns(1, 8);
+    SpreadsheetApp.flush();
+    if (sheet.getRange("A1").getDisplayValue().indexOf("サンプル・正式使用禁止") < 0) {
+      throw new Error("収納記録サンプルの警告表示を確認できません。");
+    }
+    return {
+      file: file,
+      driveOperation: artifactDriveAttemptOperation_(
+        "CREATE", "", fileName, RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind], folder.getId()
+      )
+    };
+  } catch (error) {
+    artifactThrowAfterCleanup_(error, file, label, "file");
+  }
 }
 
 function complianceCreateSamplePlan_(context, folder, fileName) {
@@ -1022,11 +1439,20 @@ function complianceCreateApplicationChecklist_(context, folder, fileName) {
     spreadsheet.setSpreadsheetTimeZone("Asia/Tokyo");
     var sheet = spreadsheet.getSheets()[0];
     sheet.setName("保管チェックリスト");
-    sheet.getRange("A1:H1").merge().setValue("申込書・技能証明書・身分証　保管チェックリスト");
+    sheet.getRange("A1:H1").merge().setValue(
+      (context.sampleMode ? "【サンプル・正式使用禁止】" : "") +
+      "申込書・技能証明書・身分証　保管チェックリスト"
+    );
     sheet.getRange("A2:H4").setValues([
       ["recordId", context.record.recordId, "管理ID", artifactText_(context.record.personId), "対象者", artifactRecordName_(context.record), "正本版", Number(context.canonical.version)],
       ["保存先", folder.getUrl(), "", "", "", "", "", ""],
-      ["注意", "実物書類は自動生成しません。対象者フォルダへ原本をアップロードし、下表へリンクと確認記録を入力してください。", "", "", "", "", "", ""]
+      [
+        "注意",
+        context.sampleMode
+          ? "入力・出力確認専用です。実物書類のアップロードや正式確認には使用できません。"
+          : "実物書類は自動生成しません。対象者フォルダへ原本をアップロードし、下表へリンクと確認記録を入力してください。",
+        "", "", "", "", "", ""
+      ]
     ]);
     sheet.getRange("A6:H6").setValues([["書類", "状態", "Driveファイル名", "Driveリンク", "受領日", "確認日", "確認者", "備考"]]);
     sheet.getRange("A7:H9").setValues([

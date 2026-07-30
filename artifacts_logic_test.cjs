@@ -60,7 +60,7 @@ const expectedRegistryModuleFunctions = [
   "artifactPrepareNewOutputFile_", "artifactFinalizeNewOutputFile_", "artifactDriveRevisionState_", "artifactDriveHeadContentRevisionState_",
   "artifactOutputContentHash_", "artifactAssertPriorOutputVersions_", "artifactAssertOutputRootContinuity_",
   "artifactAssertExistingOutputFile_", "artifactAssertGeneratedFileIdentity_", "artifactCreateSpreadsheetInFolder_", "artifactEnsureRegistry_",
-  "artifactCreateDriveItemInFolder_", "artifactUpdateBlobFileContent_", "artifactCreateFolderInFolder_", "artifactCopyFileInFolder_",
+  "artifactCreateDriveItemInFolder_", "artifactOpenSpreadsheetByIdWithRetry_", "artifactUpdateBlobFileContent_", "artifactCreateFolderInFolder_", "artifactCopyFileInFolder_",
   "artifactDriveAttemptOperation_", "artifactDriveAttemptKey_", "artifactReadDriveAttempt_",
   "artifactAssertNoUnresolvedDriveAttempt_", "artifactBeginDriveAttempt_",
   "artifactMarkDriveAttemptUncertain_", "artifactMarkDriveAttemptCreatedVerified_",
@@ -152,7 +152,7 @@ const pureNames = [
   "artifactFindPrepared_", "artifactReplaceRegistryRow_", "artifactNextVersion_",
   "artifactGuidanceTemplateMissingSentinels_", "artifactCertificateTableSelection_", "artifactClassValue_",
   "artifactFlattenDocumentTabs_", "artifactGetDocumentTab_",
-  "artifactIteratorItems_", "artifactCreateDriveItemInFolder_", "artifactCreateSpreadsheetInFolder_",
+  "artifactIteratorItems_", "artifactCreateDriveItemInFolder_", "artifactOpenSpreadsheetByIdWithRetry_", "artifactCreateSpreadsheetInFolder_",
   "artifactUpdateBlobFileContent_", "artifactCreateFolderInFolder_", "artifactCopyFileInFolder_",
   "artifactDriveAttemptOperation_", "artifactDriveAttemptKey_", "artifactReadDriveAttempt_",
   "artifactAssertNoUnresolvedDriveAttempt_", "artifactBeginDriveAttempt_",
@@ -381,11 +381,16 @@ const context = {
       update(metadata, fileId, mediaData, options) {
         directCreateState.updates.push({ metadata, fileId, mediaData, options });
         const parentIds = directCreateState.parentById[fileId] || [];
+        const bytes = mediaData && typeof mediaData.getBytes === "function"
+          ? mediaData.getBytes()
+          : [];
         return {
           id: fileId,
           name: mediaData && mediaData.name || "blob-test.csv",
           mimeType: mediaData && mediaData.contentType || "text/csv",
-          parents: parentIds.slice()
+          parents: parentIds.slice(),
+          size: String(bytes.length),
+          md5Checksum: crypto.createHash("md5").update(Buffer.from(bytes)).digest("hex")
         };
       },
       list() {
@@ -412,11 +417,21 @@ const context = {
     }
   },
   Utilities: {
-    DigestAlgorithm: { SHA_256: "SHA_256" },
+    DigestAlgorithm: { SHA_256: "SHA_256", MD5: "MD5" },
     Charset: { UTF_8: "UTF_8" },
+    newBlob(content, contentType, name) {
+      return {
+        content,
+        contentType,
+        name,
+        getBytes: () => Array.from(Buffer.from(String(content), "utf8"))
+      };
+    },
     computeDigest(algorithm, value) {
-      assert.equal(algorithm, "SHA_256");
-      return Array.from(crypto.createHash("sha256").update(String(value), "utf8").digest())
+      assert(["SHA_256", "MD5"].includes(algorithm));
+      const input = Array.isArray(value) ? Buffer.from(value) : Buffer.from(String(value), "utf8");
+      const algorithmName = algorithm === "MD5" ? "md5" : "sha256";
+      return Array.from(crypto.createHash(algorithmName).update(input).digest())
         .map((byte) => byte > 127 ? byte - 256 : byte);
     },
     formatDate: () => "2026-07-15 10:00:00"
@@ -495,7 +510,31 @@ const context = {
   },
   SpreadsheetApp: {
     flush() {},
-    openById(id) { return { getId: () => id }; }
+    openById(id) {
+      let maxRows = 1;
+      let maxColumns = 1;
+      let a1 = '""';
+      const sheet = {
+        getMaxRows: () => maxRows,
+        getMaxColumns: () => maxColumns,
+        insertRowsAfter(after, count) {
+          assert.equal(after, maxRows);
+          maxRows += count;
+        },
+        insertColumnsAfter(after, count) {
+          assert.equal(after, maxColumns);
+          maxColumns += count;
+        },
+        getRange(a1Notation) {
+          assert.equal(a1Notation, "A1");
+          return {
+            clearContent() { a1 = ""; return this; },
+            getDisplayValue: () => a1
+          };
+        }
+      };
+      return { getId: () => id, getSheets: () => [sheet] };
+    }
   },
   RENEWAL_ARTIFACT_REGISTRY_HEADERS: [
     "作成日時", "recordId", "種別", "payloadHash", "version", "状態",
@@ -611,7 +650,8 @@ assert.equal(directCreateState.calls[0].metadata.parents[0],
   context.RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID);
 assert.equal(directCreateState.calls[0].metadata.mimeType,
   "application/vnd.google-apps.spreadsheet");
-assert.equal(directCreateState.calls[0].mediaData, null);
+assert.equal(directCreateState.calls[0].mediaData.contentType, "text/csv");
+assert.equal(directCreateState.calls[0].mediaData.content, '""\n');
 assert.equal(directCreateState.calls[0].options.supportsAllDrives, true);
 assert.equal(directCreateState.calls[0].options.ignoreDefaultVisibility, true);
 const directSpreadsheetOperation = logic.artifactDriveAttemptOperation_(
@@ -659,7 +699,11 @@ assert.throws(() => logic.artifactCreateSpreadsheetInFolder_(
 assert(directCreateState.removedIds.includes("direct-spreadsheet-id"),
   "作成応答の親フォルダが不正な場合は既知IDの途中ファイルを完全削除します");
 directCreateState.responseOverride = null;
-const directBlob = { name: "blob-test.csv", contentType: "text/csv" };
+const directBlob = {
+  name: "blob-test.csv",
+  contentType: "text/csv",
+  getBytes: () => Array.from(Buffer.from("blob-test", "utf8"))
+};
 const directBlobFile = logic.artifactCreateDriveItemInFolder_(
   "CDP_PREPARED_dipsCsv_test_v1",
   "text/csv",
@@ -2211,6 +2255,16 @@ const validRegistryRow = [
   "UC015726070001", "作成", JSON.stringify(validRegistryMetadata), "3"
 ];
 assert.equal(logic.artifactRegistryRowsIssue_([validRegistryRow]), "");
+const googleSheetsMidnightRegistryRow = validRegistryRow.slice();
+googleSheetsMidnightRegistryRow[0] = "2026-07-15 0:58:42";
+assert.equal(
+  logic.artifactRegistryRowsIssue_([googleSheetsMidnightRegistryRow]),
+  "",
+  "Google Sheetsが0～9時の先頭0を省略しても同一監査時刻として読める必要があります"
+);
+const invalidRegistryHour = validRegistryRow.slice();
+invalidRegistryHour[0] = "2026-07-15 24:00:00";
+assert(logic.artifactRegistryRowsIssue_([invalidRegistryHour]).includes("作成日時"));
 const validOutputMetadata = {
   kind: "certificate", version: 1, payloadHash: registryPayloadHash,
   outputContentHash: "1".repeat(64), outputDriveVersion: "9",
@@ -3271,11 +3325,12 @@ assert.equal(registryBlock.includes("props.deleteProperty(key)"), false,
 const directSpreadsheetCreateBlock = extractFunction("artifactCreateSpreadsheetInFolder_");
 const directDriveCreateBlock = extractFunction("artifactCreateDriveItemInFolder_");
 assert(directSpreadsheetCreateBlock.includes("artifactCreateDriveItemInFolder_") &&
+  directSpreadsheetCreateBlock.includes("Utilities.newBlob") &&
   directDriveCreateBlock.includes("Drive.Files.create") &&
   directDriveCreateBlock.includes("parents: [parentId]") &&
   directDriveCreateBlock.includes("supportsAllDrives: true") &&
   directDriveCreateBlock.includes("ignoreDefaultVisibility: true"),
-  "新規スプレッドシートは親フォルダを作成要求へ含め、移動前中断窓を作らない必要があります");
+  "新規スプレッドシートは有効な空CSVから変換し、親フォルダを同じ作成要求へ含める必要があります");
 assert.equal(directSpreadsheetCreateBlock.includes("SpreadsheetApp.create"), false,
   "固定保存先へ直接作る処理でMy Drive直下作成を使ってはいけません");
 const directCopyBlock = extractFunction("artifactCopyFileInFolder_");
