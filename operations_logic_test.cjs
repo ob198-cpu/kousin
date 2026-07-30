@@ -321,6 +321,16 @@ assert.equal(runtimeBannerBlock.includes("banner.textContent ="), false,
 assert(runtimeBannerBlock.includes("banner.hidden = true;") &&
   runtimeBannerBlock.includes("banner.hidden = false;"),
   "Apps Script本番版では案内帯を隠し、公開Pages版では本番導線を表示する必要があります");
+const topNavigationLabels = $(".app-header .tabs > button").map((_, element) =>
+  $(element).text().trim()).get();
+assert.deepEqual(topNavigationLabels, ["ホーム", "登録者一覧", "集計", "設定"],
+  "上部ナビゲーションはホーム・登録者一覧・集計・設定の4ボタンだけにしてください");
+assert.equal($(".app-header .tabs > button[data-screen='entry']").length, 0,
+  "上部ナビゲーションに登録・編集ボタンを残してはいけません");
+assert.equal($(".app-header .tabs > button[data-screen='finance']").length, 0,
+  "上部ナビゲーションに請求・入金ボタンを残してはいけません");
+assert(html.includes("「設定」から再読込してください。"),
+  "共有正本の再読込案内は現在の設定ボタン名と一致させてください");
 assert.equal($("#showArchived").length, 0,
   "受講者台帳に無効化済み表示チェックを残してはいけません");
 assert.equal(scriptMatch[1].includes("showArchived"), false,

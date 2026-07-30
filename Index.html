@@ -758,12 +758,10 @@
   <header class="app-header">
     <div class="brand">免許更新管理</div>
     <nav class="tabs" aria-label="画面切替">
-      <button type="button" class="active" data-screen="home">対応一覧</button>
-      <button type="button" data-screen="ledger">受講者台帳</button>
-      <button type="button" data-screen="entry">登録・編集</button>
-      <button type="button" data-screen="finance">請求・入金</button>
+      <button type="button" class="active" data-screen="home">ホーム</button>
+      <button type="button" data-screen="ledger">登録者一覧</button>
       <button type="button" data-screen="reports">集計</button>
-      <button type="button" data-screen="data">データ管理</button>
+      <button type="button" data-screen="data">設定</button>
     </nav>
   </header>
   <div id="runtimeModeBanner" class="mode-banner">
@@ -4064,7 +4062,7 @@
         return "専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。";
       }
       if (AppData.loadError) {
-        return "共有正本を読み込めません。画面上部のエラーを確認し、「データ管理」から再読込してください。";
+        return "共有正本を読み込めません。画面上部のエラーを確認し、「設定」から再読込してください。";
       }
       return "";
     }
