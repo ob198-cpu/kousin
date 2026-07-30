@@ -209,6 +209,7 @@ assert(source.includes("function complianceCreateSampleLedger_"));
 assert(source.includes("function complianceCreateSampleCertificate_"));
 assert(source.includes("function complianceCreateSampleDipsCsv_"));
 assert(source.includes("function complianceCreateSamplePaymentRecord_"));
+assert(source.includes("function complianceResolveSampleOutputFileName_"));
 const sampleLedgerSource = extractFunction("complianceCreateSampleLedger_");
 assert(sampleLedgerSource.includes("artifactCreateDriveItemInFolder_"));
 assert(sampleLedgerSource.includes("artifactUpdateBlobFileContent_"));
@@ -225,6 +226,74 @@ assert(html.includes("if (base.sampleMode)"));
 assert(source.includes("var sheet = base.copyTo(spreadsheet).setName("));
 assert(source.includes('sheet.getRange("D1")'));
 assert(!source.includes('sheet.getRange("A1:AF1").merge()'));
+
+const sampleResolverContext = {
+  artifactText_: (value) => value == null ? "" : String(value).trim(),
+  artifactIteratorItems_: (items) => items,
+  Drive: {
+    Files: {
+      get(fileId) {
+        return {
+          id: fileId,
+          name: fileId,
+          mimeType: "text/csv",
+          trashed: false
+        };
+      }
+    }
+  }
+};
+vm.createContext(sampleResolverContext);
+[
+  "complianceIdentityDescription_",
+  "complianceSampleAlternateFileName_",
+  "complianceResolveSampleOutputFileName_"
+].forEach((name) => vm.runInContext(extractFunction(name), sampleResolverContext));
+const resolverIdentity = { hash: "abc", value: { sampleMode: true } };
+const expectedResolverDescription =
+  sampleResolverContext.complianceIdentityDescription_(resolverIdentity);
+const legacySampleFile = {
+  getId: () => "legacy-sample-id",
+  getDescription: () => "legacy-description"
+};
+const matchingSampleFile = {
+  getId: () => "matching-sample-id",
+  getDescription: () => expectedResolverDescription
+};
+const resolverWarnings = [];
+assert.strictEqual(
+  sampleResolverContext.complianceResolveSampleOutputFileName_(
+    {
+      getFilesByName(name) {
+        if (name === "sample.csv") return [legacySampleFile];
+        return [];
+      }
+    },
+    "sample.csv",
+    "text/csv",
+    resolverIdentity,
+    { warnings: resolverWarnings }
+  ),
+  "sample_再作成2.csv"
+);
+assert.strictEqual(resolverWarnings.length, 1);
+assert(resolverWarnings[0].includes("上書きせず保存"));
+assert.strictEqual(
+  sampleResolverContext.complianceResolveSampleOutputFileName_(
+    {
+      getFilesByName(name) {
+        if (name === "sample.csv") return [legacySampleFile];
+        if (name === "sample_再作成2.csv") return [matchingSampleFile];
+        return [];
+      }
+    },
+    "sample.csv",
+    "text/csv",
+    resolverIdentity,
+    { warnings: [] }
+  ),
+  "sample_再作成2.csv"
+);
 
 assert(artifactsSource.includes("implementationPlanSource"));
 assert(artifactsSource.includes("implementationStatusSource"));

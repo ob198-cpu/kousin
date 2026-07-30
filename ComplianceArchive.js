@@ -187,6 +187,15 @@ function apiCreateComplianceArchive(request) {
     }
     var identity = complianceOutputIdentity_(kind, context);
     var fileName = complianceOutputFileName_(kind, context, identity.hash);
+    if (context.sampleMode) {
+      fileName = complianceResolveSampleOutputFileName_(
+        targetFolder,
+        fileName,
+        complianceOutputMimeType_(kind, context),
+        identity,
+        context
+      );
+    }
     var reusable = complianceFindReusableFile_(
       targetFolder,
       fileName,
@@ -704,6 +713,65 @@ function complianceIdentityDescription_(identity) {
     hash: identity.hash,
     value: identity.value
   });
+}
+
+function complianceSampleAlternateFileName_(baseName, revision) {
+  var name = artifactText_(baseName);
+  var number = Math.max(2, Number(revision || 2));
+  var extensionMatch = /(\.csv)$/i.exec(name);
+  var extension = extensionMatch ? extensionMatch[1] : "";
+  var stem = extension ? name.slice(0, -extension.length) : name;
+  var suffix = "_再作成" + number;
+  return stem.slice(0, Math.max(1, 180 - suffix.length - extension.length)) +
+    suffix + extension;
+}
+
+function complianceResolveSampleOutputFileName_(folder, baseName, mimeType, identity, context) {
+  var expectedDescription = complianceIdentityDescription_(identity);
+  var preservedConflict = false;
+  for (var revision = 1; revision <= 20; revision++) {
+    var candidate = revision === 1
+      ? artifactText_(baseName)
+      : complianceSampleAlternateFileName_(baseName, revision);
+    var matches = artifactIteratorItems_(folder.getFilesByName(candidate), 3);
+    if (!matches.length) {
+      if (preservedConflict && context && Array.isArray(context.warnings)) {
+        context.warnings.push(
+          "旧仕様または内容変更済みのサンプルは上書きせず保存し、別名「" +
+          candidate + "」で作成しました。"
+        );
+      }
+      return candidate;
+    }
+    if (matches.length !== 1) {
+      preservedConflict = true;
+      continue;
+    }
+    var file = matches[0];
+    var state;
+    try {
+      state = Drive.Files.get(file.getId(), {
+        fields: "id,name,mimeType,trashed",
+        supportsAllDrives: true
+      });
+    } catch (stateError) {
+      preservedConflict = true;
+      continue;
+    }
+    if (
+      state &&
+      state.trashed !== true &&
+      artifactText_(state.mimeType) === artifactText_(mimeType) &&
+      artifactText_(file.getDescription()) === expectedDescription
+    ) {
+      return candidate;
+    }
+    preservedConflict = true;
+  }
+  throw new Error(
+    "旧仕様の同名サンプルが20世代以上あります。旧ファイルは変更していません。" +
+    "サンプル出力フォルダを整理してから再実行してください。【担当部署に確認が必要】"
+  );
 }
 
 function complianceSetAndAssertOutputIdentity_(file, identity) {
