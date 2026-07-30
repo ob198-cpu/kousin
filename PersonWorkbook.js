@@ -507,15 +507,21 @@ function personWorkbookUpdate_(resolved, context) {
     spreadsheet, resolved.created, resolved.file, context
   );
   var sheets = spreadsheet.getSheets();
+  var recoveryWarnings = [];
   for (var sheetIndex = 0; sheetIndex < sheets.length; sheetIndex++) {
     var currentName = sheets[sheetIndex].getName();
     if (/^__準備_/.test(currentName)) {
-      throw new Error(
-        "前回の更新途中シート「" + currentName +
-        "」が残っています。自動削除せず、管理者が内容を確認してください。"
+      var quarantineName = personWorkbookQuarantineName_(
+        spreadsheet, currentName
+      );
+      sheets[sheetIndex].setName(quarantineName);
+      try { sheets[sheetIndex].hideSheet(); } catch (ignoredQuarantineHideError) {}
+      recoveryWarnings.push(
+        "前回中断の準備シート「" + currentName + "」は削除せず、" +
+        "「" + quarantineName + "」へ改名して非表示保管しました。"
       );
     }
-    if (/^__旧_/.test(currentName)) {
+    if (/^__(旧|中断)_/.test(currentName)) {
       try { sheets[sheetIndex].hideSheet(); } catch (ignoredOldSheetHideError) {}
     }
   }
@@ -594,7 +600,7 @@ function personWorkbookUpdate_(resolved, context) {
     systemSheet.hideSheet();
     SpreadsheetApp.flush();
     personWorkbookAssertSystemSheet_(systemSheet, resolved.file, context);
-    var cleanupWarnings = [];
+    var cleanupWarnings = recoveryWarnings.slice();
     for (var deleteIndex = 0; deleteIndex < backups.length; deleteIndex++) {
       try {
         spreadsheet.deleteSheet(backups[deleteIndex].sheet);
@@ -687,6 +693,24 @@ function personWorkbookUpdate_(resolved, context) {
     }
     throw error;
   }
+}
+
+function personWorkbookQuarantineName_(spreadsheet, preparedName) {
+  var base = ("__中断_" + artifactText_(preparedName).replace(/^__準備_/, ""))
+    .slice(0, 90);
+  var candidate = base;
+  var suffix = 2;
+  while (spreadsheet.getSheetByName(candidate)) {
+    candidate = (base.slice(0, 90 - String(suffix).length) + "_" + suffix)
+      .slice(0, 90);
+    suffix++;
+    if (suffix > 100) {
+      throw new Error(
+        "中断シートの保管名を一意にできません。管理者が非表示シートを確認してください。"
+      );
+    }
+  }
+  return candidate;
 }
 
 function personWorkbookEnsureSystemSheet_(spreadsheet, created, file, context) {

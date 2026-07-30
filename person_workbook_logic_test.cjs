@@ -168,6 +168,13 @@ assert(updateSource.includes("systemBefore") &&
   "更新失敗時は管理シートも元に戻す必要があります");
 assert(updateSource.includes("cleanupWarnings"),
   "更新確定後の旧シート削除失敗は新シートを破壊せず警告にする必要があります");
+assert(updateSource.includes("personWorkbookQuarantineName_") &&
+  updateSource.includes("__中断_") &&
+  updateSource.includes("削除せず"),
+  "前回中断の準備シートは削除せず非表示の中断シートへ退避する必要があります");
+assert(!updateSource.includes("前回の更新途中シート") ||
+  !updateSource.includes("throw new Error(\\n        \"前回の更新途中シート"),
+  "前回中断の準備シートだけを理由に再作成を停止してはいけません");
 
 assert(scriptMatch[1].includes('serverCall(\n          "apiPreflightPersonWorkbook"'),
   "画面は資料一式の作成前検査APIを呼ぶ必要があります");
