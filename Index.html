@@ -557,6 +557,38 @@
     .task-row.done { border-color: #abefc6; background: #f0fdf4; }
     .task-row.current { border-color: #fedf89; background: #fff7e6; }
     .task-row.blocked { border-color: #fecdca; background: #fff1f0; }
+    .task-row.checklist {
+      grid-template-columns: 34px minmax(0, 1fr);
+      align-items: center;
+      cursor: pointer;
+    }
+    .task-row.checklist input[type="checkbox"] {
+      width: 22px;
+      height: 22px;
+      margin: 0;
+    }
+    .task-row.checklist.saving { opacity: .65; cursor: wait; }
+    .task-row.checklist.done .task-title { text-decoration: line-through; }
+    .task-summary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #f8fafc;
+    }
+    .task-progress { font-weight: 900; }
+    .task-source-note { margin-bottom: 12px; }
+    .task-group-title {
+      margin: 14px 0 7px;
+      color: var(--navy);
+      font-size: 16px;
+      font-weight: 900;
+    }
     .task-state,
     .task-deadline,
     .task-title { font-weight: 900; }
@@ -835,6 +867,7 @@
             <col style="width: 130px">
             <col style="width: 145px">
             <col style="width: 210px">
+            <col style="width: 260px">
             <col style="width: 150px">
             <col style="width: 155px">
             <col style="width: 240px">
@@ -846,12 +879,13 @@
               <th>免許期限</th>
               <th>修了証明書有効日</th>
               <th>更新段階</th>
+              <th>次の作業</th>
               <th>請求状態</th>
               <th>更新日時</th>
               <th>操作</th>
             </tr>
           </thead>
-          <tbody id="ledgerBody"><tr><td colspan="8" class="empty">専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。</td></tr></tbody>
+          <tbody id="ledgerBody"><tr><td colspan="9" class="empty">専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -1809,7 +1843,7 @@
   <div id="statusModal" class="modal" aria-hidden="true">
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="statusTitle">
       <div class="modal-head">
-        <h2 id="statusTitle">更新タスク</h2>
+        <h2 id="statusTitle">タスク一覧</h2>
         <button type="button" data-close-modal="statusModal">閉じる</button>
       </div>
       <div class="modal-body" id="statusBody"></div>
@@ -2131,6 +2165,7 @@
     let dipsCsvOfficialTemplateText = "";
     let trainingSessionPreviewState = null;
     let trainingSessionBatchBusy = false;
+    let taskChecklistBusy = false;
     let scheduleDirty = false;
     let recordStorageCorruption = null;
     let auditStorageCorruption = null;
@@ -2226,6 +2261,53 @@
       return fields.concat([module[0] + "Date", module[0] + "Start", module[0] + "End", module[0] + "Instructor"]);
     }, []);
     const DEFAULT_AIRCRAFT_TYPE = "回転翼航空機（マルチローター）";
+    const RENEWAL_TASK_CHECKLIST_VERSION = "CDP_RENEWAL_TASK_CHECKLIST_V1";
+    const RENEWAL_TASKS = [
+      { id: "pre_inquiry", category: "事前準備", title: "受講問い合わせ", detail: "" },
+      { id: "pre_graduate_guidance", category: "事前準備", title: "CDP卒業者案内", detail: "免許期限の6か月前・3か月前に更新講習を案内" },
+      { id: "pre_certificate_check", category: "事前準備", title: "無人航空機操縦者技能証明書確認", detail: "期限切れは受講不可" },
+      { id: "pre_send_schedule_forms_video", category: "事前準備", title: "日程表・申込書・事前手続き動画送付", detail: "" },
+      { id: "pre_application_form", category: "事前準備", title: "申込書記入", detail: "" },
+      { id: "pre_identity_document", category: "事前準備", title: "運転免許証・マイナンバーカード・住民票いずれか1つ受領", detail: "" },
+      { id: "pre_dips_attribute_change", category: "事前準備", title: "技能証明申請者番号属性情報変更申請手続き", detail: "" },
+      { id: "pre_payment_confirmation", category: "事前準備", title: "入金確認", detail: "" },
+      { id: "reception", category: "受付", title: "受付", detail: "所要時間30分" },
+      { id: "academic_overview", category: "座学講習", title: "無人航空機操縦士技能証明制度の概要", detail: "" },
+      { id: "academic_obligations", category: "座学講習", title: "無人航空機操縦者が遵守すべき事項及びマナー", detail: "" },
+      { id: "academic_recent_revisions", category: "座学講習", title: "最近の無人航空機関連の制度改正", detail: "" },
+      { id: "academic_incidents", category: "座学講習", title: "事故・重大インシデント事例及び教訓", detail: "" },
+      { id: "academic_rules", category: "座学講習", title: "運航ルール・事故防止に関する情報", detail: "" },
+      { id: "academic_accident_video", category: "座学講習", title: "無人航空機の事故発生状況", detail: "動画6分" },
+      { id: "academic_case_multi", category: "座学講習", title: "実際の事例とその教訓（マルチ）", detail: "動画5分" },
+      { id: "academic_case_verification", category: "座学講習", title: "実際の事例とその教訓（検証動画）", detail: "動画4分" },
+      { id: "academic_compliance_video", category: "座学講習", title: "事故を発生させないための遵守事項", detail: "動画6分" },
+      { id: "academic_first_class_text", category: "座学講習", title: "一等無人航空機操縦士が留意すべき事項", detail: "教本15分", licenseClass: "一等" },
+      { id: "academic_first_class_video", category: "座学講習", title: "一等無人航空機操縦士が留意すべき事項", detail: "動画10分", licenseClass: "一等" },
+      { id: "academic_exercise", category: "座学講習", title: "問題実施", detail: "" },
+      { id: "academic_answer", category: "座学講習", title: "回答", detail: "" },
+      { id: "practical_explanation", category: "実技講習", title: "説明", detail: "停止処分者向け講習の対象者のみ", suspensionOnly: true },
+      { id: "practical_second_emergency", category: "実技講習", title: "異常事態における飛行", detail: "6分", licenseClass: "二等", suspensionOnly: true },
+      { id: "practical_first_emergency", category: "実技講習", title: "緊急着陸を伴う八の字飛行", detail: "5分", licenseClass: "一等", suspensionOnly: true },
+      { id: "practical_discussion", category: "実技講習", title: "操縦演習に基づく指導及び質疑応答", detail: "二等5分／一等10分", suspensionOnly: true },
+      { id: "post_csv_upload", category: "講習後", title: "CSVファイルアップロード", detail: "" },
+      { id: "post_certificate_create", category: "講習後", title: "無人航空機更新講習修了証明書　作成", detail: "" },
+      { id: "post_certificate_print", category: "講習後", title: "無人航空機更新講習修了証明書　プリントアウト", detail: "" },
+      { id: "post_certificate_stamp", category: "講習後", title: "無人航空機更新講習修了証明書　押印", detail: "" },
+      { id: "post_certificate_store", category: "講習後", title: "無人航空機更新講習修了証明書　データ保管", detail: "" },
+      { id: "post_certificate_submit", category: "講習後", title: "無人航空機更新講習修了証明書　提出（原本・データ）", detail: "" },
+      { id: "post_renewal_application", category: "講習後", title: "更新申請", detail: "" },
+      { id: "post_ledger_entry", category: "講習後", title: "更新講習修了証明書発行台帳記入", detail: "" },
+      { id: "post_training_record_entry", category: "講習後", title: "講習記録簿記入", detail: "" },
+      { id: "audit_attachment03", category: "監査対策", title: "事務規程、別添03 講習記録簿　保管", detail: "" },
+      { id: "audit_attachment04", category: "監査対策", title: "事務規程、別添04 実施計画書　保管", detail: "" },
+      { id: "audit_attachment05", category: "監査対策", title: "事務規程、別添05 実施状況報告書　保管", detail: "" },
+      { id: "audit_attachment13", category: "監査対策", title: "事務規程、別添13 修了証明書発行台帳　保管", detail: "" },
+      { id: "audit_identity_docs", category: "監査対策", title: "申込書・技能証明書・身分証　保管", detail: "" },
+      { id: "audit_certificate", category: "監査対策", title: "無人航空機更新講習修了証明書　保管", detail: "" },
+      { id: "audit_csv", category: "監査対策", title: "CSVファイル　保管", detail: "" },
+      { id: "audit_fee_record", category: "監査対策", title: "講習料金収納記録　保管", detail: "" }
+    ];
+    const RENEWAL_TASK_IDS = RENEWAL_TASKS.map(function (task) { return task.id; });
     const COURSE_PRICING_FALLBACK = {
       version: "CDP_RENEWAL_COURSE_PRICING_V1",
       serviceCategory: "更新講習",
@@ -2665,6 +2747,61 @@
       return String(value.getMonth() >= 3 ? value.getFullYear() : value.getFullYear() - 1);
     }
 
+    function normalizeTaskChecklist(value) {
+      const allowed = new Set(RENEWAL_TASK_IDS);
+      const source = value &&
+        value.version === RENEWAL_TASK_CHECKLIST_VERSION &&
+        Array.isArray(value.completedIds) ? value.completedIds : [];
+      const completed = new Set(source.map(function (id) {
+        return String(id || "").trim();
+      }).filter(function (id) {
+        return allowed.has(id);
+      }));
+      return {
+        version: RENEWAL_TASK_CHECKLIST_VERSION,
+        completedIds: RENEWAL_TASK_IDS.filter(function (id) {
+          return completed.has(id);
+        })
+      };
+    }
+
+    function applicableRenewalTasks(record) {
+      return RENEWAL_TASKS.filter(function (task) {
+        if (task.licenseClass && task.licenseClass !== record.licenseClass) {
+          return false;
+        }
+        if (task.suspensionOnly && record.suspensionCourse !== "あり") {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    function renewalTaskProgress(record) {
+      const checklist = normalizeTaskChecklist(record.taskChecklist);
+      const completed = new Set(checklist.completedIds);
+      const tasks = applicableRenewalTasks(record).map(function (task) {
+        return Object.assign({}, task, { completed: completed.has(task.id) });
+      });
+      const next = tasks.find(function (task) { return !task.completed; }) || null;
+      const warnings = [];
+      if (record.licenseClass !== "一等" && record.licenseClass !== "二等") {
+        warnings.push("資格区分が未確認のため、一等・二等の専用項目は表示していません。");
+      }
+      if (record.suspensionCourse === "未確認") {
+        warnings.push("停止処分者向け講習の要否が未確認のため、実技講習の項目は表示していません。");
+      }
+      return {
+        checklist: checklist,
+        tasks: tasks,
+        completedCount: tasks.filter(function (task) { return task.completed; }).length,
+        totalCount: tasks.length,
+        next: next,
+        nextLabel: next ? next.category + "： " + next.title : "全タスク完了",
+        warnings: warnings
+      };
+    }
+
     function normalizeRecord(raw) {
       const defaults = {
         id: "",
@@ -2753,12 +2890,17 @@
         referenceSource: "技能証明書",
         sourceMemo: "",
         internalMemo: "",
+        taskChecklist: {
+          version: RENEWAL_TASK_CHECKLIST_VERSION,
+          completedIds: []
+        },
         archived: false,
         createdAt: nowIso(),
         updatedAt: nowIso()
       };
       TRAINING_FIELD_IDS.forEach(function (id) { defaults[id] = ""; });
       const record = Object.assign(defaults, raw || {});
+      record.taskChecklist = normalizeTaskChecklist(record.taskChecklist);
       if (!record.aircraftType || record.aircraftType === "未確認") {
         record.aircraftType = DEFAULT_AIRCRAFT_TYPE;
       }
@@ -3958,6 +4100,7 @@
       document.getElementById("priorityBody").innerHTML = rows.length ? rows.map(function (row) {
         const record = row.record;
         const result = row.result;
+        const taskProgress = renewalTaskProgress(record);
         const dueClass = result.level === "danger" || result.level === "warning" ? "due" : "";
         return "<tr>" +
           '<td><span class="tag ' + result.level + '">' + escapeHtml(result.label) + "</span></td>" +
@@ -3965,11 +4108,13 @@
           '<td><button type="button" class="person-link" data-detail="' + escapeHtml(record.id) + '">' +
             escapeHtml(record.targetName) + '</button><div class="sub-info">' +
             escapeHtml(record.customerType + " / " + record.courseProvider) + "</div></td>" +
-          '<td><div class="task">' + escapeHtml(result.task) + "</div></td>" +
+          '<td><div class="task">' + escapeHtml(taskProgress.nextLabel) +
+            '</div><div class="sub-info">完了 ' + taskProgress.completedCount + " / " +
+            taskProgress.totalCount + "</div></td>" +
           '<td><div class="status-text">' + escapeHtml(result.status) + "</div></td>" +
           '<td><div class="basis-line">' + basisHtml(result) + "</div></td>" +
           '<td><div class="row-actions">' +
-            '<button type="button" class="small-button status-button" data-status="' + escapeHtml(record.id) + '">状態</button>' +
+            '<button type="button" class="small-button status-button" data-status="' + escapeHtml(record.id) + '">一覧</button>' +
             '<button type="button" class="small-button" data-edit="' + escapeHtml(record.id) + '">編集</button>' +
           "</div></td></tr>";
       }).join("") : '<tr><td colspan="7" class="empty">該当する記録はありません。</td></tr>';
@@ -3981,7 +4126,7 @@
       if (statusMessage) {
         document.getElementById("ledgerCount").textContent = "－";
         document.getElementById("ledgerBody").innerHTML =
-          recordListStatusRow(8, statusMessage);
+          recordListStatusRow(9, statusMessage);
         return;
       }
       const all = loadRecords();
@@ -4001,6 +4146,7 @@
       document.getElementById("ledgerBody").innerHTML = rows.length ? rows.map(function (record) {
         const result = analyze(record);
         const finance = financeForRecord(record);
+        const taskProgress = renewalTaskProgress(record);
         return "<tr>" +
           "<td><strong>" + escapeHtml(record.personId) + "</strong><div class=\"sub-info\">" +
             escapeHtml(record.fiscalYear + "年度 / " + record.sessionNo + "回目") + "</div></td>" +
@@ -4009,16 +4155,19 @@
           "<td>" + fmt(result.licenseExpiry) + "</td>" +
           "<td>" + fmt(result.certificateExpiry) + "</td>" +
           "<td><strong>" + escapeHtml(result.stage) + '</strong><div class="sub-info">' + escapeHtml(result.status) + "</div></td>" +
+          '<td><strong>' + escapeHtml(taskProgress.nextLabel) +
+            '</strong><div class="sub-info">完了 ' + taskProgress.completedCount + " / " +
+            taskProgress.totalCount + "</div></td>" +
           "<td>" + escapeHtml(finance.status) + "</td>" +
           "<td>" + fmtDateTime(record.updatedAt) + "</td>" +
           '<td><div class="row-actions">' +
-            '<button type="button" class="small-button status-button" data-status="' + escapeHtml(record.id) + '">状態</button>' +
+            '<button type="button" class="small-button status-button" data-status="' + escapeHtml(record.id) + '">一覧</button>' +
             '<button type="button" class="small-button" data-detail="' + escapeHtml(record.id) + '">詳細</button>' +
             '<button type="button" class="small-button" data-edit="' + escapeHtml(record.id) + '">編集</button>' +
             '<button type="button" class="small-button danger-button" data-archive="' + escapeHtml(record.id) + '">' +
               (record.archived ? "復元" : "無効化") + "</button>" +
           "</div></td></tr>";
-      }).join("") : '<tr><td colspan="8" class="empty">該当する記録はありません。</td></tr>';
+      }).join("") : '<tr><td colspan="9" class="empty">該当する記録はありません。</td></tr>';
       applyPublicReadOnlyUi();
     }
 
@@ -5660,96 +5809,124 @@
       }).join("") : '<tr><td colspan="6" class="empty">変更履歴はありません。</td></tr>';
     }
 
-    function taskState(done, current, blocked) {
-      if (done) return { label: "完了", className: "done" };
-      if (blocked) return { label: "要確認", className: "blocked" };
-      if (current) return { label: "現在", className: "current" };
-      return { label: "未着手", className: "" };
+    function canUpdateTaskChecklist(record) {
+      return AppData.mode === "server" &&
+        AppData.configured &&
+        !AppData.readOnly &&
+        !record.archived &&
+        (AppData.role === "admin" || AppData.role === "renewal");
     }
 
-    function renewalTasks(record, result) {
-      const applied = Boolean(record.applicationDate);
-      const courseDone = Boolean(record.courseDate);
-      const certificateDone = Boolean(record.certificateDelivered === "有り" && record.certificateIssuedDate &&
-        record.certificateDeliveredDate && record.certificateExpiry && record.certificateNo);
-      const completionLinked = Boolean(record.dipsCompletionLinkedDate);
-      const completionLinkApplicable = record.courseProvider === "CDP";
-      const completionLinkRequired = completionLinkApplicable && Boolean(record.certificateIssuedDate);
-      const dipsApplicationDone = Boolean(record.dipsDate);
-      const confirmed = Boolean(record.confirmedDate);
-      const newExpiry = Boolean(record.newExpiry);
-      const dipsDeadline = dipsBusinessDeadlineInfo(record.certificateIssuedDate);
-      const followPast = result.followDeadline && daysUntil(result.followDeadline) <= 0;
-      const tasks = [
-        {
-          title: "申込・講習日程を登録",
-          detail: "CDPは免許期限6か月前から受付し、申込日と講習予定日を登録する。",
-          deadline: result.cdpCourseStart,
-          state: taskState(applied, !applied && result.cdpCourseStart && daysUntil(result.cdpCourseStart) <= 0, false)
-        },
-        {
-          title: "更新講習を修了",
-          detail: "講習修了日を登録する。",
-          deadline: toDate(record.courseScheduledDate) || result.applicationDeadline,
-          state: taskState(courseDone, applied && !courseDone, !courseDone && result.applicationDeadline && daysUntil(result.applicationDeadline) <= 0)
-        },
-        {
-          title: "修了証明書を登録",
-          detail: "発行番号、発行日、有効年月日、交付の有無と実際の交付年月日を登録する。",
-          deadline: result.certificateExpiry,
-          state: taskState(certificateDone, courseDone && !certificateDone, courseDone && !certificateDone && followPast)
-        },
-        {
-          title: "DIPS修了者情報を連携",
-          detail: "CDP受講分を修了証明書発行後5営業日以内に連携する。翌営業日を1日目とする計算は暫定で、担当部署に確認が必要。",
-          deadline: dipsDeadline.date,
-          deadlineDisplay: dipsDeadline.date ? fmt(dipsDeadline.date) + "（暫定）" : (completionLinkRequired && !completionLinked ? "要確認" : "-"),
-          state: completionLinkApplicable ?
-            taskState(completionLinked, false, completionLinkRequired && !completionLinked) :
-            { label: "対象外", className: "done" }
-        },
-        {
-          title: "本人のDIPS更新申請",
-          detail: "通常は免許期限6か月前から1か月前まで。本人が申請した実日を登録し、機関のCSV連携日と混同しない。",
-          deadline: result.followDeadline || result.applicationDeadline,
-          state: taskState(
-            dipsApplicationDone,
-            certificateDone && (!completionLinkApplicable || completionLinked) && !dipsApplicationDone,
-            !dipsApplicationDone && followPast
-          )
-        },
-        {
-          title: "更新完了を確認",
-          detail: "DIPSまたは新しい技能証明書で更新完了確認日を登録する。",
-          deadline: result.followDeadline || result.applicationDeadline,
-          state: taskState(confirmed, dipsApplicationDone && !confirmed, !confirmed && followPast)
-        },
-        {
-          title: "新しい免許期限を登録",
-          detail: "新しい技能証明書に記載された有効期限を次回管理の基準にする。",
-          deadline: null,
-          state: taskState(newExpiry, confirmed && !newExpiry, confirmed && !newExpiry)
+    function taskChecklistRowsHtml(record, progress) {
+      let category = "";
+      const disabled = taskChecklistBusy || !canUpdateTaskChecklist(record);
+      return progress.tasks.map(function (task) {
+        let heading = "";
+        if (task.category !== category) {
+          category = task.category;
+          heading = '<h3 class="task-group-title">' + escapeHtml(category) + "</h3>";
         }
-      ];
-      const current = tasks.find(function (task) { return task.state.className === "blocked"; }) ||
-        tasks.find(function (task) { return task.state.className === "current"; }) || tasks[tasks.length - 1];
-      return { tasks: tasks, current: current };
+        const detail = task.detail ?
+          '<div class="muted">' + escapeHtml(task.detail) + "</div>" : "";
+        return heading +
+          '<label class="task-row checklist ' +
+            (task.completed ? "done " : "") +
+            (taskChecklistBusy ? "saving" : "") + '">' +
+            '<input type="checkbox" data-task-check="' + escapeHtml(task.id) +
+            '" data-task-record="' + escapeHtml(record.id) + '"' +
+            (task.completed ? " checked" : "") +
+            (disabled ? " disabled" : "") + ">" +
+            '<span><span class="task-title">' + escapeHtml(task.title) +
+            "</span>" + detail + "</span></label>";
+      }).join("");
+    }
+
+    function renderTaskChecklistModal(record) {
+      const result = analyze(record);
+      const progress = renewalTaskProgress(record);
+      const accessMessage = canUpdateTaskChecklist(record) ?
+        "チェックすると共有正本へ直ちに保存されます。" :
+        (AppData.mode === "server" ?
+          "閲覧のみです。チェック更新には管理者または更新担当の権限が必要です。" :
+          "公開Pages版は閲覧専用のためチェック状態を保存できません。");
+      const warnings = progress.warnings.map(function (warning) {
+        return '<div class="validation active">' + escapeHtml(warning) + "</div>";
+      }).join("");
+      document.getElementById("statusTitle").textContent =
+        record.targetName + " のタスク一覧";
+      document.getElementById("statusBody").innerHTML =
+        '<div class="task-summary"><span>次の作業：<strong>' +
+          escapeHtml(progress.nextLabel) + '</strong></span><span class="task-progress">完了 ' +
+          progress.completedCount + " / " + progress.totalCount + "</span></div>" +
+        '<div class="task-source-note muted">参照元：「更新講習マニュアル」の二等更新講習・一等更新講習。' +
+          escapeHtml(accessMessage) + "</div>" +
+        warnings +
+        '<div class="stage-now">現在の段階: ' + escapeHtml(result.stage) + "</div>" +
+        '<div class="task-list">' + taskChecklistRowsHtml(record, progress) + "</div>";
     }
 
     function showStatus(record) {
-      const result = analyze(record);
-      const taskData = renewalTasks(record, result);
-      document.getElementById("statusTitle").textContent = record.targetName + " の更新タスク";
-      document.getElementById("statusBody").innerHTML =
-        '<div class="stage-now">現在の段階: ' + escapeHtml(result.stage) + "</div>" +
-        '<div class="task-list">' + taskData.tasks.map(function (task) {
-          return '<div class="task-row ' + task.state.className + '">' +
-            '<div class="task-state">' + escapeHtml(task.state.label) + "</div>" +
-            "<div><div class=\"task-title\">" + escapeHtml(task.title) + '</div><div class="muted">' +
-              escapeHtml(task.detail) + "</div></div>" +
-            '<div class="task-deadline">' + escapeHtml(task.deadlineDisplay || fmt(task.deadline)) + "</div></div>";
-        }).join("") + "</div>";
+      renderTaskChecklistModal(record);
       openModal("statusModal");
+    }
+
+    async function updateRecordTaskChecklist(recordId, taskId, completed) {
+      if (taskChecklistBusy) return;
+      const record = findRecord(recordId);
+      if (!record || !canUpdateTaskChecklist(record)) {
+        showToast("タスクリストを更新できる権限がありません。");
+        return;
+      }
+      if (!applicableRenewalTasks(record).some(function (task) {
+        return task.id === taskId;
+      })) {
+        showToast("現在の資格区分・講習区分には該当しないタスクです。");
+        renderTaskChecklistModal(record);
+        return;
+      }
+      const completedIds = new Set(
+        normalizeTaskChecklist(record.taskChecklist).completedIds
+      );
+      if (completed) completedIds.add(taskId);
+      else completedIds.delete(taskId);
+      const nextChecklist = normalizeTaskChecklist({
+        version: RENEWAL_TASK_CHECKLIST_VERSION,
+        completedIds: Array.from(completedIds)
+      });
+      taskChecklistBusy = true;
+      renderTaskChecklistModal(record);
+      try {
+        const response = await serverCall("apiUpdateRecordTaskChecklist", {
+          recordId: record.id,
+          expectedVersion: Number(record._storeVersion || 0),
+          taskChecklist: nextChecklist
+        });
+        const errorMessage = responseError(
+          response, "タスクリストを共有正本へ保存できませんでした。"
+        );
+        if (errorMessage) throw new Error(errorMessage);
+        const auditMessage = await confirmStoreMutationAudit(response);
+        const saved = serverRecordFromRow(
+          response.record || response.item || response
+        );
+        const index = AppData.records.findIndex(function (item) {
+          return item.id === saved.id;
+        });
+        if (index >= 0) AppData.records[index] = saved;
+        await refreshSharedStore({ render: false });
+        taskChecklistBusy = false;
+        renderAll();
+        const latest = findRecord(record.id);
+        if (latest) renderTaskChecklistModal(latest);
+        showToast(auditMessage || "タスクリストを保存しました。");
+      } catch (error) {
+        await refreshSharedStore({ render: false });
+        taskChecklistBusy = false;
+        renderAll();
+        const latest = findRecord(record.id);
+        if (latest) renderTaskChecklistModal(latest);
+        showToast("タスクリストを保存できませんでした: " + error.message);
+      }
     }
 
     function detailItem(key, value) {
@@ -9267,6 +9444,10 @@
       }
       return normalizeRecord(Object.assign({}, data, {
         id: data.recordId,
+        taskChecklist: existingRecord ? existingRecord.taskChecklist : {
+          version: RENEWAL_TASK_CHECKLIST_VERSION,
+          completedIds: []
+        },
         archived: false
       }));
     }
@@ -9824,6 +10005,17 @@
       document.getElementById(id).addEventListener(id === "financeSearch" ? "input" : "change", renderFinance);
     });
     document.getElementById("reportFiscalFilter").addEventListener("change", renderReports);
+
+    document.body.addEventListener("change", function (event) {
+      const checkbox = event.target && event.target.closest ?
+        event.target.closest("input[data-task-check]") : null;
+      if (!checkbox) return;
+      updateRecordTaskChecklist(
+        checkbox.dataset.taskRecord,
+        checkbox.dataset.taskCheck,
+        checkbox.checked
+      );
+    });
 
     document.body.addEventListener("click", function (event) {
       const target = event.target.closest("button");

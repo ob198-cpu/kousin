@@ -33,6 +33,52 @@ var RENEWAL_STORE = {
   IMPORT_TOKEN_MINUTES: 15,
   BACKUP_RETENTION_MONTHS: 36,
   MAX_PAYLOAD_CHARS: 45000,
+  TASK_CHECKLIST_VERSION: "CDP_RENEWAL_TASK_CHECKLIST_V1",
+  TASK_CHECKLIST_IDS: [
+    "pre_inquiry",
+    "pre_graduate_guidance",
+    "pre_certificate_check",
+    "pre_send_schedule_forms_video",
+    "pre_application_form",
+    "pre_identity_document",
+    "pre_dips_attribute_change",
+    "pre_payment_confirmation",
+    "reception",
+    "academic_overview",
+    "academic_obligations",
+    "academic_recent_revisions",
+    "academic_incidents",
+    "academic_rules",
+    "academic_accident_video",
+    "academic_case_multi",
+    "academic_case_verification",
+    "academic_compliance_video",
+    "academic_first_class_text",
+    "academic_first_class_video",
+    "academic_exercise",
+    "academic_answer",
+    "practical_explanation",
+    "practical_second_emergency",
+    "practical_first_emergency",
+    "practical_discussion",
+    "post_csv_upload",
+    "post_certificate_create",
+    "post_certificate_print",
+    "post_certificate_stamp",
+    "post_certificate_store",
+    "post_certificate_submit",
+    "post_renewal_application",
+    "post_ledger_entry",
+    "post_training_record_entry",
+    "audit_attachment03",
+    "audit_attachment04",
+    "audit_attachment05",
+    "audit_attachment13",
+    "audit_identity_docs",
+    "audit_certificate",
+    "audit_csv",
+    "audit_fee_record"
+  ],
   MAX_SHEET_ROWS: 200000,
   ACTIVE_DATA_GENERATION_META_KEY: "activeDataGeneration",
   BASE_DATA_GENERATION: "base",
@@ -511,6 +557,46 @@ function storeUpsertRecord_(input) {
     var actor = storeActorEmail_();
     var role = storeRoleForActor_(spreadsheet, actor);
     return storeUpsertRecordUnlocked_(spreadsheet, actor, role, input, {
+      migration: false,
+      allowDeletedRestore: false
+    });
+  });
+}
+
+/**
+ * 対象者レコード全体をクライアントから再送せず、タスクのチェック状態だけを更新する。
+ * 共有正本の最新版へ差分適用し、通常の版競合・権限・監査検査を必ず通す。
+ */
+function storeUpdateRecordTaskChecklist_(input) {
+  input = input || {};
+  storeAssertOrdinaryOperationHasNoApprover_(input.approver);
+  return storeWithLock_(function () {
+    var spreadsheet = storeOpen_();
+    var actor = storeActorEmail_();
+    var role = storeRoleForActor_(spreadsheet, actor);
+    storeRequirePermission_(spreadsheet, actor, "record.write", role);
+    var rows = storeReadRecords_(spreadsheet);
+    var recordId = storeRecordId_(input.recordId, true);
+    var current = storeFindRecordById_(rows, recordId);
+    if (!current) storeFail_("STORE_RECORD_NOT_FOUND", "対象レコードがありません。");
+    if (current.deleted) {
+      storeFail_("STORE_RECORD_DELETED", "削除済みレコードは通常更新できません。");
+    }
+    storeAssertExpectedVersion_(input.expectedVersion, current.version);
+    var checklist = storeNormalizeTaskChecklist_(input.taskChecklist);
+    var currentChecklist = current.payload.taskChecklist === undefined ?
+      null : storeNormalizeTaskChecklist_(current.payload.taskChecklist);
+    if (storeStableStringify_(currentChecklist) === storeStableStringify_(checklist)) {
+      return storePublicRecord_(current);
+    }
+    var payload = storeNormalizePayload_(current.payload);
+    payload.taskChecklist = checklist;
+    return storeUpsertRecordUnlocked_(spreadsheet, actor, role, {
+      record: payload,
+      recordId: recordId,
+      expectedVersion: current.version,
+      reasonCode: "TASK_CHECKLIST_UPDATE"
+    }, {
       migration: false,
       allowDeletedRestore: false
     });
@@ -5323,7 +5409,69 @@ function storeNormalizePayload_(value) {
   delete normalized.deleted;
   delete normalized.createdAt;
   delete normalized.updatedAt;
+  if (normalized.taskChecklist !== undefined) {
+    normalized.taskChecklist = storeNormalizeTaskChecklist_(
+      normalized.taskChecklist
+    );
+  }
   return normalized;
+}
+
+function storeNormalizeTaskChecklist_(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    storeFail_(
+      "STORE_TASK_CHECKLIST_INVALID",
+      "タスクリストの保存形式が正しくありません。"
+    );
+  }
+  var keys = Object.keys(value);
+  if (keys.some(function (key) {
+    return key !== "version" && key !== "completedIds";
+  })) {
+    storeFail_(
+      "STORE_TASK_CHECKLIST_INVALID",
+      "タスクリストに未対応の項目があります。"
+    );
+  }
+  if (String(value.version || "") !== RENEWAL_STORE.TASK_CHECKLIST_VERSION) {
+    storeFail_(
+      "STORE_TASK_CHECKLIST_VERSION_INVALID",
+      "タスクリストの版が一致しません。画面を再読込してください。"
+    );
+  }
+  if (!Array.isArray(value.completedIds) ||
+      value.completedIds.length > RENEWAL_STORE.TASK_CHECKLIST_IDS.length) {
+    storeFail_(
+      "STORE_TASK_CHECKLIST_INVALID",
+      "完了タスクの一覧が正しくありません。"
+    );
+  }
+  var allowed = {};
+  RENEWAL_STORE.TASK_CHECKLIST_IDS.forEach(function (id) {
+    allowed[id] = true;
+  });
+  var seen = {};
+  var completedIds = value.completedIds.map(function (id) {
+    var normalizedId = String(id || "").trim();
+    if (!allowed[normalizedId]) {
+      storeFail_(
+        "STORE_TASK_ID_INVALID",
+        "タスクリストに未対応のタスクがあります。"
+      );
+    }
+    if (seen[normalizedId]) {
+      storeFail_(
+        "STORE_TASK_CHECKLIST_INVALID",
+        "完了タスクが重複しています。"
+      );
+    }
+    seen[normalizedId] = true;
+    return normalizedId;
+  }).sort();
+  return {
+    version: RENEWAL_STORE.TASK_CHECKLIST_VERSION,
+    completedIds: completedIds
+  };
 }
 
 function storeManagementId_(payload) {

@@ -3008,4 +3008,94 @@ assert(
   "safe creation must enforce private defaults, metadata readback and permanent cleanup"
 );
 
+state.actor = "owner@example.com";
+const taskRecord = context.storeUpsertRecord_({
+  record: {
+    id: "rec-task-checklist",
+    personId: "UC-TASK-CHECKLIST",
+    fiscalYear: "2026",
+    sessionNo: "1",
+    targetName: "タスクリスト検査"
+  },
+  expectedVersion: 0,
+  reasonCode: "TASK_TEST_FIXTURE"
+});
+const taskChecklistSaved = context.storeUpdateRecordTaskChecklist_({
+  recordId: taskRecord.recordId,
+  expectedVersion: taskRecord.version,
+  taskChecklist: {
+    version: context.RENEWAL_STORE.TASK_CHECKLIST_VERSION,
+    completedIds: ["pre_graduate_guidance", "pre_inquiry"]
+  }
+});
+assert.equal(taskChecklistSaved.version, taskRecord.version + 1);
+assert.equal(taskChecklistSaved.record.targetName, "タスクリスト検査",
+  "タスク更新で対象者の他項目を変更してはいけません");
+assert.deepEqual(
+  Array.from(taskChecklistSaved.record.taskChecklist.completedIds),
+  ["pre_graduate_guidance", "pre_inquiry"],
+  "完了タスクは安定順で保存する必要があります"
+);
+const taskChecklistReplay = context.storeUpdateRecordTaskChecklist_({
+  recordId: taskRecord.recordId,
+  expectedVersion: taskChecklistSaved.version,
+  taskChecklist: taskChecklistSaved.record.taskChecklist
+});
+assert.equal(taskChecklistReplay.version, taskChecklistSaved.version,
+  "同じチェック状態の再送で版を進めてはいけません");
+expectCode(() => context.storeUpdateRecordTaskChecklist_({
+  recordId: taskRecord.recordId,
+  expectedVersion: taskRecord.version,
+  taskChecklist: {
+    version: context.RENEWAL_STORE.TASK_CHECKLIST_VERSION,
+    completedIds: ["pre_inquiry"]
+  }
+}), "STORE_VERSION_CONFLICT");
+expectCode(() => context.storeUpdateRecordTaskChecklist_({
+  recordId: taskRecord.recordId,
+  expectedVersion: taskChecklistSaved.version,
+  taskChecklist: {
+    version: context.RENEWAL_STORE.TASK_CHECKLIST_VERSION,
+    completedIds: ["unsupported_task"]
+  }
+}), "STORE_TASK_ID_INVALID");
+expectCode(() => context.storeUpdateRecordTaskChecklist_({
+  recordId: taskRecord.recordId,
+  expectedVersion: taskChecklistSaved.version,
+  taskChecklist: {
+    version: "UNKNOWN_TASK_VERSION",
+    completedIds: []
+  }
+}), "STORE_TASK_CHECKLIST_VERSION_INVALID");
+state.actor = "viewer@example.com";
+expectCode(() => context.storeUpdateRecordTaskChecklist_({
+  recordId: taskRecord.recordId,
+  expectedVersion: taskChecklistSaved.version,
+  taskChecklist: {
+    version: context.RENEWAL_STORE.TASK_CHECKLIST_VERSION,
+    completedIds: []
+  }
+}), "STORE_ACCESS_DENIED");
+state.actor = "accounting@example.com";
+expectCode(() => context.storeUpdateRecordTaskChecklist_({
+  recordId: taskRecord.recordId,
+  expectedVersion: taskChecklistSaved.version,
+  taskChecklist: {
+    version: context.RENEWAL_STORE.TASK_CHECKLIST_VERSION,
+    completedIds: []
+  }
+}), "STORE_ACCESS_DENIED");
+state.actor = "renewal@example.com";
+const renewalTaskChecklistSaved = context.storeUpdateRecordTaskChecklist_({
+  recordId: taskRecord.recordId,
+  expectedVersion: taskChecklistSaved.version,
+  taskChecklist: {
+    version: context.RENEWAL_STORE.TASK_CHECKLIST_VERSION,
+    completedIds: ["pre_inquiry", "pre_graduate_guidance", "pre_certificate_check"]
+  }
+});
+assert.equal(renewalTaskChecklistSaved.version, taskChecklistSaved.version + 1,
+  "更新担当はタスクリストを保存できる必要があります");
+state.actor = "owner@example.com";
+
 console.log("store_logic_test: OK");

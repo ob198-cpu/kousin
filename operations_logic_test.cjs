@@ -106,7 +106,42 @@ const declarationEnd = scriptMatch[1].indexOf("const SAMPLE_RECORDS");
 const declarationContext = {};
 vm.createContext(declarationContext);
 vm.runInContext(scriptMatch[1].slice(declarationStart, declarationEnd) +
-  "\nthis.schema = { FIELD_IDS, CSV_COLUMNS, REMOVED_INPUT_FIELD_IDS };", declarationContext);
+  "\nthis.schema = { FIELD_IDS, CSV_COLUMNS, REMOVED_INPUT_FIELD_IDS, " +
+  "RENEWAL_TASK_CHECKLIST_VERSION, RENEWAL_TASKS, RENEWAL_TASK_IDS };",
+  declarationContext);
+const dataStoreAst = acorn.parse(dataStoreSource, {
+  ecmaVersion: "latest",
+  sourceType: "script"
+});
+const renewalStoreDeclaration = dataStoreAst.body.find((node) =>
+  node.type === "VariableDeclaration" &&
+  node.declarations.some((declaration) =>
+    declaration.id.type === "Identifier" &&
+    declaration.id.name === "RENEWAL_STORE"
+  )
+);
+assert(renewalStoreDeclaration, "RENEWAL_STORE定義がありません");
+const storeTaskSchemaContext = {};
+vm.createContext(storeTaskSchemaContext);
+vm.runInContext(
+  dataStoreSource.slice(
+    renewalStoreDeclaration.start,
+    renewalStoreDeclaration.end
+  ) +
+  "\nthis.taskVersion = RENEWAL_STORE.TASK_CHECKLIST_VERSION;" +
+  "\nthis.taskIds = RENEWAL_STORE.TASK_CHECKLIST_IDS;",
+  storeTaskSchemaContext
+);
+assert.equal(
+  declarationContext.schema.RENEWAL_TASK_CHECKLIST_VERSION,
+  storeTaskSchemaContext.taskVersion,
+  "画面と共有正本のタスクリスト版を一致させる必要があります"
+);
+assert.deepEqual(
+  Array.from(declarationContext.schema.RENEWAL_TASK_IDS).sort(),
+  Array.from(storeTaskSchemaContext.taskIds).sort(),
+  "画面と共有正本の許可タスクIDを一致させる必要があります"
+);
 const formFieldIds = $("#entryForm input[id], #entryForm select[id], #entryForm textarea[id]")
   .map((_, element) => $(element).attr("id")).get().sort();
 const removedInputFieldIds = Array.from(declarationContext.schema.REMOVED_INPUT_FIELD_IDS);
@@ -121,9 +156,21 @@ const readFormSource = extractFunction(scriptMatch[1], "readForm");
 assert(readFormSource.includes("existingRecord") &&
   readFormSource.includes("Object.prototype.hasOwnProperty.call(existingRecord, id)"),
   "画面から削除した旧項目は、既存レコードの編集保存時に元の値を保持する必要があります");
+assert(readFormSource.includes("taskChecklist: existingRecord ? existingRecord.taskChecklist"),
+  "通常編集で保存済みタスクのチェック状態を消してはいけません");
 assert(scriptMatch[1].includes('const DEFAULT_AIRCRAFT_TYPE = "回転翼航空機（マルチローター）"') &&
   scriptMatch[1].includes("aircraftType: DEFAULT_AIRCRAFT_TYPE"),
   "航空機の種類を画面から削除した後も、自動帳票の対応機種を内部既定値として固定してください");
+assert.equal($("#ledgerScreen thead th").filter((_, element) =>
+  $(element).text().trim() === "次の作業").length, 1,
+  "更新記録に次の作業列が必要です");
+assert(scriptMatch[1].includes('data-status="') &&
+  scriptMatch[1].includes(">一覧</button>"),
+  "タスク一覧を開く一覧ボタンが必要です");
+assert(scriptMatch[1].includes('serverCall("apiUpdateRecordTaskChecklist"') &&
+  codeSource.includes("function apiUpdateRecordTaskChecklist(input)") &&
+  dataStoreSource.includes("function storeUpdateRecordTaskChecklist_(input)"),
+  "チェック状態は専用APIから共有正本へ保存する必要があります");
 
 [
   "renewalListNo", "courseAvailableDate", "courseDeadlineDate", "noticeSixMonthDate",
@@ -1125,6 +1172,55 @@ vm.createContext(context);
 vm.runInContext(logicNames.map((name) => extractFunction(scriptMatch[1], name)).join("\n") +
   "\nthis.logic = {" + logicNames.join(",") + "};", context);
 const logic = context.logic;
+
+vm.runInContext(
+  ["normalizeTaskChecklist", "applicableRenewalTasks", "renewalTaskProgress"]
+    .map((name) => extractFunction(scriptMatch[1], name)).join("\n") +
+  "\nthis.taskLogic = { normalizeTaskChecklist, applicableRenewalTasks, renewalTaskProgress };",
+  declarationContext
+);
+const taskLogic = declarationContext.taskLogic;
+const emptyChecklist = {
+  version: declarationContext.schema.RENEWAL_TASK_CHECKLIST_VERSION,
+  completedIds: []
+};
+const secondClassTasks = taskLogic.renewalTaskProgress({
+  licenseClass: "二等",
+  suspensionCourse: "なし",
+  taskChecklist: emptyChecklist
+});
+const firstClassTasks = taskLogic.renewalTaskProgress({
+  licenseClass: "一等",
+  suspensionCourse: "なし",
+  taskChecklist: emptyChecklist
+});
+const secondSuspensionTasks = taskLogic.renewalTaskProgress({
+  licenseClass: "二等",
+  suspensionCourse: "あり",
+  taskChecklist: emptyChecklist
+});
+assert.equal(firstClassTasks.totalCount, secondClassTasks.totalCount + 2,
+  "一等講習は一等専用の座学2項目を追加する必要があります");
+assert.equal(secondSuspensionTasks.totalCount, secondClassTasks.totalCount + 3,
+  "二等の停止処分者向け講習は実技3項目を追加する必要があります");
+assert.equal(secondClassTasks.nextLabel, "事前準備： 受講問い合わせ");
+const firstTwoCompleted = taskLogic.renewalTaskProgress({
+  licenseClass: "二等",
+  suspensionCourse: "なし",
+  taskChecklist: {
+    version: declarationContext.schema.RENEWAL_TASK_CHECKLIST_VERSION,
+    completedIds: ["pre_inquiry", "pre_graduate_guidance"]
+  }
+});
+assert.equal(firstTwoCompleted.completedCount, 2);
+assert.equal(firstTwoCompleted.nextLabel,
+  "事前準備： 無人航空機操縦者技能証明書確認");
+assert.equal(taskLogic.renewalTaskProgress({
+  licenseClass: "未確認",
+  suspensionCourse: "未確認",
+  taskChecklist: emptyChecklist
+}).warnings.length, 2,
+"未確認の資格区分と停止処分者向け講習は一覧で注意表示する必要があります");
 
 assert.equal(logic.fiscalYearOf(new Date(2026, 2, 31)), "2025");
 assert.equal(logic.fiscalYearOf(new Date(2026, 3, 1)), "2026");

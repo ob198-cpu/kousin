@@ -309,6 +309,14 @@ function apiSaveRecord(input) {
   });
 }
 
+function apiUpdateRecordTaskChecklist(input) {
+  return apiResult_(function () {
+    return apiStoreMutationEnvelope_(
+      "record", storeUpdateRecordTaskChecklist_(input || {})
+    );
+  });
+}
+
 function apiPreviewTrainingSession(input) {
   return apiResult_(function () {
     return trainingSessionPreview_(input || {});
