@@ -2574,7 +2574,30 @@ function artifactTaxExceptionMetadata_(record) {
   };
 }
 
+function artifactCoursePricedRecord_(record) {
+  record = record || {};
+  if (record._formalFinanceInvoice === true) return record;
+  if (typeof coursePricingQuote_ !== "function") {
+    throw new Error("更新講習の定額料金を確認できないため、成果物作成を停止しました。");
+  }
+  var quote = coursePricingQuote_(record);
+  if (!quote.applies) return record;
+  var priced = {};
+  Object.keys(record).forEach(function (key) { priced[key] = record[key]; });
+  priced.feeExTax = quote.feeExTax;
+  priced.discountExTax = quote.discountExTax;
+  priced.taxRate = quote.taxRate;
+  priced.taxRounding = quote.taxRounding;
+  return priced;
+}
+
 function artifactValidateBillingAmounts_(record, errors) {
+  try {
+    record = artifactCoursePricedRecord_(record);
+  } catch (error) {
+    errors.push(String(error && error.message || "更新講習の定額料金を確認できません。"));
+    return;
+  }
   var rawFee = artifactStrictNumber_(record.feeExTax, false);
   var rawDiscount = artifactStrictNumber_(record.discountExTax, true);
   if (!isFinite(rawFee)) errors.push("料金（税抜）は数値で入力してください。");
@@ -7065,7 +7088,8 @@ function artifactRecordForHash_(kind, record) {
     fields = ["targetName", "dipsApplicantId", "skillsApplicantNo", "licenseClass", "aircraftType", "suspensionCourse", "courseProvider", "certificateNo", "courseDate", "certificateIssuedDate", "certificateExpiry", "dipsRecordMode"];
   } else if (kind === "guidance") {
     fields = [
-      "targetName", "licenseClass", "licenseExpiry", "courseAvailableDate", "courseDeadlineDate",
+      "targetName", "serviceCategory", "licenseClass", "suspensionCourse", "graduateDiscount",
+      "licenseExpiry", "courseAvailableDate", "courseDeadlineDate",
       "feeExTax", "discountExTax", "taxRate", "taxRounding",
       "taxExceptionApprovalDate", "taxExceptionApprovedBy", "taxExceptionReason"
     ];
@@ -7096,6 +7120,7 @@ function artifactRecordForHash_(kind, record) {
     } else {
       fields = [
         "targetName", "billingRecipientName", "billingHonorific", "billingAddress", "serviceCategory", "billingSubject",
+        "licenseClass", "suspensionCourse", "graduateDiscount",
         "billingItemDetail", "billingScheduleNote1", "billingScheduleNote2",
         "courseScheduledDate", "courseDate", "courseVenue",
         "feeExTax", "discountExTax", "taxRate", "taxRounding",
@@ -7177,6 +7202,7 @@ function artifactCalculateBilling_(record) {
       total: formalTotal
     };
   }
+  record = artifactCoursePricedRecord_(record);
   var rawFee = artifactStrictNumber_(record.feeExTax, false);
   var rawDiscount = artifactStrictNumber_(record.discountExTax, true);
   if (!isFinite(rawFee) || rawFee < 0) throw new Error("料金（税抜）は0円以上の数値で入力してください。");

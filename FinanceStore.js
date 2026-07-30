@@ -2024,6 +2024,80 @@ function financeStoreEventCommandMatches_(event, submittedCommand) {
   return financeStoreSubmittedCommandMatches_(eventCommand, submittedCommand);
 }
 
+function financeStoreCoursePricingRecord_(spreadsheet, customerId) {
+  if (typeof storeReadRecords_ !== "function" ||
+      typeof storeFindRecordById_ !== "function" ||
+      typeof coursePricingAssertInvoiceData_ !== "function") {
+    financeStoreFail_(
+      "COURSE_PRICING_PROVIDER_UNAVAILABLE",
+      "更新講習の定額料金をサーバーで検査できないため、請求処理を停止しました。"
+    );
+  }
+  var row = storeFindRecordById_(
+    storeReadRecords_(spreadsheet),
+    String(customerId || "")
+  );
+  if (!row || row.deleted || !row.payload ||
+      typeof row.payload !== "object" || Array.isArray(row.payload)) {
+    financeStoreFail_(
+      "COURSE_PRICING_CUSTOMER_RECORD_MISSING",
+      "請求対象者の共有正本を確認できないため、請求処理を停止しました。"
+    );
+  }
+  return row.payload;
+}
+
+function financeStoreAssertCoursePricingInvoiceData_(
+  spreadsheet, customerId, invoiceData
+) {
+  var record = financeStoreCoursePricingRecord_(spreadsheet, customerId);
+  try {
+    return coursePricingAssertInvoiceData_(record, invoiceData || {});
+  } catch (error) {
+    financeStoreFail_(
+      String(error && error.code || "COURSE_PRICE_VALIDATION_FAILED"),
+      String(error && error.message ||
+        "更新講習の定額料金を検査できないため、請求処理を停止しました。")
+    );
+  }
+}
+
+function financeStoreAssertStoredCoursePricingInvoice_(
+  spreadsheet, state, invoice
+) {
+  if (!invoice) {
+    financeStoreFail_("INVOICE_NOT_FOUND", "検査する請求が見つかりません。");
+  }
+  var lines = (state.invoice_lines || []).filter(function (line) {
+    return String(line && line.invoiceId || "") === String(invoice.id || "");
+  }).map(function (line) {
+    return {
+      lineType: line.lineType,
+      quantity: line.quantity,
+      unitAmount: line.unitAmount,
+      taxCategory: line.taxCategory
+    };
+  });
+  var quote = financeStoreAssertCoursePricingInvoiceData_(
+    spreadsheet,
+    invoice.customerId,
+    {
+      pricingMode: invoice.pricingMode,
+      lines: lines
+    }
+  );
+  if (quote.applies &&
+      (Number(invoice.totalExTax) !== quote.netExTax ||
+       Number(invoice.totalTax) !== quote.tax ||
+       Number(invoice.totalInclTax) !== quote.totalInclTax)) {
+    financeStoreFail_(
+      "COURSE_PRICE_TOTAL_MISMATCH",
+      "更新講習の請求合計が定額料金の再計算結果と一致しません。"
+    );
+  }
+  return quote;
+}
+
 /**
  * 正式請求の宛先・発行者・振込先は、クライアント本文を破棄し、
  * 共有正本とサーバー側の非公開設定から作る。発行済みイベントへ封印
@@ -2039,6 +2113,11 @@ function financeStorePrepareServerCommand_(spreadsheet, state, submittedCommand)
     return financeStorePrepareSealedReversalCommand_(state, command);
   }
   if (type === "CREATE_DRAFT_INVOICE" || type === "UPDATE_DRAFT_INVOICE") {
+    financeStoreAssertCoursePricingInvoiceData_(
+      spreadsheet,
+      data.customerId,
+      data
+    );
     // 下書きにブラウザ由来の発行者・口座情報を残さない。
     data.billingSnapshot = null;
     return command;
@@ -2071,6 +2150,9 @@ function financeStorePrepareServerCommand_(spreadsheet, state, submittedCommand)
     if (!invoice) {
       financeStoreFail_("INVOICE_NOT_FOUND", "発行する請求下書きが見つかりません。");
     }
+    financeStoreAssertStoredCoursePricingInvoice_(
+      spreadsheet, state, invoice
+    );
     customerId = String(invoice.customerId || "");
     data.billingSnapshot = artifactBuildFormalBillingSnapshotForFinance_(
       spreadsheet, customerId
@@ -2097,6 +2179,11 @@ function financeStorePrepareCorrectionCommand_(
   var command = financeStoreCloneCommand_(submittedCommand);
   var data = financeStoreValidateCorrectionCommandShape_(command, false);
   var customerId = String(data.replacementInvoice.customerId || "");
+  financeStoreAssertCoursePricingInvoiceData_(
+    spreadsheet,
+    customerId,
+    data.replacementInvoice
+  );
   data.replacementInvoice.billingSnapshot =
     artifactBuildFormalBillingSnapshotForFinance_(spreadsheet, customerId);
   data.replacementIssue.billingSnapshot =

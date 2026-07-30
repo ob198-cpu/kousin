@@ -4,7 +4,10 @@ const vm = require("node:vm");
 const acorn = require("acorn");
 const crypto = require("node:crypto");
 
-const artifactModuleFiles = ["Artifacts.js", "ArtifactCalendar.js", "ArtifactRegistry.js"];
+const artifactModuleFiles = [
+  "Artifacts.js", "ArtifactCalendar.js", "ArtifactRegistry.js",
+  "CoursePricing.js"
+];
 const artifactModuleSources = new Map(
   artifactModuleFiles.map((file) => [file, fs.readFileSync(file, "utf8")])
 );
@@ -112,7 +115,7 @@ for (const file of claspScriptFiles) {
 }
 
 const pureNames = [
-  "artifactCalculateBilling_", "artifactAddCalendarMonthsMinusOne_", "artifactDurationMinutes_",
+  "artifactCalculateBilling_", "artifactCoursePricedRecord_", "artifactAddCalendarMonthsMinusOne_", "artifactDurationMinutes_",
   "artifactTimeMinutes_", "artifactFindTrainingOverlaps_", "artifactValidateTraining_",
   "artifactValidateCommon_",
   "artifactRequireMinutes_", "artifactValidTime_",
@@ -552,7 +555,8 @@ const context = {
   ]
 };
 vm.createContext(context);
-vm.runInContext(pureNames.map(extractFunction).join("\n") +
+vm.runInContext(artifactModuleSources.get("CoursePricing.js") + "\n" +
+  pureNames.map(extractFunction).join("\n") +
   "\nthis.logic={" + pureNames.join(",") + "};", context);
 const logic = context.logic;
 
@@ -2043,6 +2047,7 @@ assert(errors.some((message) => message.includes("自動確認できない")));
 assert(dateWarnings.some((message) => message.includes("metadata")));
 
 let billing = logic.artifactCalculateBilling_({
+  serviceCategory: "その他",
   feeExTax: "1001", discountExTax: "0", taxRate: "10", taxRounding: "切捨て"
 });
 assert.deepEqual(JSON.parse(JSON.stringify(billing)), {
@@ -2050,20 +2055,39 @@ assert.deepEqual(JSON.parse(JSON.stringify(billing)), {
   rounding: "切捨て", tax: 100, total: 1101
 });
 billing = logic.artifactCalculateBilling_({
+  serviceCategory: "その他",
   feeExTax: "1001", discountExTax: "1", taxRate: "8", taxRounding: "切上げ"
 });
 assert.equal(billing.netExTax, 1000);
 assert.equal(billing.tax, 80);
 assert.equal(billing.total, 1080);
 assert.throws(() => logic.artifactCalculateBilling_({
+  serviceCategory: "その他",
   feeExTax: "1000.5", discountExTax: "0", taxRate: "10", taxRounding: "切捨て"
 }), /整数円/);
 assert.throws(() => logic.artifactCalculateBilling_({
+  serviceCategory: "その他",
   feeExTax: "1000", discountExTax: "0.5", taxRate: "10", taxRounding: "切捨て"
 }), /整数円/);
 
+billing = logic.artifactCalculateBilling_({
+  serviceCategory: "更新講習",
+  licenseClass: "一等",
+  suspensionCourse: "あり",
+  graduateDiscount: "卒業者",
+  feeExTax: "999999",
+  discountExTax: "0",
+  taxRate: "0",
+  taxRounding: "切上げ"
+});
+assert.deepEqual(JSON.parse(JSON.stringify(billing)), {
+  feeExTax: 19000, discountExTax: 3800, netExTax: 15200,
+  taxRate: 10, rounding: "切捨て", tax: 1520, total: 16720
+}, "更新講習の成果物は保存済み手入力額ではなく定額料金表から再計算する必要があります");
+
 errors = [];
 logic.artifactValidateBillingAmounts_({
+  serviceCategory: "その他",
   feeExTax: "1000", discountExTax: "1001", taxRate: "7", taxRounding: "任意"
 }, errors);
 assert(errors.some((message) => message.includes("値引")));
@@ -2071,11 +2095,13 @@ assert(errors.some((message) => message.includes("消費税率")));
 assert(errors.some((message) => message.includes("端数処理")));
 errors = [];
 logic.artifactValidateBillingAmounts_({
+  serviceCategory: "その他",
   feeExTax: "-1", discountExTax: "-2", taxRate: "10", taxRounding: "切捨て"
 }, errors);
 assert.equal(errors.length >= 2, true);
 errors = [];
 logic.artifactValidateBillingAmounts_({
+  serviceCategory: "その他",
   feeExTax: "1000.5", discountExTax: "0.1", taxRate: "10", taxRounding: "切捨て"
 }, errors);
 assert.equal(errors.filter((message) => message.includes("整数円")).length, 2);

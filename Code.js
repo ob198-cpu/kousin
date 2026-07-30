@@ -266,6 +266,7 @@ function apiGetDashboardData(input) {
         records: [],
         audit: [],
         roles: [],
+        coursePricing: coursePricingPublic_(),
         statusOptions: SAFE_STATUS_OPTIONS,
         customerTypes: SAFE_CUSTOMER_TYPES,
         message: "専用共有正本は未設定です。"
@@ -284,6 +285,7 @@ function apiGetDashboardData(input) {
       roles: snapshot.roles,
       allCount: snapshot.records.length,
       summary: apiRecordSummary_(snapshot.records),
+      coursePricing: coursePricingPublic_(),
       statusOptions: SAFE_STATUS_OPTIONS,
       customerTypes: SAFE_CUSTOMER_TYPES,
       message: "専用共有正本から読み込みました。"

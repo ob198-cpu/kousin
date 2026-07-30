@@ -881,6 +881,14 @@
                   <option>初学者</option>
                 </select>
               </div>
+              <div class="field">
+                <label for="graduateDiscount">卒業者割引</label>
+                <select id="graduateDiscount">
+                  <option>対象外</option>
+                  <option>卒業者</option>
+                </select>
+                <small>CDP卒業者は、資格停止処分の加算を含む講習料金から20%割引します。</small>
+              </div>
               <div class="field wide">
                 <label for="companyName">会社名</label>
                 <input id="companyName">
@@ -1189,13 +1197,17 @@
                 <label for="billingScheduleNote2">見積書の講習日程②</label>
                 <input id="billingScheduleNote2" placeholder="候補がない場合は空欄">
               </div>
-              <div class="field">
-                <label for="feeExTax">料金（税抜）</label>
-                <input id="feeExTax" type="number" min="0" step="1">
+              <div class="field full">
+                <label>更新講習の定額料金</label>
+                <div id="coursePricingSummary" class="operation-note">二等13,200円、一等16,500円、資格停止処分者向け講習4,400円加算、CDP卒業者20%割引（すべて税込）を自動計算します。</div>
               </div>
               <div class="field">
-                <label for="discountExTax">値引（税抜）</label>
-                <input id="discountExTax" type="number" min="0" step="1">
+                <label for="feeExTax">料金（税抜・自動）</label>
+                <input id="feeExTax" type="number" min="0" step="1" readonly>
+              </div>
+              <div class="field">
+                <label for="discountExTax">値引（税抜・自動）</label>
+                <input id="discountExTax" type="number" min="0" step="1" readonly>
               </div>
               <div class="field">
                 <label for="taxRate">消費税率</label>
@@ -1944,6 +1956,7 @@
             <div class="field"><label for="formalFeeExTax">税抜料金</label><input id="formalFeeExTax" type="number" min="0" step="1"></div>
             <div class="field"><label for="formalDiscountExTax">税抜値引</label><input id="formalDiscountExTax" type="number" min="0" step="1"></div>
           </div>
+          <p id="formalCoursePricingSummary" class="operation-note"></p>
           <p class="operation-note">この画面は更新講習の課税10%専用です。8%・非課税・不課税・対象外は、根拠資料・適用理由・承認者・承認日を記録できる例外処理から登録してください。</p>
           <div class="actions">
             <button type="button" id="saveFormalInvoiceDraft">請求下書きを保存</button>
@@ -2093,6 +2106,7 @@
       readOnly: true,
       configured: false,
       role: "",
+      coursePricing: null,
       records: [],
       audit: [],
       roles: [],
@@ -2176,6 +2190,20 @@
       return fields.concat([module[0] + "Date", module[0] + "Start", module[0] + "End", module[0] + "Instructor"]);
     }, []);
     const DEFAULT_AIRCRAFT_TYPE = "回転翼航空機（マルチローター）";
+    const COURSE_PRICING_FALLBACK = {
+      version: "CDP_RENEWAL_COURSE_PRICING_V1",
+      serviceCategory: "更新講習",
+      taxRate: 10,
+      taxRounding: "切捨て",
+      graduateDiscountRate: 20,
+      graduateDiscountValue: "卒業者",
+      noDiscountValue: "対象外",
+      classFees: {
+        "一等": { exTax: 15000, tax: 1500, inclTax: 16500 },
+        "二等": { exTax: 12000, tax: 1200, inclTax: 13200 }
+      },
+      suspensionFee: { exTax: 4000, tax: 400, inclTax: 4400 }
+    };
     const REMOVED_INPUT_FIELD_IDS = [
       "licenseNo", "aircraftType", "licenseChecked",
       "eligibilityCheckStatus", "eligibilityCheckedDate", "eligibilityCheckedBy", "eligibilityEvidence",
@@ -2198,6 +2226,7 @@
 
     const FIELD_IDS = [
       "recordId", "personId", "targetName", "customerType", "companyName", "phone", "email",
+      "graduateDiscount",
       "licenseNo", "skillsApplicantNo", "licenseClass", "aircraftType", "licenseIssuedDate", "licenseExpiry", "licenseChecked",
       "fiscalYear", "sessionNo", "courseProvider",
       "eligibilityCheckStatus", "eligibilityCheckedDate", "eligibilityCheckedBy", "eligibilityEvidence",
@@ -2224,6 +2253,7 @@
       ["companyName", "会社名"],
       ["phone", "電話"],
       ["email", "メール"],
+      ["graduateDiscount", "卒業者割引"],
       ["licenseNo", "技能証明書番号"],
       ["skillsApplicantNo", "技能証明申請者番号"],
       ["licenseClass", "資格区分"],
@@ -2313,6 +2343,7 @@
         companyName: "サンプル株式会社",
         phone: "",
         email: "",
+        graduateDiscount: "対象外",
         licenseNo: "UA-SAMPLE-001",
         licenseClass: "二等",
         aircraftType: "回転翼航空機（マルチローター）",
@@ -2344,7 +2375,7 @@
         confirmedDate: "",
         newExpiry: "",
         serviceCategory: "更新講習",
-        feeExTax: "50000",
+        feeExTax: "12000",
         discountExTax: "0",
         taxRate: "10",
         taxRounding: "切捨て",
@@ -2356,7 +2387,7 @@
         accountingDate: "2026-06-10",
         invoiceDate: "2026-06-01",
         paymentDueDate: "2026-06-30",
-        paidAmount: "55000",
+        paidAmount: "13200",
         paymentDate: "2026-06-20",
         paymentMethod: "銀行振込",
         referenceSource: "技能証明書",
@@ -2473,6 +2504,7 @@
         personId: "SAMPLE-004",
         targetName: "サンプル受講者D",
         customerType: "既存",
+        graduateDiscount: "卒業者",
         companyName: "",
         phone: "",
         email: "",
@@ -2506,8 +2538,8 @@
         confirmedDate: "2026-07-08",
         newExpiry: "",
         serviceCategory: "更新講習",
-        feeExTax: "50000",
-        discountExTax: "5000",
+        feeExTax: "12000",
+        discountExTax: "2400",
         taxRate: "10",
         taxRounding: "切捨て",
         invoiceNo: "SAMPLE-INV-004",
@@ -2515,7 +2547,7 @@
         accountingDate: "2026-06-05",
         invoiceDate: "2026-05-20",
         paymentDueDate: "2026-06-20",
-        paidAmount: "20000",
+        paidAmount: "5000",
         paymentDate: "2026-06-10",
         paymentMethod: "銀行振込",
         referenceSource: "DIPS画面",
@@ -2563,7 +2595,7 @@
         confirmedDate: "2026-03-05",
         newExpiry: "2029-05-31",
         serviceCategory: "更新講習",
-        feeExTax: "50000",
+        feeExTax: "12000",
         discountExTax: "0",
         taxRate: "10",
         taxRounding: "切捨て",
@@ -2572,7 +2604,7 @@
         accountingDate: "2026-02-10",
         invoiceDate: "2026-01-15",
         paymentDueDate: "2026-02-15",
-        paidAmount: "55000",
+        paidAmount: "13200",
         paymentDate: "2026-02-14",
         paymentMethod: "クレジットカード",
         referenceSource: "技能証明書",
@@ -2606,6 +2638,7 @@
         companyName: "",
         phone: "",
         email: "",
+        graduateDiscount: "対象外",
         licenseNo: "",
         skillsApplicantNo: "",
         licenseClass: "未確認",
@@ -3096,6 +3129,147 @@
       return Math.round(numberValue(value)).toLocaleString("ja-JP");
     }
 
+    function activeCoursePricingRules() {
+      return AppData.coursePricing || COURSE_PRICING_FALLBACK;
+    }
+
+    function coursePricingMasterText() {
+      const rules = activeCoursePricingRules();
+      return "定額：二等 ¥" + currency(rules.classFees["二等"].inclTax) +
+        "、一等 ¥" + currency(rules.classFees["一等"].inclTax) +
+        "、資格停止処分者向け講習 ＋¥" +
+        currency(rules.suspensionFee.inclTax) + "、CDP卒業者 " +
+        rules.graduateDiscountRate + "%割引（すべて税込）";
+    }
+
+    function coursePricingForRecord(record) {
+      record = record || {};
+      const rules = activeCoursePricingRules();
+      const serviceCategory = String(record.serviceCategory || rules.serviceCategory).trim();
+      if (serviceCategory !== rules.serviceCategory) {
+        return { applies: false, ready: true };
+      }
+      const licenseClass = String(record.licenseClass || "").trim();
+      const classFee = rules.classFees[licenseClass];
+      if (!classFee) {
+        return {
+          applies: true,
+          ready: false,
+          message: "資格区分を一等または二等に確定すると定額料金を計算します。"
+        };
+      }
+      const suspensionCourse = String(record.suspensionCourse || "").trim();
+      if (!["なし", "あり"].includes(suspensionCourse)) {
+        return {
+          applies: true,
+          ready: false,
+          message: "資格停止処分者向け講習を「なし」または「あり」に確定すると定額料金を計算します。"
+        };
+      }
+      const graduateDiscount = String(record.graduateDiscount || rules.noDiscountValue).trim();
+      if (![rules.noDiscountValue, rules.graduateDiscountValue].includes(graduateDiscount)) {
+        return {
+          applies: true,
+          ready: false,
+          message: "卒業者割引を「対象外」または「卒業者」に確定してください。"
+        };
+      }
+      const suspensionFee = suspensionCourse === "あり" ?
+        rules.suspensionFee : { exTax: 0, inclTax: 0 };
+      const feeExTax = Number(classFee.exTax) + Number(suspensionFee.exTax);
+      const feeInclTax = Number(classFee.inclTax) + Number(suspensionFee.inclTax);
+      const discountRate = graduateDiscount === rules.graduateDiscountValue ?
+        Number(rules.graduateDiscountRate) : 0;
+      const discountExTax = Math.floor(feeExTax * discountRate / 100);
+      const discountInclTax = Math.floor(feeInclTax * discountRate / 100);
+      const netExTax = feeExTax - discountExTax;
+      const tax = Math.floor(netExTax * Number(rules.taxRate) / 100);
+      const totalInclTax = netExTax + tax;
+      const components = [
+        licenseClass + "更新講習 ¥" + currency(classFee.inclTax) + "（税込）"
+      ];
+      if (suspensionCourse === "あり") {
+        components.push("資格停止処分者向け講習 ¥" + currency(rules.suspensionFee.inclTax) + "（税込）");
+      }
+      if (discountRate) components.push("CDP卒業者割引 " + discountRate + "%");
+      return {
+        applies: true,
+        ready: true,
+        version: rules.version,
+        feeExTax: feeExTax,
+        discountExTax: discountExTax,
+        netExTax: netExTax,
+        taxRate: Number(rules.taxRate),
+        taxRounding: rules.taxRounding,
+        tax: tax,
+        totalInclTax: totalInclTax,
+        description: components.join("／")
+      };
+    }
+
+    function coursePricingRecordFromForm() {
+      return {
+        serviceCategory: document.getElementById("serviceCategory").value,
+        licenseClass: document.getElementById("licenseClass").value,
+        suspensionCourse: document.getElementById("suspensionCourse").value,
+        graduateDiscount: document.getElementById("graduateDiscount").value
+      };
+    }
+
+    function recordHasIssuedInvoice(record) {
+      if (!record) return false;
+      if (record.invoiceStatus === "発行済") return true;
+      return formalInvoicesForRecord(record.id).some(function (invoice) {
+        return invoice.status === "ISSUED";
+      });
+    }
+
+    function syncCoursePricingInputs() {
+      const feeInput = document.getElementById("feeExTax");
+      const discountInput = document.getElementById("discountExTax");
+      const taxRateInput = document.getElementById("taxRate");
+      const roundingInput = document.getElementById("taxRounding");
+      const summary = document.getElementById("coursePricingSummary");
+      const recordId = String(document.getElementById("recordId").value || "").trim();
+      const existing = recordId ? findRecord(recordId) : null;
+      if (existing && recordHasIssuedInvoice(existing)) {
+        feeInput.value = numberValue(existing.feeExTax);
+        discountInput.value = numberValue(existing.discountExTax);
+        feeInput.readOnly = true;
+        discountInput.readOnly = true;
+        taxRateInput.disabled = true;
+        roundingInput.disabled = true;
+        summary.textContent = "発行済み請求の保存済み金額を保持しています。通常編集では変更しません。訂正が必要な場合は会計の訂正処理を使用してください。";
+        return;
+      }
+      const quote = coursePricingForRecord(coursePricingRecordFromForm());
+      if (!quote.applies) {
+        feeInput.readOnly = false;
+        discountInput.readOnly = false;
+        taxRateInput.disabled = false;
+        roundingInput.disabled = false;
+        summary.textContent = "更新講習以外の売上区分は定額対象外です。税抜料金・値引・税率を根拠資料に基づいて入力してください。";
+        return;
+      }
+      feeInput.readOnly = true;
+      discountInput.readOnly = true;
+      taxRateInput.disabled = true;
+      roundingInput.disabled = true;
+      taxRateInput.value = String(activeCoursePricingRules().taxRate);
+      roundingInput.value = activeCoursePricingRules().taxRounding;
+      if (!quote.ready) {
+        feeInput.value = "0";
+        discountInput.value = "0";
+        summary.textContent = coursePricingMasterText() + "／" + quote.message;
+        return;
+      }
+      feeInput.value = String(quote.feeExTax);
+      discountInput.value = String(quote.discountExTax);
+      summary.textContent = quote.description + "／請求額 ¥" +
+        currency(quote.totalInclTax) + "（税抜 ¥" + currency(quote.netExTax) +
+        "＋消費税 ¥" + currency(quote.tax) + "）";
+    }
+
     function roundTax(value, method) {
       if (method === "切上げ") return Math.ceil(value);
       if (method === "四捨五入") return Math.round(value);
@@ -3460,6 +3634,7 @@
         if (record[item[1]] !== "" && !/^\d+$/.test(String(record[item[1]]))) errors.push(item[0] + "は0以上の整数で入力してください。");
       });
       if (!["未確認", "一等", "二等"].includes(record.licenseClass)) errors.push("資格区分の値が正しくありません。");
+      if (!["対象外", "卒業者"].includes(record.graduateDiscount)) errors.push("卒業者割引の値が正しくありません。");
       if (!["未送付", "送付済", "対象外"].includes(record.noticeSixMonthStatus)) errors.push("6か月前の案内送付状態が正しくありません。");
       if (!["未送付", "送付済", "対象外"].includes(record.noticeThreeMonthStatus)) errors.push("3か月前の案内送付状態が正しくありません。");
       if (!["未確認", "税抜", "税込"].includes(record.renewalListAmountTaxBasis)) errors.push("更新者一覧の金額税区分が正しくありません。");
@@ -4268,13 +4443,34 @@
 
     function populateFormalInvoiceFields(record, invoice) {
       const amounts = invoice ? formalInvoiceAmounts(invoice) : null;
+      const quote = coursePricingForRecord(record);
+      const isIssued = Boolean(invoice && invoice.status === "ISSUED");
+      const fixedPrice = quote.applies && quote.ready && !isIssued;
+      const feeInput = document.getElementById("formalFeeExTax");
+      const discountInput = document.getElementById("formalDiscountExTax");
       document.getElementById("formalInvoiceNo").value = invoice ? invoice.invoiceNo || "" : record.invoiceNo || "";
       document.getElementById("formalInvoiceDate").value = invoice ? invoice.invoiceDate || "" : record.invoiceDate || "";
       document.getElementById("formalAccountingDate").value = invoice ? invoice.accountingDate || "" :
         record.accountingDate || record.courseDate || "";
       document.getElementById("formalDueDate").value = invoice ? invoice.dueDate || "" : record.paymentDueDate || "";
-      document.getElementById("formalFeeExTax").value = invoice ? amounts.fee : numberValue(record.feeExTax);
-      document.getElementById("formalDiscountExTax").value = invoice ? amounts.discount : numberValue(record.discountExTax);
+      feeInput.value = fixedPrice ? quote.feeExTax :
+        (invoice ? amounts.fee : numberValue(record.feeExTax));
+      discountInput.value = fixedPrice ? quote.discountExTax :
+        (invoice ? amounts.discount : numberValue(record.discountExTax));
+      feeInput.readOnly = Boolean(quote.applies);
+      discountInput.readOnly = Boolean(quote.applies);
+      const summary = document.getElementById("formalCoursePricingSummary");
+      if (isIssued) {
+        summary.textContent = "発行済み請求の封印済み金額を表示しています。定額変更では書き換えません。";
+      } else if (!quote.applies) {
+        summary.textContent = "更新講習以外は定額対象外です。根拠資料に基づく税抜金額を入力してください。";
+      } else if (!quote.ready) {
+        summary.textContent = coursePricingMasterText() + "／" + quote.message;
+      } else {
+        summary.textContent = quote.description + "／請求額 ¥" +
+          currency(quote.totalInclTax) + "（税抜 ¥" +
+          currency(quote.netExTax) + "＋消費税 ¥" + currency(quote.tax) + "）";
+      }
     }
 
     function renderFormalReceiptAllocationRows(record) {
@@ -4553,16 +4749,21 @@
     }
 
     function formalInvoiceCommandData(record, invoice) {
-      const fee = numberValue(document.getElementById("formalFeeExTax").value);
-      const discount = numberValue(document.getElementById("formalDiscountExTax").value);
+      const quote = coursePricingForRecord(record);
+      if (quote.applies && !quote.ready) throw new Error(quote.message);
+      const fee = quote.applies ? quote.feeExTax :
+        numberValue(document.getElementById("formalFeeExTax").value);
+      const discount = quote.applies ? quote.discountExTax :
+        numberValue(document.getElementById("formalDiscountExTax").value);
       if (fee <= 0 || discount > fee) throw new Error("税抜料金と値引額を確認してください。");
-      const configuredTaxRate = String(record.taxRate || "10");
+      const configuredTaxRate = String(quote.applies ? quote.taxRate : (record.taxRate || "10"));
       if (configuredTaxRate !== "10") {
         throw new Error("この画面では課税10%以外を発行できません。税区分の根拠資料と別担当者の承認記録を準備してください。");
       }
       const category = "TAXABLE_10";
       const billingSubject = String(record.billingSubject || record.serviceCategory || "更新講習").trim();
       const billingLineDescription = billingSubject +
+        (quote.applies ? "\n" + quote.description : "") +
         (String(record.billingItemDetail || "").trim() ? "\n" + String(record.billingItemDetail).trim() : "");
       const lines = [{
         id: makeId("line"),
@@ -4575,7 +4776,7 @@
       if (discount > 0) {
         lines.push({
           id: makeId("line"),
-          description: "値引",
+          description: quote.applies ? "CDP卒業者割引（20%）" : "値引",
           quantity: 1,
           unitAmount: discount,
           lineType: "DISCOUNT",
@@ -7003,6 +7204,7 @@
         AppData.loadError = "";
         AppData.configured = false;
         AppData.readOnly = true;
+        AppData.coursePricing = COURSE_PRICING_FALLBACK;
         AppData.records = sampleCopy();
         AppData.audit = [];
         AppData.roles = [];
@@ -7025,6 +7227,7 @@
         if (errorMessage) throw new Error(errorMessage);
         AppData.configured = Boolean(response.configured);
         AppData.role = String(response.role || "");
+        AppData.coursePricing = response.coursePricing || COURSE_PRICING_FALLBACK;
         AppData.records = (response.records || []).map(serverRecordFromRow);
         AppData.audit = Array.isArray(response.audit) ? response.audit.slice().reverse() : [];
         AppData.roles = Array.isArray(response.roles) ? response.roles.slice() : [];
@@ -8818,6 +9021,7 @@
     }
 
     function readForm() {
+      syncCoursePricingInputs();
       const data = {};
       const currentRecordId = String(document.getElementById("recordId").value || "").trim();
       const existingRecord = currentRecordId ? loadRecords().find(function (record) {
@@ -8850,6 +9054,7 @@
       });
       syncDerivedScheduleInputs();
       syncTrainingLabels();
+      syncCoursePricingInputs();
       document.getElementById("formTitle").textContent = "更新記録を編集";
       document.getElementById("formErrors").classList.remove("active");
       showScreen("entry");
@@ -8869,10 +9074,12 @@
       document.getElementById("noticeThreeMonthStatus").value = "未送付";
       document.getElementById("certificateDelivered").value = "未確認";
       document.getElementById("suspensionCourse").value = "未確認";
+      document.getElementById("graduateDiscount").value = "対象外";
       document.getElementById("dipsRecordMode").value = "新規登録";
       document.getElementById("billingHonorific").value = "御中";
       syncDerivedScheduleInputs();
       syncTrainingLabels();
+      syncCoursePricingInputs();
       document.getElementById("formTitle").textContent = "更新記録を登録";
       document.getElementById("formErrors").classList.remove("active");
     }
@@ -9346,8 +9553,16 @@
     form.addEventListener("submit", saveForm);
     document.getElementById("clearForm").addEventListener("click", clearForm);
     document.getElementById("licenseExpiry").addEventListener("change", syncDerivedScheduleInputs);
-    document.getElementById("licenseClass").addEventListener("change", syncTrainingLabels);
-    document.getElementById("suspensionCourse").addEventListener("change", syncTrainingLabels);
+    document.getElementById("licenseClass").addEventListener("change", function () {
+      syncTrainingLabels();
+      syncCoursePricingInputs();
+    });
+    document.getElementById("suspensionCourse").addEventListener("change", function () {
+      syncTrainingLabels();
+      syncCoursePricingInputs();
+    });
+    document.getElementById("graduateDiscount").addEventListener("change", syncCoursePricingInputs);
+    document.getElementById("serviceCategory").addEventListener("change", syncCoursePricingInputs);
     document.getElementById("courseDate").addEventListener("change", syncCertificateExpiryInput);
     document.querySelectorAll("[data-screen]").forEach(function (button) {
       button.addEventListener("click", function () { showScreen(button.dataset.screen); });

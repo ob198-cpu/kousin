@@ -428,7 +428,17 @@ const context = {
     if (!storeAuditRowsBySpreadsheet[id]) storeAuditRowsBySpreadsheet[id] = [];
     storeAuditRowsBySpreadsheet[id].push({ ...event });
   },
-  storeReadRecords_: () => [{ recordId: "customer-1", deleted: false }],
+  storeReadRecords_: () => [{
+    recordId: "customer-1",
+    deleted: false,
+    payload: { serviceCategory: "その他" }
+  }, {
+    recordId: "customer-large",
+    deleted: false,
+    payload: { serviceCategory: "その他" }
+  }],
+  storeFindRecordById_: (rows, recordId) =>
+    rows.find((row) => row.recordId === String(recordId || "")) || null,
   storeReadRoles_: () => Object.keys(roles).map((email) => ({
     email, role: roles[email], active: true
   })),
@@ -436,7 +446,7 @@ const context = {
     serverBillingSnapshot(customerId)
 };
 vm.createContext(context);
-["Finance.js", "FinanceStore.js", "FinanceDisasterRestore.js"].forEach((file) => {
+["CoursePricing.js", "Finance.js", "FinanceStore.js", "FinanceDisasterRestore.js"].forEach((file) => {
   vm.runInContext(fs.readFileSync(path.join(__dirname, file), "utf8"), context, { filename: file });
 });
 
@@ -470,6 +480,73 @@ function execute(expectedRevision, command, reasonCode, idempotencyKey) {
     expectedRevision, command, reasonCode, idempotencyKey
   });
 }
+
+// 更新講習の下書きは共有正本から定額を再計算し、ブラウザ改ざんを拒否する。
+const manualRecordReader = context.storeReadRecords_;
+context.storeReadRecords_ = () => [{
+  recordId: "customer-1",
+  deleted: false,
+  payload: {
+    serviceCategory: "更新講習",
+    licenseClass: "二等",
+    suspensionCourse: "あり",
+    graduateDiscount: "卒業者"
+  }
+}];
+const fixedPriceDraft = {
+  id: "fixed-price-draft",
+  customerId: "customer-1",
+  pricingMode: "EXCLUSIVE",
+  lines: [
+    {
+      id: "fixed-price-charge",
+      description: "二等更新講習・資格停止処分",
+      quantity: 1,
+      unitAmount: 16000,
+      lineType: "CHARGE",
+      taxCategory: "TAXABLE_10"
+    },
+    {
+      id: "fixed-price-discount",
+      description: "CDP卒業者割引（20%）",
+      quantity: 1,
+      unitAmount: 3200,
+      lineType: "DISCOUNT",
+      taxCategory: "TAXABLE_10"
+    }
+  ]
+};
+assert.doesNotThrow(() => context.financeStorePrepareServerCommand_(
+  spreadsheet,
+  {},
+  { type: "CREATE_DRAFT_INVOICE", data: fixedPriceDraft }
+));
+assertCode(() => context.financeStorePrepareServerCommand_(
+  spreadsheet,
+  {},
+  {
+    type: "CREATE_DRAFT_INVOICE",
+    data: {
+      ...fixedPriceDraft,
+      lines: fixedPriceDraft.lines.map((line, index) =>
+        index === 0 ? { ...line, unitAmount: 15999 } : line)
+    }
+  }
+), "COURSE_PRICE_AMOUNT_MISMATCH");
+context.storeReadRecords_ = manualRecordReader;
+assert.equal(context.storeReadRecords_()[0].payload.serviceCategory, "その他");
+assert.equal(
+  context.storeFindRecordById_(
+    context.storeReadRecords_(), "customer-1"
+  ).recordId,
+  "customer-1"
+);
+assert.equal(
+  context.financeStoreCoursePricingRecord_(
+    spreadsheet, "customer-1"
+  ).serviceCategory,
+  "その他"
+);
 
 // 初期化と草案の表示。草案は閲覧できるが売掛残高には含めない。
 let setup = context.financeStoreSetup_({ confirm: context.FINANCE_STORE.SETUP_CONFIRM });
@@ -1560,10 +1637,12 @@ assertCode(() => context.financeStoreGetState_(), "FINANCE_EVENT_CHAIN_BROKEN");
 // stage and baseline backup.
 context.storeReadRecords_ = () => [{
   recordId: "customer-1",
-  deleted: false
+  deleted: false,
+  payload: { serviceCategory: "その他" }
 }, {
   recordId: "customer-large",
-  deleted: false
+  deleted: false,
+  payload: { serviceCategory: "その他" }
 }];
 actor = "admin@example.com";
 const latestCorruptRestoreBackup = context.financeStoreListBackups_().find(
