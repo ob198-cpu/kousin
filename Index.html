@@ -679,6 +679,9 @@
     .training-table input { min-width: 130px; }
     .training-table input[type="time"] { min-width: 115px; }
     .first-class-row td { background: #f8fafc; }
+    .training-session-targets { min-width: 720px; }
+    .training-session-targets th,
+    .training-session-targets td { white-space: nowrap; }
     @media (max-width: 1050px) {
       .app-header { align-items: flex-start; flex-direction: column; }
       .tabs { justify-content: flex-start; }
@@ -1018,6 +1021,10 @@
             <p class="operation-note field full">
               社内の講習記録簿の記入項目に対応します。原本リンクは個人情報保護のため公開画面へ表示しません。受講者氏名・一等/二等・受講日・会場は、上の対象者情報、資格区分、講習修了日、講習会場を共通利用します。自動作成の対象は回転翼航空機（マルチローター）です。実地講習は技能証明の効力停止処分者向け講習が「あり」の場合だけ記録します。
             </p>
+            <div class="actions" style="margin-bottom:12px">
+              <button type="button" id="previewTrainingSessionBatch">同じ講習日の全員へ反映</button>
+              <small>この画面の講習修了日・開始・終了・担当者を、保存済みの同日CDP受講者へ一括入力します。受講日は講習修了日で自動入力します。</small>
+            </div>
             <h3>学科講習</h3>
             <div class="table-wrap">
               <table class="training-table">
@@ -1819,6 +1826,33 @@
     </div>
   </div>
 
+  <div id="trainingSessionModal" class="modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="trainingSessionTitle">
+      <div class="modal-head">
+        <h2 id="trainingSessionTitle">同じ講習日の全員へ講習時間を反映</h2>
+        <button type="button" data-close-modal="trainingSessionModal">閉じる</button>
+      </div>
+      <div class="modal-body">
+        <p class="operation-note">
+          対象は、共有正本に保存済みで「受講機関＝CDP」「講習修了日＝指定日」の有効な受講者です。
+          一等専用項目と資格停止処分者向け実地項目は該当者だけへ反映します。
+          異なる既存値、未確定の資格区分・停止処分区分、版競合が1件でもあれば全件停止します。
+        </p>
+        <div id="trainingSessionPreviewResult" class="artifact-result" role="status"></div>
+        <div class="table-wrap">
+          <table class="report-table training-session-targets">
+            <thead><tr><th>対象</th><th>管理ID</th><th>資格区分</th><th>停止処分者向け</th><th>判定</th></tr></thead>
+            <tbody id="trainingSessionTargetBody"></tbody>
+          </table>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="applyTrainingSessionBatch" class="primary" disabled>検査済みの対象者へ一括反映</button>
+          <button type="button" data-close-modal="trainingSessionModal">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="importModal" class="modal" aria-hidden="true">
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="importTitle">
       <div class="modal-head">
@@ -2095,6 +2129,8 @@
     let artifactRuntimeSettings = {};
     let artifactSettingsVersion = 0;
     let dipsCsvOfficialTemplateText = "";
+    let trainingSessionPreviewState = null;
+    let trainingSessionBatchBusy = false;
     let scheduleDirty = false;
     let recordStorageCorruption = null;
     let auditStorageCorruption = null;
@@ -5805,6 +5841,193 @@
       modal.setAttribute("aria-hidden", "true");
     }
 
+    function readTrainingSessionBatchInput() {
+      return {
+        sessionDate: String(document.getElementById("courseDate").value || ""),
+        schedule: TRAINING_MODULES.map(function (module) {
+          const prefix = module[0];
+          return {
+            prefix: prefix,
+            start: String(document.getElementById(prefix + "Start").value || ""),
+            end: String(document.getElementById(prefix + "End").value || ""),
+            instructor: String(document.getElementById(prefix + "Instructor").value || "").trim()
+          };
+        })
+      };
+    }
+
+    function invalidateTrainingSessionPreview() {
+      trainingSessionPreviewState = null;
+      const applyButton = document.getElementById("applyTrainingSessionBatch");
+      if (applyButton) {
+        applyButton.disabled = true;
+        applyButton.textContent = "検査済みの対象者へ一括反映";
+      }
+    }
+
+    function renderTrainingSessionPreview(preview) {
+      const result = document.getElementById("trainingSessionPreviewResult");
+      const targetBody = document.getElementById("trainingSessionTargetBody");
+      const messages = [];
+      (preview.errors || []).forEach(function (message) {
+        messages.push(artifactResultRow("error", "入力を確認", message));
+      });
+      (preview.blockers || []).forEach(function (message) {
+        messages.push(artifactResultRow("error", "対象者を確認", message));
+      });
+      (preview.conflicts || []).forEach(function (message) {
+        messages.push(artifactResultRow("error", "既存記録と不一致", message));
+      });
+      (preview.warnings || []).forEach(function (message) {
+        messages.push(artifactResultRow("warning", "確認事項", message));
+      });
+      if (preview.ready) {
+        messages.unshift(artifactResultRow(
+          "ready",
+          "反映前検査に合格",
+          preview.sessionDate + "の保存済み受講者" + preview.targetCount +
+            "名を確認しました。変更" + preview.updateCount +
+            "名、同じ内容を保存済み" + preview.unchangedCount + "名です。"
+        ));
+      } else if (!messages.length) {
+        messages.push(artifactResultRow(
+          "warning",
+          "反映できません",
+          "講習日、時間、担当者と対象者の保存状態を確認してください。"
+        ));
+      }
+      result.innerHTML = messages.join("");
+      targetBody.innerHTML = (preview.targets || []).length ?
+        preview.targets.map(function (target) {
+          return "<tr><td>" + escapeHtml(target.targetName || "") +
+            "</td><td>" + escapeHtml(target.personId || "") +
+            "</td><td>" + escapeHtml(target.licenseClass || "") +
+            "</td><td>" + escapeHtml(target.suspensionCourse || "") +
+            "</td><td>" + escapeHtml(target.status || "") + "</td></tr>";
+        }).join("") :
+        '<tr><td colspan="5" class="empty">反映対象はありません。</td></tr>';
+      const applyButton = document.getElementById("applyTrainingSessionBatch");
+      applyButton.disabled = !preview.ready;
+      applyButton.textContent = preview.ready ?
+        "検査済みの" + preview.targetCount + "名へ一括反映" :
+        "検査済みの対象者へ一括反映";
+    }
+
+    async function previewTrainingSessionBatch() {
+      if (!requireServerMutation("講習時間の一括入力")) return;
+      if (!AppData.configured || AppData.readOnly || trainingSessionBatchBusy) {
+        showToast("共有正本が未接続、または対象者を更新できる権限がありません。");
+        return;
+      }
+      invalidateTrainingSessionPreview();
+      const input = readTrainingSessionBatchInput();
+      openModal("trainingSessionModal");
+      document.getElementById("trainingSessionTargetBody").innerHTML =
+        '<tr><td colspan="5" class="empty">対象者を確認中です。</td></tr>';
+      document.getElementById("trainingSessionPreviewResult").innerHTML =
+        artifactResultRow(
+          "warning",
+          "確認中",
+          "共有正本の同日受講者、既存記録、版番号を検査しています。"
+        );
+      trainingSessionBatchBusy = true;
+      try {
+        const response = await serverCall("apiPreviewTrainingSession", input);
+        const errorMessage = responseError(
+          response,
+          "同日受講者の反映前検査を実行できませんでした。"
+        );
+        if (errorMessage) throw new Error(errorMessage);
+        renderTrainingSessionPreview(response);
+        if (response.ready) {
+          trainingSessionPreviewState = {
+            input: input,
+            previewToken: String(response.previewToken || ""),
+            targetCount: Number(response.targetCount || 0)
+          };
+        }
+      } catch (error) {
+        document.getElementById("trainingSessionPreviewResult").innerHTML =
+          artifactResultRow(
+            "error",
+            "検査を中止",
+            error.message || String(error)
+          );
+        document.getElementById("trainingSessionTargetBody").innerHTML =
+          '<tr><td colspan="5" class="empty">反映対象を確定できませんでした。</td></tr>';
+      } finally {
+        trainingSessionBatchBusy = false;
+      }
+    }
+
+    async function applyTrainingSessionBatch() {
+      if (!requireServerMutation("講習時間の一括入力")) return;
+      if (!trainingSessionPreviewState || trainingSessionBatchBusy) return;
+      const currentInput = readTrainingSessionBatchInput();
+      if (JSON.stringify(currentInput) !==
+          JSON.stringify(trainingSessionPreviewState.input)) {
+        invalidateTrainingSessionPreview();
+        renderTrainingSessionPreview({
+          ready: false,
+          targets: [],
+          errors: ["検査後に講習日・時間・担当者が変わりました。もう一度「同じ講習日の全員へ反映」を押してください。"]
+        });
+        return;
+      }
+      if (!window.confirm(
+        trainingSessionPreviewState.targetCount +
+        "名について、空欄または同一内容の講習記録へ一括反映します。よろしいですか。"
+      )) return;
+
+      trainingSessionBatchBusy = true;
+      const applyButton = document.getElementById("applyTrainingSessionBatch");
+      applyButton.disabled = true;
+      applyButton.textContent = "共有正本へ反映中…";
+      const openRecordId = String(document.getElementById("recordId").value || "");
+      try {
+        const request = Object.assign(
+          {},
+          trainingSessionPreviewState.input,
+          { previewToken: trainingSessionPreviewState.previewToken }
+        );
+        const response = await serverCall("apiApplyTrainingSession", request);
+        const errorMessage = responseError(
+          response,
+          "講習記録を一括反映できませんでした。"
+        );
+        if (errorMessage) throw new Error(errorMessage);
+        if (response.committed !== true) {
+          throw new Error("共有正本への保存確定を確認できませんでした。");
+        }
+        await refreshSharedStore({ render: false });
+        renderAll();
+        const refreshedRecord = openRecordId ? findRecord(openRecordId) : null;
+        if (refreshedRecord) fillForm(refreshedRecord);
+        closeModal("trainingSessionModal");
+        invalidateTrainingSessionPreview();
+        showToast(
+          response.message ||
+          (response.changedCount + "名の講習記録へ反映しました。")
+        );
+      } catch (error) {
+        invalidateTrainingSessionPreview();
+        document.getElementById("trainingSessionPreviewResult").innerHTML =
+          artifactResultRow(
+            "error",
+            "一括反映を中止",
+            (error.message || String(error)) +
+              " 画面を再読込して対象者と保存結果を確認し、再度反映前検査を行ってください。"
+          );
+      } finally {
+        trainingSessionBatchBusy = false;
+        if (trainingSessionPreviewState) {
+          applyButton.disabled = false;
+          applyButton.textContent =
+            "検査済みの" + trainingSessionPreviewState.targetCount + "名へ一括反映";
+        }
+      }
+    }
+
     function requireServerMutation(operationLabel) {
       if (AppData.mode === "server") return true;
       showToast(
@@ -5984,6 +6207,8 @@
       }
       const submit = form.querySelector('button[type="submit"]');
       if (submit) submit.disabled = !canEditRecords;
+      const trainingSessionButton = document.getElementById("previewTrainingSessionBatch");
+      if (trainingSessionButton) trainingSessionButton.disabled = !canEditRecords;
       renderSharedBackupRestoreUi();
       renderFinanceDisasterRestore();
     }
@@ -9564,6 +9789,17 @@
     document.getElementById("graduateDiscount").addEventListener("change", syncCoursePricingInputs);
     document.getElementById("serviceCategory").addEventListener("change", syncCoursePricingInputs);
     document.getElementById("courseDate").addEventListener("change", syncCertificateExpiryInput);
+    document.getElementById("courseDate").addEventListener("input", invalidateTrainingSessionPreview);
+    TRAINING_FIELD_IDS.forEach(function (id) {
+      const element = document.getElementById(id);
+      if (element) element.addEventListener("input", invalidateTrainingSessionPreview);
+    });
+    document.getElementById("previewTrainingSessionBatch").addEventListener(
+      "click", previewTrainingSessionBatch
+    );
+    document.getElementById("applyTrainingSessionBatch").addEventListener(
+      "click", applyTrainingSessionBatch
+    );
     document.querySelectorAll("[data-screen]").forEach(function (button) {
       button.addEventListener("click", function () { showScreen(button.dataset.screen); });
     });

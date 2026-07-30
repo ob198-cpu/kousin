@@ -309,6 +309,18 @@ function apiSaveRecord(input) {
   });
 }
 
+function apiPreviewTrainingSession(input) {
+  return apiResult_(function () {
+    return trainingSessionPreview_(input || {});
+  });
+}
+
+function apiApplyTrainingSession(input) {
+  return apiResult_(function () {
+    return trainingSessionApply_(input || {});
+  });
+}
+
 function apiSoftDeleteRecord(input) {
   return apiResult_(function () {
     return apiStoreMutationEnvelope_(
