@@ -644,8 +644,15 @@ function complianceOutputIdentity_(kind, context) {
     value.recordId = context.record.recordId;
     value.recordVersion = Number(context.canonical.version);
     value.recordPayloadHash = artifactText_(context.canonical.payloadHash);
-    value.financeRevision = context.finance.revision;
-    value.financeStateHash = context.finance.stateHash;
+    if (context.sampleMode) {
+      // サンプル収納記録は正式なFinanceStoreへ登録しない。
+      // 対象者正本の版・hashと生成器版だけで内容を一意にし、
+      // 存在しない会計revisionを参照しない。
+      value.sampleGeneratorVersion = 3;
+    } else {
+      value.financeRevision = context.finance.revision;
+      value.financeStateHash = context.finance.stateHash;
+    }
   }
   return {
     value: value,
@@ -880,6 +887,28 @@ function complianceSampleRecord_(context) {
   record.courseVenue = artifactText_(record.courseVenue) || "サンプル会場（正式使用禁止）";
   record.practicalVenue = artifactText_(record.practicalVenue) || record.courseVenue;
   record.dipsRecordMode = "新規登録";
+  var feeText = artifactText_(record.feeExTax);
+  var feeExTax = Number(feeText);
+  if (!feeText || !Number.isSafeInteger(feeExTax) || feeExTax <= 0) feeExTax = 50000;
+  var discountText = artifactText_(record.discountExTax);
+  var discountExTax = Number(discountText);
+  if (
+    !discountText ||
+    !Number.isSafeInteger(discountExTax) ||
+    discountExTax < 0 ||
+    discountExTax > feeExTax
+  ) {
+    discountExTax = 0;
+  }
+  var taxRateText = artifactText_(record.taxRate);
+  var taxRate = Number(taxRateText);
+  if (!taxRateText || !isFinite(taxRate) || taxRate < 0 || taxRate > 100) taxRate = 10;
+  var taxRounding = artifactText_(record.taxRounding);
+  if (["切捨て", "四捨五入", "切上げ"].indexOf(taxRounding) < 0) taxRounding = "切捨て";
+  record.feeExTax = feeExTax;
+  record.discountExTax = discountExTax;
+  record.taxRate = taxRate;
+  record.taxRounding = taxRounding;
   return record;
 }
 
@@ -1168,7 +1197,7 @@ function complianceCreateSamplePaymentRecord_(context, folder, fileName) {
       record.targetName,
       artifactText_(record.invoiceNo) || "SAMPLE-INV-001",
       artifactText_(record.invoiceDate) || record.courseDate,
-      billing.base,
+      billing.netExTax,
       billing.tax,
       billing.total,
       artifactText_(record.paymentDate) || record.courseDate,

@@ -37,6 +37,9 @@ function extractFunction(name) {
 const context = {
   console,
   artifactText_: (value) => value == null ? "" : String(value).trim(),
+  artifactHashHex_: (value) => JSON.stringify(value),
+  artifactClone_: (value) => JSON.parse(JSON.stringify(value)),
+  artifactAddCalendarMonthsMinusOne_: () => "2026-10-14",
   artifactRecordName_: (record) => String((record || {}).targetName || "").trim(),
   artifactNormalizeRecord_: (row) => Object.assign({}, row || {}),
   artifactValidIsoDateOrBlank_: (value) =>
@@ -52,8 +55,10 @@ vm.createContext(context);
   "complianceStatusSummary_",
   "complianceJapanesePeriod_",
   "complianceDateParts_",
+  "complianceOutputIdentity_",
   "complianceOutputFileName_",
   "complianceOutputMimeType_",
+  "complianceSampleRecord_",
   "complianceIsSyntheticSampleRecord_"
 ].forEach((name) => vm.runInContext(extractFunction(name), context));
 
@@ -157,6 +162,61 @@ assert.strictEqual(context.complianceIsSyntheticSampleRecord_({
   licenseNo: "SAMPLE-LICENSE",
   certificateNo: "SAMPLE-CERT"
 }), false);
+
+const samplePaymentIdentity = context.complianceOutputIdentity_(
+  "paymentRecord",
+  {
+    sampleMode: true,
+    scopeKey: "sample:paymentRecord:sample-record-1",
+    sampleRecord: { recordId: "sample-record-1" },
+    sampleCanonical: { version: 4, payloadHash: "sample-record-hash" },
+    record: { recordId: "sample-record-1" },
+    canonical: { version: 4, payloadHash: "sample-record-hash" }
+  }
+);
+assert.strictEqual(samplePaymentIdentity.value.sampleGeneratorVersion, 3);
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(samplePaymentIdentity.value, "financeRevision"),
+  false
+);
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(samplePaymentIdentity.value, "financeStateHash"),
+  false
+);
+
+const formalPaymentIdentity = context.complianceOutputIdentity_(
+  "paymentRecord",
+  {
+    sampleMode: false,
+    scopeKey: "paymentRecord:record-1",
+    record: { recordId: "record-1" },
+    canonical: { version: 8, payloadHash: "record-hash" },
+    finance: { revision: 12, stateHash: "finance-state-hash" }
+  }
+);
+assert.strictEqual(formalPaymentIdentity.value.financeRevision, 12);
+assert.strictEqual(formalPaymentIdentity.value.financeStateHash, "finance-state-hash");
+
+const rawSamplePaymentRecord = {
+  recordId: "sample-record-1",
+  targetName: "サンプル太郎",
+  feeExTax: "",
+  discountExTax: "",
+  taxRate: "",
+  taxRounding: ""
+};
+const normalizedSamplePaymentRecord = context.complianceSampleRecord_({
+  sampleRecord: rawSamplePaymentRecord
+});
+assert.strictEqual(normalizedSamplePaymentRecord.feeExTax, 50000);
+assert.strictEqual(normalizedSamplePaymentRecord.discountExTax, 0);
+assert.strictEqual(normalizedSamplePaymentRecord.taxRate, 10);
+assert.strictEqual(normalizedSamplePaymentRecord.taxRounding, "切捨て");
+assert.strictEqual(rawSamplePaymentRecord.feeExTax, "");
+assert.strictEqual(rawSamplePaymentRecord.taxRate, "");
+const samplePaymentRecordSource = extractFunction("complianceCreateSamplePaymentRecord_");
+assert(samplePaymentRecordSource.includes("billing.netExTax"));
+assert(!samplePaymentRecordSource.includes("billing.base"));
 
 [
   "apiGetComplianceArchiveState",
