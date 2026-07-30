@@ -27,7 +27,6 @@ function apiPreflightPersonWorkbook(request) {
       personWorkbookCanonicalRequest_(request)
     );
     var settings = artifactLoadSettings_();
-    artifactAssertPinnedReferenceSource_("implementationPlanSource");
     artifactAssertLedgerTemplateClean_(settings.ledgerTemplateId);
     personWorkbookAssertAdminOnlyAcl_(authorization.email);
     var record = artifactNormalizeRecord_(canonicalRequest.request.record);
@@ -1017,26 +1016,8 @@ function personWorkbookWriteTrainingModule_(
 }
 
 function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
-  artifactAssertPinnedReferenceSource_("implementationPlanSource");
-  var source = SpreadsheetApp.openById(
-    RENEWAL_COMPLIANCE_ARCHIVE.PLAN_SOURCE_ID
-  );
-  var base = source.getSheetByName("ベース");
-  if (!base) {
-    throw new Error("別添04参照元の「ベース」シートがありません。");
-  }
-  var sourceHeadings = base.getRange("A1:D8").getDisplayValues();
-  if (
-    artifactText_(sourceHeadings[0][0]) !== "講習区分" ||
-    artifactText_(sourceHeadings[0][1]).replace(/\s+/g, "") !== "開始(人)" ||
-    artifactText_(sourceHeadings[0][2]).replace(/\s+/g, "") !== "修了(人)" ||
-    artifactText_(sourceHeadings[3][0]).indexOf("二等無人航空機操縦士") < 0 ||
-    artifactText_(sourceHeadings[4][0]).indexOf("一等無人航空機操縦士") < 0
-  ) {
-    throw new Error("別添04参照元の固定見出しが一致しません。");
-  }
-  var sheet = base.copyTo(spreadsheet);
-  sheet.setName(tempName);
+  var sheet = spreadsheet.insertSheet(tempName);
+  personWorkbookApplyDocumentStyle_(sheet, 12, 34);
   var record = context.record;
   var plannedDate = artifactValidIsoDateOrBlank_(
     record.courseScheduledDate || record.courseDate
@@ -1058,13 +1039,18 @@ function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
         : ""
     );
   }
-  sheet.getRange("D1").setValue(
+  sheet.getRange("A1").setValue("講習区分");
+  sheet.getRange("B1").setValue("開始（人）");
+  sheet.getRange("C1").setValue("修了（人）");
+  sheet.getRange("D1:AH1").merge().setValue(
     (context.sampleMode ? "【サンプル・正式使用禁止】" : "") +
     "登録更新講習機関実施計画書" +
     (month ? "　" + month + "月" : "")
-  );
+  ).setHorizontalAlignment("center").setFontSize(14).setFontWeight("bold");
   sheet.getRange(2, 4, 1, 31).setValues([days]);
   sheet.getRange(3, 4, 1, 31).setValues([weekdays]);
+  sheet.getRange("A4").setValue("二等無人航空機操縦士");
+  sheet.getRange("A5").setValue("一等無人航空機操縦士");
   sheet.getRange("B4:C5").setValues(artifactSafeSheetMatrix_([
     [
       hasPlan && plannedClass === 2 ? 1 : "",
@@ -1084,6 +1070,26 @@ function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
     sheet.getRange("D1").setFontColor("#b91c1c").setFontWeight("bold");
     sheet.setTabColor("#b91c1c");
   }
+  sheet.getRange("A1:AH5")
+    .setBorder(
+      true, true, true, true, true, true,
+      "#111827", SpreadsheetApp.BorderStyle.SOLID
+    )
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
+  sheet.getRange("A1:C1").setBackground("#e5e7eb").setFontWeight("bold");
+  sheet.getRange("A4:A5").setBackground("#f8fafc").setFontWeight("bold");
+  sheet.getRange("A8:AH8").merge().setValue(
+    "予定人数は対象者の保存済み資格区分・講習予定日から作成します。" +
+    "未入力部分は空欄とし、登録・編集後に同じボタンで更新します。"
+  ).setWrap(true).setFontSize(9);
+  sheet.setColumnWidth(1, 220);
+  sheet.setColumnWidths(2, 2, 80);
+  sheet.setColumnWidths(4, 31, 34);
+  sheet.setRowHeight(1, 38);
+  sheet.setRowHeights(2, 4, 30);
+  sheet.setFrozenRows(3);
+  sheet.setFrozenColumns(3);
   try { sheet.setHiddenGridlines(true); } catch (ignoredPlanGridlines) {}
   return sheet;
 }

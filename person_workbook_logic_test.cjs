@@ -100,11 +100,15 @@ const planRenderer = source.slice(
   source.indexOf("function personWorkbookRenderPlan_("),
   source.indexOf("function personWorkbookRenderStatus_(")
 );
-assert(planRenderer.includes('artifactAssertPinnedReferenceSource_("implementationPlanSource")') &&
-  planRenderer.includes("RENEWAL_COMPLIANCE_ARCHIVE.PLAN_SOURCE_ID") &&
-  planRenderer.includes(".copyTo(spreadsheet)") &&
-  planRenderer.includes("別添04参照元の固定見出しが一致しません"),
-  "別添04は版固定・見出し検査済み参照元のレイアウトを複製する必要があります");
+assert(planRenderer.includes('"A1:AH5"') &&
+  planRenderer.includes('"D1:AH1"') &&
+  planRenderer.includes('"二等無人航空機操縦士"') &&
+  planRenderer.includes('"一等無人航空機操縦士"') &&
+  planRenderer.includes("setFrozenColumns(3)"),
+  "別添04は承認済み固定構造の34列様式を再現する必要があります");
+assert(!planRenderer.includes("PLAN_SOURCE_ID") &&
+  !planRenderer.includes("complianceLoadTemplateState_"),
+  "対象者資料ブックの別添04を外部原本の状態へ依存させてはいけません");
 
 const statusRenderer = source.slice(
   source.indexOf("function personWorkbookRenderStatus_("),
