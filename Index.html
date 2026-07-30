@@ -1886,6 +1886,7 @@
             <div class="field"><label for="complianceSecondFinish">二等・修了予定人数</label><input id="complianceSecondFinish" type="number" min="0" max="9999" step="1"></div>
           </div>
         </div>
+        <p id="complianceSampleModeNotice" class="operation-note hidden"></p>
         <div class="compliance-period-fields">
           <h3>別添05 実施状況報告書の入力</h3>
           <div class="settings-grid">
@@ -8203,13 +8204,27 @@
       });
     }
 
+    function isSyntheticSampleRecord(record) {
+      if (!record) return false;
+      if (String(record.targetName || "").trim().indexOf("サンプル") !== 0) return false;
+      const markers = [
+        /^SAMPLE-[A-Z0-9_-]+$/i.test(String(record.personId || "").trim()),
+        /^SAMPLE-[A-Z0-9_-]+$/i.test(String(record.licenseNo || "").trim()),
+        /^SAMPLE-[A-Z0-9_-]+$/i.test(String(record.certificateNo || "").trim()),
+        String(record.companyName || "").indexOf("試験用") >= 0,
+        String(record.internalMemo || "").indexOf("試験用ダミーデータ") >= 0
+      ];
+      return markers.filter(Boolean).length >= 2;
+    }
+
     function complianceRecordRequest_() {
       const record = findRecord(artifactRecordId);
       return {
         record: record,
         recordId: record ? record.id : "",
         expectedVersion: record ? Number(record._storeVersion || 0) : 0,
-        expectedPayloadHash: record ? String(record._storeHash || "") : ""
+        expectedPayloadHash: record ? String(record._storeHash || "") : "",
+        sampleMode: isSyntheticSampleRecord(record)
       };
     }
 
@@ -8219,7 +8234,9 @@
         kind: kind,
         recordId: base.recordId,
         expectedVersion: base.expectedVersion,
-        expectedPayloadHash: base.expectedPayloadHash
+        expectedPayloadHash: base.expectedPayloadHash,
+        sampleMode: base.sampleMode &&
+          (kind === "implementationPlan" || kind === "implementationStatus")
       };
       if (kind === "implementationPlan") {
         request.planMonth = document.getElementById("compliancePlanMonth").value;
@@ -8431,16 +8448,23 @@
         const preflight = await serverCall("apiPreflightComplianceArchive", request);
         renderComplianceArchiveResponse(preflight || {}, label, "preflight");
         if (!preflight || preflight.success === false || preflight.ready !== true) return;
-        if (!window.confirm(label + "をGoogle Driveへ作成・保管します。原本と既存ファイルは上書きしません。よろしいですか？")) return;
+        const confirmMessage = request.sampleMode
+          ? label + "のサンプルを専用の「サンプル出力」フォルダへ作成します。正式提出・正式保管には使用できません。よろしいですか？"
+          : label + "をGoogle Driveへ作成・保管します。原本と既存ファイルは上書きしません。よろしいですか？";
+        if (!window.confirm(confirmMessage)) return;
         document.getElementById("complianceArchiveResult").innerHTML =
-          artifactResultRow("warning", label, "Google Driveへ作成・保管しています。画面を閉じずにお待ちください。");
+          artifactResultRow(
+            "warning",
+            request.sampleMode ? label + "（サンプル出力）" : label,
+            "Google Driveへ作成しています。画面を閉じずにお待ちください。"
+          );
         const result = await serverCall("apiCreateComplianceArchive", request);
         renderComplianceArchiveResponse(result || {}, label, "create");
         if (!result || result.success === false) {
           showToast("作成結果に確認事項があります。");
           return;
         }
-        showToast(label + "を作成・保管しました。");
+        showToast(request.sampleMode ? label + "のサンプルを作成しました。" : label + "を作成・保管しました。");
       } catch (error) {
         renderComplianceArchiveResponse(
           { success: false, message: error.message + " 同じ操作を直ちに再実行せず、表示結果と保存先を確認してください。" },
@@ -8455,7 +8479,10 @@
     function openArtifactModal(record) {
       artifactRecordId = record.id;
       artifactPreflightState = null;
-      document.getElementById("artifactTarget").textContent = record.targetName + "（管理ID: " + record.personId + "）の保存済み記録から作成します。";
+      const sampleMode = isSyntheticSampleRecord(record);
+      document.getElementById("artifactTarget").textContent = sampleMode
+        ? record.targetName + "（管理ID: " + record.personId + "）から、正式データと分離したサンプルを作成します。"
+        : record.targetName + "（管理ID: " + record.personId + "）の保存済み記録から作成します。";
       populateArtifactFinanceInvoices(record.id);
       const courseMonth = /^\d{4}-\d{2}-\d{2}$/.test(record.courseDate || "")
         ? record.courseDate.slice(0, 7)
@@ -8465,6 +8492,23 @@
         "complianceReportStart", "complianceReportEnd"].forEach(function (id) {
         document.getElementById(id).value = "";
       });
+      const sampleNotice = document.getElementById("complianceSampleModeNotice");
+      sampleNotice.classList.toggle("hidden", !sampleMode);
+      sampleNotice.textContent = sampleMode
+        ? "サンプル出力モード：保存先・ファイル名・内容へ「サンプル／正式使用禁止」を表示し、正式な監査保管・採番・会計処理から分離します。"
+        : "";
+      if (sampleMode) {
+        const firstClass = String(record.licenseClass || "").indexOf("一等") >= 0;
+        const secondClass = String(record.licenseClass || "").indexOf("二等") >= 0;
+        document.getElementById("complianceFirstStart").value = firstClass ? "1" : "0";
+        document.getElementById("complianceFirstFinish").value = firstClass ? "1" : "0";
+        document.getElementById("complianceSecondStart").value = secondClass ? "1" : "0";
+        document.getElementById("complianceSecondFinish").value = secondClass ? "1" : "0";
+        if (/^\d{4}-\d{2}-\d{2}$/.test(record.courseDate || "")) {
+          document.getElementById("complianceReportStart").value = record.courseDate;
+          document.getElementById("complianceReportEnd").value = record.courseDate;
+        }
+      }
       document.getElementById("complianceReportDate").value = today();
       document.getElementById("complianceArchiveResult").innerHTML = "";
       document.getElementById("artifactPreflight").innerHTML = "";

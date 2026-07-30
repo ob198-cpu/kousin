@@ -37,6 +37,7 @@ function extractFunction(name) {
 const context = {
   console,
   artifactText_: (value) => value == null ? "" : String(value).trim(),
+  artifactRecordName_: (record) => String((record || {}).targetName || "").trim(),
   artifactNormalizeRecord_: (row) => Object.assign({}, row || {}),
   artifactValidIsoDateOrBlank_: (value) =>
     /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : "",
@@ -51,7 +52,8 @@ vm.createContext(context);
   "complianceStatusSummary_",
   "complianceJapanesePeriod_",
   "complianceDateParts_",
-  "complianceOutputFileName_"
+  "complianceOutputFileName_",
+  "complianceIsSyntheticSampleRecord_"
 ].forEach((name) => vm.runInContext(extractFunction(name), context));
 
 assert.strictEqual(context.complianceNonNegativeInteger_("0", "人数"), 0);
@@ -104,6 +106,33 @@ assert.match(
   ),
   /^申込書・技能証明書・身分証_保管チェックリスト_CDP_001_v3_abcdef012345$/
 );
+assert.match(
+  context.complianceOutputFileName_(
+    "implementationPlan",
+    { planMonth: "2026-07", sampleMode: true },
+    "abcdef0123456789"
+  ),
+  /^サンプル_正式使用禁止_別添04_登録更新講習機関実施計画書_2026-07_abcdef012345$/
+);
+assert.strictEqual(context.complianceIsSyntheticSampleRecord_({
+  targetName: "サンプル太郎",
+  personId: "P-20260727-63261",
+  licenseNo: "SAMPLE-LICENSE-TARO",
+  certificateNo: "SAMPLE-CERT-TARO",
+  companyName: "サンプル株式会社（試験用）",
+  internalMemo: "試験用ダミーデータ。正式業務に使用しないでください。"
+}), true);
+assert.strictEqual(context.complianceIsSyntheticSampleRecord_({
+  targetName: "サンプル太郎",
+  personId: "P-001",
+  licenseNo: "REAL-LICENSE"
+}), false);
+assert.strictEqual(context.complianceIsSyntheticSampleRecord_({
+  targetName: "実在太郎",
+  personId: "SAMPLE-001",
+  licenseNo: "SAMPLE-LICENSE",
+  certificateNo: "SAMPLE-CERT"
+}), false);
 
 [
   "apiGetComplianceArchiveState",
@@ -139,10 +168,19 @@ assert(html.includes('serverCall("apiCreateComplianceArchive", request)'));
 assert(html.includes('serverCall("apiPreflightArtifacts", request)'));
 assert(html.includes('serverCall("apiCreateArtifacts", request)'));
 assert(html.includes('serverCall("apiProvisionComplianceTemplates")'));
+assert(html.includes("サンプル出力モード"));
+assert(html.includes("function isSyntheticSampleRecord(record)"));
 assert(source.includes("error.complianceAuditOutcomeUncertain === true"));
 assert(source.includes("preservationRequired: true"));
 assert(source.includes("実物書類は自動生成しません"));
 assert(source.includes("正式会計台帳"));
+assert(source.includes('SAMPLE_FOLDER_NAME: "サンプル出力"'));
+assert(source.includes('action: context.sampleMode ? "COMPLIANCE_SAMPLE_CREATE"'));
+assert(source.includes("【サンプル・正式使用禁止】"));
+assert(source.includes("function complianceSampleRequestContext_"));
+assert(source.includes("function complianceCreateSamplePlan_"));
+assert(source.includes("function complianceCreateSampleStatus_"));
+assert(source.includes("context.sampleMode ? null : complianceRequireTemplatesReady_()"));
 
 assert(artifactsSource.includes("implementationPlanSource"));
 assert(artifactsSource.includes("implementationStatusSource"));

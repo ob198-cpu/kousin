@@ -7,6 +7,8 @@ var RENEWAL_COMPLIANCE_ARCHIVE = {
   TEMPLATE_STATE_FORMAT: "CDP_RENEWAL_COMPLIANCE_TEMPLATE_STATE_V1",
   ARCHIVE_FOLDER_NAME: "監査保管",
   ARCHIVE_FOLDER_PROPERTY_PREFIX: "RENEWAL_COMPLIANCE_ARCHIVE_FOLDER_",
+  SAMPLE_FOLDER_NAME: "サンプル出力",
+  SAMPLE_FOLDER_PROPERTY_PREFIX: "RENEWAL_COMPLIANCE_SAMPLE_FOLDER_",
   PLAN_SOURCE_ID: "1igNBB5Ved91p-yUX4NhOUEWuW6KwIc-2jgOjReMp_Js",
   STATUS_SOURCE_ID: "10VToVFT0QltCgsRyGPt1nH9oeCQvz60KtmGTJjn_bZQ",
   STATUS_SOURCE_BASE_TAB_ID: "t.auzrd88tu44r",
@@ -123,10 +125,12 @@ function apiPreflightComplianceArchive(request) {
       success: true,
       ready: true,
       kind: kind,
-      label: RENEWAL_COMPLIANCE_ARCHIVE.LABELS[kind],
+      label: complianceResultLabel_(kind, context.sampleMode),
       summary: context.summary,
       warnings: context.warnings || [],
-      message: "作成条件を満たしています。"
+      message: context.sampleMode
+        ? "サンプル出力の作成条件を満たしています。正式提出・正式保管には使用できません。"
+        : "作成条件を満たしています。"
     };
   } catch (error) {
     var result = complianceErrorResult_(error);
@@ -163,7 +167,9 @@ function apiCreateComplianceArchive(request) {
     var settings = context.settings;
     var autoRoot = artifactEnsureAutoRoot_(settings.outputFolderId, settings.allowedOutputEmails);
     var targetFolder;
-    if (kind === "implementationPlan" || kind === "implementationStatus") {
+    if (context.sampleMode) {
+      targetFolder = complianceEnsureSampleFolder_(autoRoot, settings.allowedOutputEmails);
+    } else if (kind === "implementationPlan" || kind === "implementationStatus") {
       targetFolder = complianceEnsureArchiveFolder_(autoRoot, settings.allowedOutputEmails);
     } else {
       targetFolder = artifactEnsureRecordFolder_(autoRoot, context.record, settings.allowedOutputEmails);
@@ -185,9 +191,9 @@ function apiCreateComplianceArchive(request) {
         artifactDriveAttemptKey_(recoveryOperation),
         RENEWAL_COMPLIANCE_ARCHIVE.LABELS[kind]
       );
-      var recoveryAction = recoveryAttempt
-        ? "COMPLIANCE_ARCHIVE_CREATE"
-        : "COMPLIANCE_ARCHIVE_REUSE";
+      var recoveryAction = context.sampleMode
+        ? (recoveryAttempt ? "COMPLIANCE_SAMPLE_CREATE" : "COMPLIANCE_SAMPLE_REUSE")
+        : (recoveryAttempt ? "COMPLIANCE_ARCHIVE_CREATE" : "COMPLIANCE_ARCHIVE_REUSE");
       complianceEnsureServerAudit_({
         actor: authorization.email,
         scopeKey: context.scopeKey,
@@ -223,7 +229,7 @@ function apiCreateComplianceArchive(request) {
       kind: kind,
       hash: identity.hash,
       fileId: createdFile.getId(),
-      action: "COMPLIANCE_ARCHIVE_CREATE"
+      action: context.sampleMode ? "COMPLIANCE_SAMPLE_CREATE" : "COMPLIANCE_ARCHIVE_CREATE"
     });
     if (driveOperation) {
       artifactClearPublishedDriveAttempt_(
@@ -290,15 +296,25 @@ function complianceSuccessResult_(kind, file, context, reused) {
   return {
     success: true,
     kind: kind,
-    label: RENEWAL_COMPLIANCE_ARCHIVE.LABELS[kind],
+    label: complianceResultLabel_(kind, context.sampleMode),
     status: reused ? "reused" : "created",
     fileId: file.getId(),
     fileName: file.getName(),
     url: file.getUrl(),
     folderUrl: context.outputFolderUrl || "",
     warnings: warnings,
-    message: reused ? "同じ正本内容の作成済み保管物を再利用しました。" : "Google Driveへ作成・保管しました。"
+    sampleMode: context.sampleMode === true,
+    message: context.sampleMode
+      ? (reused
+        ? "同じ内容のサンプル出力を再利用しました。正式提出・正式保管には使用できません。"
+        : "サンプル出力をGoogle Driveへ作成しました。正式提出・正式保管には使用できません。")
+      : (reused ? "同じ正本内容の作成済み保管物を再利用しました。" : "Google Driveへ作成・保管しました。")
   };
+}
+
+function complianceResultLabel_(kind, sampleMode) {
+  var label = RENEWAL_COMPLIANCE_ARCHIVE.LABELS[kind] || "監査保管";
+  return sampleMode === true ? label + "（サンプル出力）" : label;
 }
 
 function complianceKind_(kind) {
@@ -330,6 +346,13 @@ function complianceBuildContext_(kind, request, authorization) {
     summary: {},
     warnings: []
   };
+  var sample = complianceSampleRequestContext_(kind, request);
+  if (sample) {
+    context.sampleMode = true;
+    context.sampleRecord = sample.record;
+    context.sampleCanonical = sample.canonical;
+    context.warnings.push("これはサンプル出力です。正式提出・正式保管・採番・会計処理には使用できません。");
+  }
   if (kind === "implementationPlan") return complianceBuildPlanContext_(context);
   if (kind === "implementationStatus") return complianceBuildStatusContext_(context);
   var canonicalRequest = artifactLoadCanonicalArtifactRequest_({
@@ -360,6 +383,40 @@ function complianceBuildContext_(kind, request, authorization) {
   return context;
 }
 
+function complianceSampleRequestContext_(kind, request) {
+  if (!request || request.sampleMode !== true) return null;
+  if (kind !== "implementationPlan" && kind !== "implementationStatus") {
+    throw new Error("この成果物はサンプル出力に対応していません。");
+  }
+  var canonicalRequest = artifactLoadCanonicalArtifactRequest_({
+    recordId: request.recordId,
+    expectedVersion: request.expectedVersion,
+    expectedPayloadHash: request.expectedPayloadHash,
+    kinds: ["training"]
+  });
+  var record = artifactNormalizeRecord_(canonicalRequest.request.record);
+  if (!complianceIsSyntheticSampleRecord_(record)) {
+    throw new Error("サンプル出力は、対象者名と複数の試験用識別子を確認できる合成データだけに使用できます。");
+  }
+  return {
+    record: record,
+    canonical: canonicalRequest.canonical
+  };
+}
+
+function complianceIsSyntheticSampleRecord_(record) {
+  var targetName = artifactRecordName_(record);
+  if (targetName.indexOf("サンプル") !== 0) return false;
+  var markers = [
+    /^SAMPLE-[A-Z0-9_-]+$/i.test(artifactText_(record.personId || record.managementId)),
+    /^SAMPLE-[A-Z0-9_-]+$/i.test(artifactText_(record.licenseNo)),
+    /^SAMPLE-[A-Z0-9_-]+$/i.test(artifactText_(record.certificateNo)),
+    artifactText_(record.companyName).indexOf("試験用") >= 0,
+    artifactText_(record.internalMemo).indexOf("試験用ダミーデータ") >= 0
+  ].filter(function(value) { return value === true; });
+  return markers.length >= 2;
+}
+
 function complianceBuildPlanContext_(context) {
   var input = context.request || {};
   var month = artifactText_(input.planMonth);
@@ -375,17 +432,20 @@ function complianceBuildPlanContext_(context) {
     secondStart: complianceNonNegativeInteger_(input.secondStartCount, "二等の開始予定人数"),
     secondFinish: complianceNonNegativeInteger_(input.secondFinishCount, "二等の修了予定人数")
   };
-  var state = complianceRequireTemplatesReady_();
+  var state = context.sampleMode ? null : complianceRequireTemplatesReady_();
   context.templateState = state;
   context.planMonth = month;
   context.counts = counts;
-  context.scopeKey = "implementationPlan:" + month;
+  context.scopeKey = (context.sampleMode ? "sample:" : "") + "implementationPlan:" + month;
   context.summary = {
     planMonth: month,
     firstStartCount: counts.firstStart,
     firstFinishCount: counts.firstFinish,
     secondStartCount: counts.secondStart,
-    secondFinishCount: counts.secondFinish
+    secondFinishCount: counts.secondFinish,
+    sampleMode: context.sampleMode === true,
+    targetName: context.sampleMode ? artifactRecordName_(context.sampleRecord) : "",
+    managementId: context.sampleMode ? artifactText_(context.sampleRecord.personId) : ""
   };
   return context;
 }
@@ -408,15 +468,26 @@ function complianceBuildStatusContext_(context) {
   ) {
     throw new Error("別添05の対象期間は固定保存先と同じ2026年度内にしてください。");
   }
-  var state = complianceRequireTemplatesReady_();
+  var state = context.sampleMode ? null : complianceRequireTemplatesReady_();
   var records = storeListRecords_({ includeDeleted: false });
   var summary = complianceStatusSummary_(records, startDate, endDate);
+  if (context.sampleMode) {
+    var sampleClass = artifactClassValue_(context.sampleRecord.licenseClass);
+    var sampleVenue = artifactText_(context.sampleRecord.courseVenue) || "サンプル会場（正式使用不可）";
+    if (sampleClass === "一等" && summary.first.count > 0 && !summary.first.venues.length) {
+      summary.first.venues.push(sampleVenue);
+    }
+    if (sampleClass === "二等" && summary.second.count > 0 && !summary.second.venues.length) {
+      summary.second.venues.push(sampleVenue);
+    }
+  }
   context.templateState = state;
   context.reportDate = reportDate;
   context.reportStartDate = startDate;
   context.reportEndDate = endDate;
   context.statusSummary = summary;
-  context.scopeKey = "implementationStatus:" + startDate + ":" + endDate;
+  context.scopeKey = (context.sampleMode ? "sample:" : "") +
+    "implementationStatus:" + startDate + ":" + endDate;
   context.summary = {
     reportDate: reportDate,
     reportStartDate: startDate,
@@ -424,7 +495,10 @@ function complianceBuildStatusContext_(context) {
     firstCompletedCount: summary.first.count,
     secondCompletedCount: summary.second.count,
     firstVenues: summary.first.venues,
-    secondVenues: summary.second.venues
+    secondVenues: summary.second.venues,
+    sampleMode: context.sampleMode === true,
+    targetName: context.sampleMode ? artifactRecordName_(context.sampleRecord) : "",
+    managementId: context.sampleMode ? artifactText_(context.sampleRecord.personId) : ""
   };
   if (!summary.first.venues.length && summary.first.count > 0) {
     throw new Error("対象期間の一等修了者に講習会場がないため、実施場所を確定できません。");
@@ -498,18 +572,26 @@ function complianceOutputIdentity_(kind, context) {
     format: "CDP_RENEWAL_COMPLIANCE_OUTPUT_V1",
     schemaVersion: RENEWAL_COMPLIANCE_ARCHIVE.SCHEMA_VERSION,
     kind: kind,
-    scopeKey: context.scopeKey
+    scopeKey: context.scopeKey,
+    sampleMode: context.sampleMode === true
   };
+  if (context.sampleMode) {
+    value.sampleRecordId = context.sampleRecord.recordId;
+    value.sampleRecordVersion = Number(context.sampleCanonical.version);
+    value.sampleRecordPayloadHash = artifactText_(context.sampleCanonical.payloadHash);
+  }
   if (kind === "implementationPlan") {
     value.planMonth = context.planMonth;
     value.counts = context.counts;
-    value.templatePin = complianceTemplatePinValue_("implementationPlan", context.templateState.planTemplateId);
+    if (context.sampleMode) value.sampleGeneratorVersion = 1;
+    else value.templatePin = complianceTemplatePinValue_("implementationPlan", context.templateState.planTemplateId);
   } else if (kind === "implementationStatus") {
     value.reportDate = context.reportDate;
     value.startDate = context.reportStartDate;
     value.endDate = context.reportEndDate;
     value.summary = context.statusSummary;
-    value.templatePin = complianceTemplatePinValue_("implementationStatus", context.templateState.statusTemplateId);
+    if (context.sampleMode) value.sampleGeneratorVersion = 1;
+    else value.templatePin = complianceTemplatePinValue_("implementationStatus", context.templateState.statusTemplateId);
   } else if (kind === "applicationEvidence") {
     value.recordId = context.record.recordId;
     value.recordVersion = Number(context.canonical.version);
@@ -541,11 +623,13 @@ function complianceTemplatePinValue_(kind, fileId) {
 
 function complianceOutputFileName_(kind, context, hash) {
   var suffix = artifactText_(hash).slice(0, 12);
+  var prefix = context.sampleMode === true ? "サンプル_正式使用禁止_" : "";
   if (kind === "implementationPlan") {
-    return ("別添04_登録更新講習機関実施計画書_" + context.planMonth + "_" + suffix).slice(0, 180);
+    return (prefix + "別添04_登録更新講習機関実施計画書_" +
+      context.planMonth + "_" + suffix).slice(0, 180);
   }
   if (kind === "implementationStatus") {
-    return ("別添05_登録更新講習機関実施状況報告書_" +
+    return (prefix + "別添05_登録更新講習機関実施状況報告書_" +
       context.reportStartDate + "_" + context.reportEndDate + "_" + suffix).slice(0, 180);
   }
   var personId = artifactSafeName_(context.record.personId || context.record.recordId);
@@ -595,6 +679,12 @@ function complianceFindReusableFile_(folder, name, mimeType, identity, allowedOu
 }
 
 function complianceCreateOutput_(kind, context, folder, fileName) {
+  if (context.sampleMode && kind === "implementationPlan") {
+    return complianceCreateSamplePlan_(context, folder, fileName);
+  }
+  if (context.sampleMode && kind === "implementationStatus") {
+    return complianceCreateSampleStatus_(context, folder, fileName);
+  }
   if (kind === "implementationPlan") return complianceCreatePlan_(context, folder, fileName);
   if (kind === "implementationStatus") return complianceCreateStatus_(context, folder, fileName);
   if (kind === "applicationEvidence") return complianceCreateApplicationChecklist_(context, folder, fileName);
@@ -605,10 +695,10 @@ function complianceCreateOutput_(kind, context, folder, fileName) {
 function complianceDriveOperation_(kind, context, folder, fileName) {
   var sourceId = "";
   var operationType = "CREATE";
-  if (kind === "implementationPlan") {
+  if (!context.sampleMode && kind === "implementationPlan") {
     operationType = "COPY";
     sourceId = context.templateState.planTemplateId;
-  } else if (kind === "implementationStatus") {
+  } else if (!context.sampleMode && kind === "implementationStatus") {
     operationType = "COPY";
     sourceId = context.templateState.statusTemplateId;
   }
@@ -619,6 +709,145 @@ function complianceDriveOperation_(kind, context, folder, fileName) {
     RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES[kind],
     folder.getId()
   );
+}
+
+function complianceCreateSamplePlan_(context, folder, fileName) {
+  var mimeType = RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES.implementationPlan;
+  var label = complianceResultLabel_("implementationPlan", true);
+  var created = artifactCreateSpreadsheetInFolder_(
+    fileName, folder, label, context.settings.allowedOutputEmails, false
+  );
+  var file = created.file;
+  try {
+    var spreadsheet = created.spreadsheet;
+    spreadsheet.setSpreadsheetTimeZone("Asia/Tokyo");
+    var sheet = spreadsheet.getSheets()[0];
+    sheet.setName("サンプル別添04");
+    var parts = context.planMonth.split("-");
+    var year = Number(parts[0]);
+    var month = Number(parts[1]);
+    var lastDay = new Date(year, month, 0).getDate();
+    var weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
+    var days = [];
+    var weekdays = [];
+    for (var day = 1; day <= 31; day++) {
+      days.push(day <= lastDay ? day : "");
+      weekdays.push(day <= lastDay ? weekdayLabels[new Date(year, month - 1, day).getDay()] : "");
+    }
+    sheet.getRange("A1:AF1").merge()
+      .setValue("【サンプル・正式使用禁止】別添04 登録更新講習機関実施計画書")
+      .setBackground("#b91c1c")
+      .setFontColor("#ffffff")
+      .setFontWeight("bold")
+      .setFontSize(14);
+    sheet.getRange("A2:AF2").merge()
+      .setValue("入力・出力確認用です。国土交通省等への提出、正式保管、実績集計には使用できません。")
+      .setBackground("#fee2e2")
+      .setFontColor("#991b1b");
+    sheet.getRange("A4:B9").setValues([
+      ["対象月", context.planMonth],
+      ["一等・開始予定人数", context.counts.firstStart],
+      ["一等・修了予定人数", context.counts.firstFinish],
+      ["二等・開始予定人数", context.counts.secondStart],
+      ["二等・修了予定人数", context.counts.secondFinish],
+      ["作成元", artifactRecordName_(context.sampleRecord) + " / " +
+        artifactText_(context.sampleRecord.personId)]
+    ]);
+    sheet.getRange("A4:A9").setBackground("#dbeafe").setFontWeight("bold");
+    sheet.getRange(11, 2, 1, 31).setValues([days]);
+    sheet.getRange(12, 2, 1, 31).setValues([weekdays]);
+    sheet.getRange("A11").setValue("日");
+    sheet.getRange("A12").setValue("曜日");
+    sheet.getRange("A11:AF12").setHorizontalAlignment("center").setBorder(
+      true, true, true, true, true, true
+    );
+    sheet.setFrozenRows(2);
+    sheet.setColumnWidth(1, 180);
+    sheet.setColumnWidths(2, 31, 42);
+    sheet.getRange("A1:AF12").setVerticalAlignment("middle").setWrap(true);
+    SpreadsheetApp.flush();
+    if (
+      sheet.getRange("A1").getDisplayValue().indexOf("サンプル・正式使用禁止") < 0 ||
+      sheet.getRange("B5").getValue() !== context.counts.firstStart ||
+      sheet.getRange("B7").getValue() !== context.counts.secondStart
+    ) {
+      throw new Error("別添04サンプルの作成後読戻し検証に失敗しました。");
+    }
+    return {
+      file: file,
+      driveOperation: artifactDriveAttemptOperation_(
+        "CREATE", "", fileName, mimeType, folder.getId()
+      )
+    };
+  } catch (error) {
+    artifactThrowAfterCleanup_(error, file, label, "file");
+  }
+}
+
+function complianceCreateSampleStatus_(context, folder, fileName) {
+  var mimeType = RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES.implementationStatus;
+  var label = complianceResultLabel_("implementationStatus", true);
+  var file = artifactCreateDriveItemInFolder_(
+    fileName,
+    mimeType,
+    folder,
+    label,
+    context.settings.allowedOutputEmails,
+    false,
+    null
+  );
+  try {
+    var doc = DocumentApp.openById(file.getId());
+    var body = doc.getBody();
+    body.clear();
+    body.appendParagraph("【サンプル・正式使用禁止】")
+      .editAsText()
+      .setBold(true)
+      .setFontSize(16)
+      .setForegroundColor("#b91c1c");
+    body.appendParagraph("別添05 登録更新講習機関実施状況報告書（入力・出力確認用）")
+      .editAsText()
+      .setBold(true)
+      .setFontSize(14);
+    body.appendParagraph(
+      "国土交通省等への提出、正式保管、実績集計には使用できません。"
+    ).editAsText().setForegroundColor("#991b1b");
+    var rows = [
+      ["項目", "サンプル出力内容"],
+      ["報告日", context.reportDate],
+      ["対象期間", context.reportStartDate + " ～ " + context.reportEndDate],
+      ["一等・修了人数", context.statusSummary.first.count + "人"],
+      ["一等・実施場所", context.statusSummary.first.venues.join("、") || "該当なし"],
+      ["二等・修了人数", context.statusSummary.second.count + "人"],
+      ["二等・実施場所", context.statusSummary.second.venues.join("、") || "該当なし"],
+      ["作成元", artifactRecordName_(context.sampleRecord) + " / " +
+        artifactText_(context.sampleRecord.personId)]
+    ];
+    var table = body.appendTable(rows);
+    table.getRow(0).getCell(0).setBackgroundColor("#dbeafe");
+    table.getRow(0).getCell(1).setBackgroundColor("#dbeafe");
+    table.getRow(0).getCell(0).editAsText().setBold(true);
+    table.getRow(0).getCell(1).editAsText().setBold(true);
+    doc.saveAndClose();
+    var verifyDoc = DocumentApp.openById(file.getId());
+    var verifyText = verifyDoc.getBody().getText();
+    verifyDoc.saveAndClose();
+    if (
+      verifyText.indexOf("サンプル・正式使用禁止") < 0 ||
+      verifyText.indexOf(context.reportStartDate) < 0 ||
+      verifyText.indexOf(context.reportEndDate) < 0
+    ) {
+      throw new Error("別添05サンプルの作成後読戻し検証に失敗しました。");
+    }
+    return {
+      file: file,
+      driveOperation: artifactDriveAttemptOperation_(
+        "CREATE", "", fileName, mimeType, folder.getId()
+      )
+    };
+  } catch (error) {
+    artifactThrowAfterCleanup_(error, file, label, "file");
+  }
 }
 
 function complianceCreatePlan_(context, folder, fileName) {
@@ -652,7 +881,10 @@ function complianceCreatePlan_(context, folder, fileName) {
       weekdays.push(day <= lastDay ? weekdayLabels[new Date(year, month - 1, day).getDay()] : "");
     }
     sheet.setName(year + "年" + month + "月");
-    sheet.getRange("D1").setValue("登録更新講習機関実施計画書　" + month + "月");
+    sheet.getRange("D1").setValue(
+      (context.sampleMode ? "【サンプル・正式使用禁止】" : "") +
+      "登録更新講習機関実施計画書　" + month + "月"
+    );
     sheet.getRange(2, 4, 1, 31).setValues([days]);
     sheet.getRange(3, 4, 1, 31).setValues([weekdays]);
     sheet.getRange("B4:C5").setValues([
@@ -717,6 +949,12 @@ function complianceCreateStatus_(context, folder, fileName) {
     complianceSetLastTableCell_(table, 9, context.statusSummary.second.venues.join("、") || "該当なし");
     complianceSetLastTableCell_(table, 10, complianceJapanesePeriod_(startDate, endDate));
     complianceSetLastTableCell_(table, 11, "　　" + context.statusSummary.second.count + "人");
+    if (context.sampleMode) {
+      body.insertParagraph(0, "【サンプル・正式使用禁止】")
+        .editAsText()
+        .setBold(true)
+        .setForegroundColor("#c62828");
+    }
     doc.saveAndClose();
     var verifyDoc = DocumentApp.openById(file.getId());
     var verifyTabs = artifactFlattenDocumentTabs_(verifyDoc.getTabs());
@@ -938,16 +1176,38 @@ function complianceWritePaymentAuditSheet_(sheet, context) {
 }
 
 function complianceEnsureArchiveFolder_(autoRoot, allowedOutputEmails) {
+  return complianceEnsureManagedFolder_(autoRoot, allowedOutputEmails, {
+    name: RENEWAL_COMPLIANCE_ARCHIVE.ARCHIVE_FOLDER_NAME,
+    propertyPrefix: RENEWAL_COMPLIANCE_ARCHIVE.ARCHIVE_FOLDER_PROPERTY_PREFIX,
+    format: "CDP_RENEWAL_COMPLIANCE_ARCHIVE_FOLDER_V1",
+    label: "監査保管フォルダ"
+  });
+}
+
+function complianceEnsureSampleFolder_(autoRoot, allowedOutputEmails) {
+  return complianceEnsureManagedFolder_(autoRoot, allowedOutputEmails, {
+    name: RENEWAL_COMPLIANCE_ARCHIVE.SAMPLE_FOLDER_NAME,
+    propertyPrefix: RENEWAL_COMPLIANCE_ARCHIVE.SAMPLE_FOLDER_PROPERTY_PREFIX,
+    format: "CDP_RENEWAL_COMPLIANCE_SAMPLE_FOLDER_V1",
+    label: "サンプル出力フォルダ"
+  });
+}
+
+function complianceEnsureManagedFolder_(autoRoot, allowedOutputEmails, options) {
   var parentId = autoRoot.getId();
-  var name = RENEWAL_COMPLIANCE_ARCHIVE.ARCHIVE_FOLDER_NAME;
-  var key = RENEWAL_COMPLIANCE_ARCHIVE.ARCHIVE_FOLDER_PROPERTY_PREFIX + artifactShortKey_(parentId);
+  var name = artifactText_(options && options.name);
+  var label = artifactText_(options && options.label) || "管理フォルダ";
+  var propertyPrefix = artifactText_(options && options.propertyPrefix);
+  var format = artifactText_(options && options.format);
+  if (!name || !propertyPrefix || !format) throw new Error("管理フォルダ設定が不足しています。");
+  var key = propertyPrefix + artifactShortKey_(parentId);
   var props = PropertiesService.getScriptProperties();
   var identity = JSON.stringify({
-    format: "CDP_RENEWAL_COMPLIANCE_ARCHIVE_FOLDER_V1",
+    format: format,
     parentId: parentId
   });
   var matches = artifactIteratorItems_(autoRoot.getFoldersByName(name), 2);
-  if (matches.length > 1) throw new Error("同名の監査保管フォルダが複数あります。重複を監査してください。");
+  if (matches.length > 1) throw new Error("同名の" + label + "が複数あります。重複を監査してください。");
   var storedId = artifactText_(props.getProperty(key));
   var folder = null;
   var createdNow = false;
@@ -959,37 +1219,37 @@ function complianceEnsureArchiveFolder_(autoRoot, allowedOutputEmails) {
     if (storedId) {
       folder = DriveApp.getFolderById(storedId);
       if (matches.length !== 1 || matches[0].getId() !== storedId) {
-        throw new Error("保存済み監査保管フォルダのIDとDrive上の所定フォルダが一致しません。");
+        throw new Error("保存済み" + label + "のIDとDrive上の所定フォルダが一致しません。");
       }
     } else if (matches.length === 1) {
       folder = matches[0];
       if (artifactText_(folder.getDescription()) !== identity) {
-        throw new Error("識別情報のない手作業の監査保管フォルダは自動採用しません。");
+        throw new Error("識別情報のない手作業の" + label + "は自動採用しません。");
       }
     } else {
-      folder = artifactCreateFolderInFolder_(name, autoRoot, "監査保管フォルダ", allowedOutputEmails, false);
+      folder = artifactCreateFolderInFolder_(name, autoRoot, label, allowedOutputEmails, false);
       createdNow = true;
       folder.setDescription(identity);
     }
-    artifactAssertReusableDriveItem_(folder, parentId, "監査保管フォルダ", allowedOutputEmails);
+    artifactAssertReusableDriveItem_(folder, parentId, label, allowedOutputEmails);
     if (artifactText_(folder.getDescription()) !== identity) {
-      throw new Error("監査保管フォルダの識別情報が一致しません。");
+      throw new Error(label + "の識別情報が一致しません。");
     }
     props.setProperty(key, folder.getId());
     if (artifactText_(props.getProperty(key)) !== folder.getId()) {
-      throw new Error("監査保管フォルダIDを保存・読戻しできません。");
+      throw new Error(label + "IDを保存・読戻しできません。");
     }
     published = true;
     artifactClearPublishedDriveAttempt_(
       operation,
       folder.getId(),
-      "監査保管フォルダ"
+      label
     );
     return folder;
   } catch (error) {
     if (createdNow && folder && !published) {
       artifactPermanentlyDeleteNewDriveItem_(
-        folder, "作成途中の監査保管フォルダ", "folder", error
+        folder, "作成途中の" + label, "folder", error
       );
       try { props.deleteProperty(key); } catch (ignoredPropertyCleanupError) {}
     }
@@ -999,6 +1259,7 @@ function complianceEnsureArchiveFolder_(autoRoot, allowedOutputEmails) {
 
 function complianceEnsureServerAudit_(input) {
   var spreadsheet = storeOpen_();
+  var sampleAudit = artifactText_(input.action).indexOf("COMPLIANCE_SAMPLE_") === 0;
   var correlationId = "CMPARC_" + artifactHashHex_([
     input.scopeKey, input.kind, input.hash, input.fileId, input.action
   ]).slice(0, 48).toUpperCase();
@@ -1012,11 +1273,11 @@ function complianceEnsureServerAudit_(input) {
     try {
       storeAppendAudit_(spreadsheet, {
         eventState: "COMMITTED",
-        entityType: "compliance_archive",
+        entityType: sampleAudit ? "compliance_sample" : "compliance_archive",
         entityKey: input.scopeKey,
         action: input.action,
         actor: input.actor,
-        reasonCode: "COMPLIANCE_ARCHIVE",
+        reasonCode: sampleAudit ? "COMPLIANCE_SAMPLE" : "COMPLIANCE_ARCHIVE",
         approver: "",
         beforeHash: "",
         afterHash: input.hash,
