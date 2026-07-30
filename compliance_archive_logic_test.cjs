@@ -181,6 +181,10 @@ assert(source.includes("function complianceSampleRequestContext_"));
 assert(source.includes("function complianceCreateSamplePlan_"));
 assert(source.includes("function complianceCreateSampleStatus_"));
 assert(source.includes("context.sampleMode ? null : complianceRequireTemplatesReady_()"));
+assert(source.includes("value.sampleGeneratorVersion = 2"));
+assert(source.includes("var sheet = base.copyTo(spreadsheet).setName("));
+assert(source.includes('sheet.getRange("D1")'));
+assert(!source.includes('sheet.getRange("A1:AF1").merge()'));
 
 assert(artifactsSource.includes("implementationPlanSource"));
 assert(artifactsSource.includes("implementationStatusSource"));

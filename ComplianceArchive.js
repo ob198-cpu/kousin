@@ -583,7 +583,7 @@ function complianceOutputIdentity_(kind, context) {
   if (kind === "implementationPlan") {
     value.planMonth = context.planMonth;
     value.counts = context.counts;
-    if (context.sampleMode) value.sampleGeneratorVersion = 1;
+    if (context.sampleMode) value.sampleGeneratorVersion = 2;
     else value.templatePin = complianceTemplatePinValue_("implementationPlan", context.templateState.planTemplateId);
   } else if (kind === "implementationStatus") {
     value.reportDate = context.reportDate;
@@ -714,15 +714,8 @@ function complianceDriveOperation_(kind, context, folder, fileName) {
 function complianceCreateSamplePlan_(context, folder, fileName) {
   var mimeType = RENEWAL_COMPLIANCE_ARCHIVE.MIME_TYPES.implementationPlan;
   var label = complianceResultLabel_("implementationPlan", true);
-  var created = artifactCreateSpreadsheetInFolder_(
-    fileName, folder, label, context.settings.allowedOutputEmails, false
-  );
-  var file = created.file;
+  var file = null;
   try {
-    var spreadsheet = created.spreadsheet;
-    spreadsheet.setSpreadsheetTimeZone("Asia/Tokyo");
-    var sheet = spreadsheet.getSheets()[0];
-    sheet.setName("サンプル別添04");
     var parts = context.planMonth.split("-");
     var year = Number(parts[0]);
     var month = Number(parts[1]);
@@ -734,42 +727,61 @@ function complianceCreateSamplePlan_(context, folder, fileName) {
       days.push(day <= lastDay ? day : "");
       weekdays.push(day <= lastDay ? weekdayLabels[new Date(year, month - 1, day).getDay()] : "");
     }
-    sheet.getRange("A1:AF1").merge()
-      .setValue("【サンプル・正式使用禁止】別添04 登録更新講習機関実施計画書")
-      .setBackground("#b91c1c")
-      .setFontColor("#ffffff")
-      .setFontWeight("bold")
-      .setFontSize(14);
-    sheet.getRange("A2:AF2").merge()
-      .setValue("入力・出力確認用です。国土交通省等への提出、正式保管、実績集計には使用できません。")
-      .setBackground("#fee2e2")
-      .setFontColor("#991b1b");
-    sheet.getRange("A4:B9").setValues([
-      ["対象月", context.planMonth],
-      ["一等・開始予定人数", context.counts.firstStart],
-      ["一等・修了予定人数", context.counts.firstFinish],
-      ["二等・開始予定人数", context.counts.secondStart],
-      ["二等・修了予定人数", context.counts.secondFinish],
-      ["作成元", artifactRecordName_(context.sampleRecord) + " / " +
-        artifactText_(context.sampleRecord.personId)]
-    ]);
-    sheet.getRange("A4:A9").setBackground("#dbeafe").setFontWeight("bold");
-    sheet.getRange(11, 2, 1, 31).setValues([days]);
-    sheet.getRange(12, 2, 1, 31).setValues([weekdays]);
-    sheet.getRange("A11").setValue("日");
-    sheet.getRange("A12").setValue("曜日");
-    sheet.getRange("A11:AF12").setHorizontalAlignment("center").setBorder(
-      true, true, true, true, true, true
+
+    // サンプルも別添04の実用レイアウトを確認できるよう、公開参照元の
+    // 「ベース」だけを新規ファイルへ複製する。正式用の専用原本や台帳は変更しない。
+    var source = SpreadsheetApp.openById(RENEWAL_COMPLIANCE_ARCHIVE.PLAN_SOURCE_ID);
+    var base = source.getSheetByName("ベース");
+    if (!base) throw new Error("別添04参照元に「ベース」シートがありません。");
+    var sourceHeadings = base.getRange("A1:D8").getDisplayValues();
+    if (
+      artifactText_(sourceHeadings[0][0]) !== "講習区分" ||
+      artifactText_(sourceHeadings[0][1]).replace(/\s+/g, "") !== "開始(人)" ||
+      artifactText_(sourceHeadings[0][2]).replace(/\s+/g, "") !== "修了(人)" ||
+      artifactText_(sourceHeadings[3][0]).indexOf("二等無人航空機操縦士") < 0 ||
+      artifactText_(sourceHeadings[4][0]).indexOf("一等無人航空機操縦士") < 0
+    ) {
+      throw new Error("別添04参照元の固定見出しが一致しません。");
+    }
+
+    var created = artifactCreateSpreadsheetInFolder_(
+      fileName, folder, label, context.settings.allowedOutputEmails, false
     );
-    sheet.setFrozenRows(2);
-    sheet.setColumnWidth(1, 180);
-    sheet.setColumnWidths(2, 31, 42);
-    sheet.getRange("A1:AF12").setVerticalAlignment("middle").setWrap(true);
+    file = created.file;
+    var spreadsheet = created.spreadsheet;
+    spreadsheet.setSpreadsheetTimeZone("Asia/Tokyo");
+    var sheet = base.copyTo(spreadsheet).setName(
+      year + "年" + month + "月（サンプル）"
+    );
+    spreadsheet.getSheets().forEach(function(candidate) {
+      if (candidate.getSheetId() !== sheet.getSheetId()) spreadsheet.deleteSheet(candidate);
+    });
+
+    sheet.getRange("D1")
+      .setValue("【サンプル・正式使用禁止】登録更新講習機関実施計画書　" + month + "月")
+      .setNote(
+        "入力・出力確認用です。国土交通省等への提出、正式保管、実績集計には使用できません。" +
+        " 作成元：" + artifactRecordName_(context.sampleRecord) + " / " +
+        artifactText_(context.sampleRecord.personId)
+      )
+      .setFontColor("#991b1b")
+      .setFontWeight("bold");
+    sheet.getRange(2, 4, 1, 31).setValues([days]);
+    sheet.getRange(3, 4, 1, 31).setValues([weekdays]);
+    sheet.getRange("B4:C5").setValues([
+      [context.counts.secondStart, context.counts.secondFinish],
+      [context.counts.firstStart, context.counts.firstFinish]
+    ]);
+    sheet.setTabColor("#b91c1c");
     SpreadsheetApp.flush();
     if (
-      sheet.getRange("A1").getDisplayValue().indexOf("サンプル・正式使用禁止") < 0 ||
-      sheet.getRange("B5").getValue() !== context.counts.firstStart ||
-      sheet.getRange("B7").getValue() !== context.counts.secondStart
+      spreadsheet.getSheets().length !== 1 ||
+      sheet.getRange("D1").getDisplayValue().indexOf("サンプル・正式使用禁止") < 0 ||
+      Number(sheet.getRange("B4").getValue()) !== context.counts.secondStart ||
+      Number(sheet.getRange("C4").getValue()) !== context.counts.secondFinish ||
+      Number(sheet.getRange("B5").getValue()) !== context.counts.firstStart ||
+      Number(sheet.getRange("C5").getValue()) !== context.counts.firstFinish ||
+      artifactText_(sheet.getRange("D3").getDisplayValue()) !== weekdays[0]
     ) {
       throw new Error("別添04サンプルの作成後読戻し検証に失敗しました。");
     }
@@ -1574,8 +1586,8 @@ function complianceAssertPlanTemplateClean_(fileId, skipPin) {
   var values = sheets[0].getRange("A1:D8").getDisplayValues();
   if (
     artifactText_(values[0][0]) !== "講習区分" ||
-    artifactText_(values[0][1]) !== "開始(人)" ||
-    artifactText_(values[0][2]) !== "修了(人)" ||
+    artifactText_(values[0][1]).replace(/\s+/g, "") !== "開始(人)" ||
+    artifactText_(values[0][2]).replace(/\s+/g, "") !== "修了(人)" ||
     artifactText_(values[3][0]).indexOf("二等無人航空機操縦士") < 0 ||
     artifactText_(values[4][0]).indexOf("一等無人航空機操縦士") < 0
   ) {
