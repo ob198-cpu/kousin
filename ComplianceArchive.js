@@ -879,7 +879,7 @@ function complianceSampleRecord_(context) {
     artifactValidIsoDateOrBlank_(record.certificateIssuedDate) || record.courseDate;
   record.certificateExpiry =
     artifactValidIsoDateOrBlank_(record.certificateExpiry) ||
-    artifactAddCalendarMonthsMinusOne_(record.certificateIssuedDate);
+    artifactAddCalendarMonthsMinusOne_(record.courseDate);
   record.certificateDeliveredDate =
     artifactValidIsoDateOrBlank_(record.certificateDeliveredDate) || record.certificateIssuedDate;
   record.certificateDelivered = "有り";
@@ -938,7 +938,6 @@ function complianceCreateSampleTraining_(context, folder, fileName) {
     if (sheet.getMaxColumns() > keepColumns) {
       sheet.deleteColumns(keepColumns + 1, sheet.getMaxColumns() - keepColumns);
     }
-    if (!firstClass && requiresPractical) artifactReplaceSecondClassPracticalMinimum_(sheet);
     sheet.setName(sourceSheetName + "（サンプル）");
     sheet.setTabColor("#b91c1c");
     sheet.getRange("A1").setValue(artifactSheetText_(

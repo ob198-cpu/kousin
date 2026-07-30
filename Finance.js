@@ -14,7 +14,9 @@ var FINANCE_BILLING_SNAPSHOT_FIELDS = [
   "recipientName",
   "recipientHonorific",
   "recipientAddress",
+  "traineeName",
   "issuerCompany",
+  "issuerRepresentative",
   "issuerAddress",
   "issuerPhone",
   "issuerFax",
@@ -36,7 +38,9 @@ var FINANCE_BILLING_SNAPSHOT_MAX_LENGTHS = {
   recipientName: 200,
   recipientHonorific: 2,
   recipientAddress: 500,
+  traineeName: 200,
   issuerCompany: 200,
+  issuerRepresentative: 100,
   issuerAddress: 500,
   issuerPhone: 50,
   issuerFax: 50,
@@ -2347,7 +2351,7 @@ function financeNormalizeBillingSnapshot_(input, requireComplete) {
     var field = FINANCE_BILLING_SNAPSHOT_FIELDS[index];
     var hasField = Object.prototype.hasOwnProperty.call(input, field);
     if (!hasField) {
-      if (requireComplete) {
+      if (requireComplete && FINANCE_BILLING_SNAPSHOT_REQUIRED_VALUES[field]) {
         financeFail_("BILLING_SNAPSHOT_INCOMPLETE", "請求スナップショットの項目が不足しています: " + field);
       }
       continue;

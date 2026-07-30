@@ -181,7 +181,6 @@ const pureNames = [
   "artifactDriveItemTrackingInfo_", "artifactPersistCleanupFailure_", "artifactCleanupFailureEntries_",
   "artifactAssertNoUnresolvedCleanupFailures_", "artifactPermanentlyDeleteNewDriveItem_",
   "artifactThrowAfterCleanup_", "artifactShortKey_", "artifactNowText_",
-  "artifactFindSecondClassPracticalMinimumCells_", "artifactReplaceSecondClassPracticalMinimum_",
   "artifactRecordName_", "artifactSafeName_"
 ];
 const driveState = {
@@ -1048,6 +1047,35 @@ settingsPropertyState.throwBeforeWrite = false;
 assert.equal(logic.artifactLoadSettings_()._settingsVersion, 2);
 
 const validV2State = cleanupAuditProperties[artifactSettingsStateKey];
+const preRepresentativeState = JSON.parse(validV2State);
+delete preRepresentativeState.settings.issuerRepresentative;
+const preRepresentativeSemantic = {
+  settings: preRepresentativeState.settings,
+  bankAccountText: preRepresentativeState.bankAccountText,
+  legacyOutputFolders: preRepresentativeState.legacyOutputFolders
+};
+preRepresentativeState.contentHash = logic.artifactHashHex_(preRepresentativeSemantic);
+preRepresentativeState.lastMutation.afterHash = preRepresentativeState.contentHash;
+preRepresentativeState.history[preRepresentativeState.history.length - 1].afterHash =
+  preRepresentativeState.contentHash;
+const preRepresentativeEnvelope = {
+  format: preRepresentativeState.format,
+  schemaVersion: preRepresentativeState.schemaVersion,
+  version: preRepresentativeState.version,
+  settings: preRepresentativeState.settings,
+  bankAccountText: preRepresentativeState.bankAccountText,
+  legacyOutputFolders: preRepresentativeState.legacyOutputFolders,
+  contentHash: preRepresentativeState.contentHash,
+  updatedAt: preRepresentativeState.updatedAt,
+  updatedBy: preRepresentativeState.updatedBy,
+  lastMutation: preRepresentativeState.lastMutation,
+  history: preRepresentativeState.history
+};
+preRepresentativeState.envelopeHash = logic.artifactHashHex_(preRepresentativeEnvelope);
+cleanupAuditProperties[artifactSettingsStateKey] = JSON.stringify(preRepresentativeState);
+assert.equal(logic.artifactLoadSettings_().issuerRepresentative, "代表取締役　小田　喜之",
+  "代表者項目導入前の正当な設定stateはhashを壊さず承認済み原本値を補完できる必要があります");
+cleanupAuditProperties[artifactSettingsStateKey] = validV2State;
 cleanupAuditProperties[artifactSettingsKey] = JSON.stringify({ issuerCompany: "旧設定へ戻ってはいけない" });
 cleanupAuditProperties[artifactBankKey] = "破損V2検査用の旧平文振込先";
 settingsPropertyState.deleteCalls.length = 0;
@@ -1332,6 +1360,7 @@ assert.throws(() => logic.artifactLoadCanonicalArtifactRequest_({
 
 const snapshotSettings = {
   issuerCompany: "株式会社CDP北海道",
+  issuerRepresentative: "代表取締役 テスト 太郎",
   issuerAddress: "〒002-8053 北海道札幌市北区篠路町篠路389-72",
   issuerPhone: "011-790-7925",
   issuerFax: "011-790-7935",
@@ -1344,6 +1373,7 @@ context.storeReadRecords_ = () => [{
   recordId: "record-1",
   deleted: false,
   payload: {
+    targetName: "受講 太郎",
     billingRecipientName: "株式会社受講者",
     billingHonorific: "御中",
     billingAddress: "〒060-0001 北海道札幌市中央区北一条西1丁目"
@@ -1351,7 +1381,9 @@ context.storeReadRecords_ = () => [{
 }];
 const serverBillingSnapshot = logic.artifactBuildFormalBillingSnapshotForFinance_("store-sheet", "record-1");
 assert.equal(serverBillingSnapshot.recipientName, "株式会社受講者");
+assert.equal(serverBillingSnapshot.traineeName, "受講 太郎");
 assert.equal(serverBillingSnapshot.issuerCompany, snapshotSettings.issuerCompany);
+assert.equal(serverBillingSnapshot.issuerRepresentative, snapshotSettings.issuerRepresentative);
 assert.equal(serverBillingSnapshot.bankAccountText, snapshotSettings._bankAccountText);
 context.storeReadRecords_ = () => [{
   recordId: "record-1", deleted: false,
@@ -1928,12 +1960,12 @@ const originalDateRows = [{
 }];
 errors = [];
 logic.artifactValidateCertificateDateContinuity_(originalDateRows, {
-  recordId: "rec-date", certificateIssuedDate: "2026-07-01"
+  recordId: "rec-date", courseDate: "2026-07-01", certificateIssuedDate: "2026-07-01"
 }, errors, []);
 assert.deepEqual(errors, []);
 errors = [];
 logic.artifactValidateCertificateDateContinuity_(originalDateRows, {
-  recordId: "rec-date", certificateIssuedDate: "2026-07-02"
+  recordId: "rec-date", courseDate: "2026-07-01", certificateIssuedDate: "2026-07-02"
 }, errors, []);
 assert(errors.some((message) => message.includes("再発行は未対応")));
 errors = [];
@@ -2083,8 +2115,15 @@ setTrainingSlot(secondClassTraining, "practicalExercise1", "09:50", "09:55");
 setTrainingSlot(secondClassTraining, "practicalDiscussion", "09:55", "10:00");
 const secondClassErrors = [];
 logic.artifactValidateTraining_(secondClassTraining, 2, secondClassErrors, []);
-assert(secondClassErrors.some((message) => message.includes("実地・操縦演習は6分以上")),
-  "二等の操縦演習は合計6分以上必要です");
+assert.equal(secondClassErrors.some((message) => message.includes("実地・操縦演習")), false,
+  "二等の操縦演習は参照原本どおり5分で要件を満たします");
+const shortSecondClassTraining = commonTrainingRecord();
+setTrainingSlot(shortSecondClassTraining, "practicalExercise1", "09:50", "09:54");
+setTrainingSlot(shortSecondClassTraining, "practicalDiscussion", "09:54", "09:59");
+const shortSecondClassErrors = [];
+logic.artifactValidateTraining_(shortSecondClassTraining, 2, shortSecondClassErrors, []);
+assert(shortSecondClassErrors.some((message) => message.includes("実地・操縦演習は5分以上")),
+  "二等の操縦演習が5分未満なら停止する必要があります");
 
 const firstClassTraining = commonTrainingRecord();
 setTrainingSlot(firstClassTraining, "academicFirstClass", "09:50", "10:05");
@@ -2128,43 +2167,6 @@ const missingCompletionErrors = [];
 logic.artifactValidateTraining_(missingCompletionTraining, 2, missingCompletionErrors, [], "2026-07-15");
 assert(missingCompletionErrors.some((message) => message.includes("講習修了日")),
   "受講日があっても講習修了日なしの正式記録簿を作成してはいけません");
-
-const secondClassTemplateValues = Array.from({ length: 32 }, () => Array(6).fill(""));
-secondClassTemplateValues[21][0] = "操縦演習（異常事態における飛行）";
-secondClassTemplateValues[21][1] = "操縦演習に基づく指導及び質疑応答";
-secondClassTemplateValues[22][0] = "５分以上";
-secondClassTemplateValues[22][1] = "5分以上";
-const minimumMatches = logic.artifactFindSecondClassPracticalMinimumCells_(secondClassTemplateValues);
-assert.deepEqual(JSON.parse(JSON.stringify(minimumMatches)), [
-  { row: 23, column: 1, oldText: "５分以上", newText: "６分以上" }
-]);
-let writtenMinimum = null;
-const fakeSecondClassSheet = {
-  getRange(row, column, rowCount, columnCount) {
-    if (row === 1 && column === 1 && rowCount === 32 && columnCount === 6) {
-      return { getDisplayValues: () => secondClassTemplateValues };
-    }
-    assert.equal(row, 23);
-    assert.equal(column, 1);
-    return {
-      getDisplayValue: () => secondClassTemplateValues[row - 1][column - 1],
-      setValue(value) { writtenMinimum = { row, column, value }; }
-    };
-  }
-};
-logic.artifactReplaceSecondClassPracticalMinimum_(fakeSecondClassSheet);
-assert.deepEqual(writtenMinimum, { row: 23, column: 1, value: "６分以上" });
-assert.equal(secondClassTemplateValues[22][1], "5分以上", "指導・質疑のB23は5分のまま維持します");
-const missingMinimumValues = Array.from({ length: 32 }, () => Array(6).fill(""));
-assert.throws(() => logic.artifactReplaceSecondClassPracticalMinimum_({
-  getRange() { return { getDisplayValues: () => missingMinimumValues }; }
-}), /一意/);
-const duplicatedMinimumValues = secondClassTemplateValues.map((row) => row.slice());
-duplicatedMinimumValues[24][0] = "操縦演習（異常事態における飛行）";
-duplicatedMinimumValues[25][0] = "5分以上";
-assert.throws(() => logic.artifactReplaceSecondClassPracticalMinimum_({
-  getRange() { return { getDisplayValues: () => duplicatedMinimumValues }; }
-}), /一意/);
 
 const cleanCertificateText = [
   "第　UC0157　号", "2000年 1月 1日 修了", "2000年 4月 1日 まで有効", "　　　殿",
@@ -3087,11 +3089,11 @@ assert.equal(guidanceHashRecord.taxExceptionApprovedBy, "経理");
 ].forEach((name) => assert(source.includes("function " + name + "("), name + "がありません"));
 assert(source.includes("SCHEMA_VERSION: 3"), "完成版の共通スキーマ版へ増分されていません");
 assert(source.includes('ledger: "LEDGER_OUTPUT_V4"'), "台帳レイアウト版がありません");
-assert(source.includes('certificate: "CERTIFICATE_OUTPUT_V3"'), "証明書レイアウト版がありません");
+assert(source.includes('certificate: "CERTIFICATE_OUTPUT_V4"'), "証明書レイアウト版がありません");
 assert(source.includes('dipsCsv: "DIPS_MANUAL_11COL_V2"'), "DIPSレイアウト版がありません");
-assert(source.includes('training: "TRAINING_OUTPUT_V2"'), "講習記録簿レイアウト版がありません");
-assert(source.includes('billing: "CDP_CLEAN_BILLING_V3"'), "請求帳票レイアウト版がありません");
-assert(source.includes('"CDP_CLEAN_INVOICE_V3"') && source.includes('"CDP_CLEAN_QUOTE_V3"'),
+assert(source.includes('training: "TRAINING_OUTPUT_V3"'), "講習記録簿レイアウト版がありません");
+assert(source.includes('billing: "CDP_CLEAN_BILLING_V4"'), "請求帳票レイアウト版がありません");
+assert(source.includes('"CDP_CLEAN_INVOICE_V4"') && source.includes('"CDP_CLEAN_QUOTE_V4"'),
   "正式会計対応後の請求・見積レイアウト識別子がありません");
 assert(source.includes("file.getLastUpdated().toISOString()"),
   "Driveテンプレートfingerprintに最終更新日時が含まれていません");
@@ -3478,8 +3480,8 @@ const trainingCreateBlock = source.slice(
   source.indexOf("function artifactCreateTraining_"),
   source.indexOf("function artifactWriteTrainingModule_")
 );
-assert(trainingCreateBlock.includes("if (!firstClass && requiresPractical) artifactReplaceSecondClassPracticalMinimum_(sheet)"),
-  "二等の生成コピーだけ操縦演習最低時間ラベルを補正する必要があります");
+assert.equal(trainingCreateBlock.includes("artifactReplaceSecondClassPracticalMinimum_"), false,
+  "参照原本の二等5分を独自値へ書き換えてはいけません");
 assert.equal(/openById\(RENEWAL_ARTIFACT\.TEMPLATE_IDS\.training\)/.test(trainingCreateBlock), false,
   "講習記録簿原本を直接編集してはいけません");
 assert(trainingCreateBlock.includes("実地講習：対象外（停止処分者向け講習なし）"),
@@ -3501,6 +3503,14 @@ const billingBuildBlock = source.slice(
   source.indexOf("function artifactBuildBillingSheet_"), source.indexOf("function artifactBillingMerge_")
 );
 assert(billingBuildBlock.includes("取引年月日（役務提供日）"), "請求書に取引年月日がありません");
+assert(billingBuildBlock.includes("受講予定者: ") && billingBuildBlock.includes("コース名: "),
+  "見積書参照元の受講者・コース名欄がありません");
+assert(billingBuildBlock.includes("billingItemDetail"),
+  "見積書参照元の講習コード・日数・リスキリング欄がありません");
+assert(billingBuildBlock.includes("講習日程①: ") && billingBuildBlock.includes("講習日程②: "),
+  "見積書参照元の講習日程①・②がありません");
+assert(billingBuildBlock.includes("issuerRepresentative"),
+  "見積書参照元の代表者役職・氏名欄がありません");
 assert(createBlock.includes("artifactAssertExistingLedgerRow_"),
   "同一hash台帳を再利用する前にJ:N監査列を照合する必要があります");
 assert(createBlock.includes("artifactAssertExistingOutputFile_"),

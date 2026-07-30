@@ -1138,11 +1138,11 @@
               <div class="field">
                 <label for="certificateIssuedDate">修了証明書初回発行日</label>
                 <input id="certificateIssuedDate" type="date">
-                <small>有効期限の基準日です。訂正・再発行日で上書きしません。</small>
+                <small>証明書番号の発行年月に使います。訂正・再発行日で上書きしません。</small>
               </div>
               <div class="field">
                 <label for="certificateExpiry">修了証明書有効年月日（自動計算）</label>
-                <input id="certificateExpiry" type="date" readonly title="修了証明書初回発行日から3暦月後の前日（月末対応）">
+                <input id="certificateExpiry" type="date" readonly title="講習修了日から3暦月後の前日（月末対応）">
               </div>
               <div class="field wide">
                 <label for="certificateNo">更新講習修了証明書発行番号</label>
@@ -1246,6 +1246,22 @@
                   <option>他機関受講者対応</option>
                   <option>その他</option>
                 </select>
+              </div>
+              <div class="field wide">
+                <label for="billingSubject">見積・請求件名（コース名）</label>
+                <input id="billingSubject" placeholder="例：二等無人航空機操縦士 更新講習">
+              </div>
+              <div class="field full">
+                <label for="billingItemDetail">講習コード・日数・リスキリング有無</label>
+                <input id="billingItemDetail" placeholder="例：UC-2／実技2日間／リスキリング対象">
+              </div>
+              <div class="field wide">
+                <label for="billingScheduleNote1">見積書の講習日程①</label>
+                <input id="billingScheduleNote1" placeholder="例：実技2日間　8月予定">
+              </div>
+              <div class="field wide">
+                <label for="billingScheduleNote2">見積書の講習日程②</label>
+                <input id="billingScheduleNote2" placeholder="候補がない場合は空欄">
               </div>
               <div class="field">
                 <label for="feeExTax">料金（税抜）</label>
@@ -1728,6 +1744,7 @@
         <p class="operation-note"><strong>原本承認：</strong>機械検査だけでヘッダー・フッター・注釈を含む全領域の個人情報不存在を保証することはできません。専用原本を管理者が全ページ確認し、編集者を限定し、試作出力を確認してからIDを登録してください。</p>
         <div class="settings-grid">
           <div class="field wide"><label for="artifactIssuerCompany">事業者名</label><input id="artifactIssuerCompany"></div>
+          <div class="field wide"><label for="artifactIssuerRepresentative">代表者役職・氏名</label><input id="artifactIssuerRepresentative" placeholder="例：代表取締役　氏名"></div>
           <div class="field full"><label for="artifactIssuerAddress">郵便番号・住所</label><input id="artifactIssuerAddress"></div>
           <div class="field"><label for="artifactIssuerPhone">電話</label><input id="artifactIssuerPhone"></div>
           <div class="field"><label for="artifactIssuerFax">FAX</label><input id="artifactIssuerFax"></div>
@@ -2093,7 +2110,7 @@
       [STORAGE_KEY].concat(LEGACY_STORAGE_KEYS).concat(
         [AUDIT_KEY, SCHEDULE_KEY]
       );
-    const SCHEMA_VERSION = 5;
+    const SCHEMA_VERSION = 6;
     const form = document.getElementById("entryForm");
     let pendingImport = null;
     let artifactRecordId = null;
@@ -2225,7 +2242,8 @@
       "courseDate", "certificateIssuedDate", "certificateExpiry", "certificateNo", "certificateInstructor",
       "fitnessMethod", "fitnessCheckedDate", "fitnessExpiry", "dipsCompletionLinkedDate", "dipsDate", "dipsApplicantId", "suspensionCourse",
       "fitnessCertificateNo", "dipsRecordMode", "confirmedDate", "newExpiry",
-      "billingRecipientName", "billingHonorific", "billingAddress", "serviceCategory", "feeExTax", "discountExTax", "taxRate", "taxRounding",
+      "billingRecipientName", "billingHonorific", "billingAddress", "serviceCategory", "billingSubject", "billingItemDetail",
+      "billingScheduleNote1", "billingScheduleNote2", "feeExTax", "discountExTax", "taxRate", "taxRounding",
       "taxExceptionApprovalDate", "taxExceptionApprovedBy", "taxExceptionReason",
       "quoteNo", "quoteDate", "quoteExpiry",
       "invoiceNo", "invoiceStatus", "accountingDate", "invoiceDate", "paymentDueDate", "paidAmount", "paymentDate", "paymentMethod",
@@ -2292,6 +2310,10 @@
       ["billingHonorific", "見積請求先敬称"],
       ["billingAddress", "見積請求先住所"],
       ["serviceCategory", "売上区分"],
+      ["billingSubject", "見積請求件名（コース名）"],
+      ["billingItemDetail", "講習コード・日数・リスキリング有無"],
+      ["billingScheduleNote1", "見積書の講習日程①"],
+      ["billingScheduleNote2", "見積書の講習日程②"],
       ["feeExTax", "料金税抜"],
       ["discountExTax", "値引税抜"],
       ["taxRate", "消費税率"],
@@ -2670,6 +2692,10 @@
         billingHonorific: "御中",
         billingAddress: "",
         serviceCategory: "更新講習",
+        billingSubject: "",
+        billingItemDetail: "",
+        billingScheduleNote1: "",
+        billingScheduleNote2: "",
         feeExTax: "0",
         discountExTax: "0",
         taxRate: "10",
@@ -2697,8 +2723,8 @@
       };
       TRAINING_FIELD_IDS.forEach(function (id) { defaults[id] = ""; });
       const record = Object.assign(defaults, raw || {});
-      if (record.certificateIssuedDate) {
-        record.certificateExpiry = certificateExpiryFromIssueDate(record.certificateIssuedDate);
+      if (record.courseDate) {
+        record.certificateExpiry = certificateExpiryFromCourseDate(record.courseDate);
       }
       if (!(raw || {}).billingRecipientName) {
         record.billingRecipientName = record.companyName || record.targetName || "";
@@ -3029,7 +3055,7 @@
       return dateValue(addDays(new Date(targetYear, targetMonth, startDate.getDate()), -1));
     }
 
-    function certificateExpiryFromIssueDate(value) {
+    function certificateExpiryFromCourseDate(value) {
       return periodExpiryFromDate(value, 3);
     }
 
@@ -3250,7 +3276,7 @@
       const courseDate = toDate(record.courseDate);
       const eligibilityCheckedDate = toDate(record.eligibilityCheckedDate);
       const certificateIssuedDate = toDate(record.certificateIssuedDate);
-      const calculatedCertificateExpiry = certificateIssuedDate ? toDate(certificateExpiryFromIssueDate(certificateIssuedDate)) : null;
+      const calculatedCertificateExpiry = courseDate ? toDate(certificateExpiryFromCourseDate(courseDate)) : null;
       const certificateExpiry = toDate(record.certificateExpiry) || calculatedCertificateExpiry;
       const fitnessExpiry = toDate(record.fitnessExpiry);
       const applicationStart = addMonths(licenseExpiry, -6);
@@ -3517,10 +3543,10 @@
       if ((certificateIssued || record.certificateNo) && record.aircraftType === "未確認") errors.push("修了証明書を発行・採番する場合は航空機の種類を確定してください。");
       if (certificateIssued && certificateIssued > today()) errors.push("修了証明書発行日に未来日は登録できません。");
       if (certificateIssued && certificateExpiry && certificateExpiry < certificateIssued) errors.push("修了証明書有効年月日が発行日より前です。");
-      if (certificateIssued && certificateExpiry) {
-        const expectedCertificateExpiry = certificateExpiryFromIssueDate(record.certificateIssuedDate);
+      if (courseDate && certificateExpiry) {
+        const expectedCertificateExpiry = certificateExpiryFromCourseDate(record.courseDate);
         if (dateValue(certificateExpiry) !== expectedCertificateExpiry) {
-          warnings.push("修了証明書有効年月日は発行日から3暦月後の前日（" + expectedCertificateExpiry + "）と一致しません。証明書記載値を確認してください。");
+          warnings.push("修了証明書有効年月日は講習修了日から3暦月後の前日（" + expectedCertificateExpiry + "）と一致しません。証明書記載値を確認してください。");
         }
       }
       if (!certificateIssued && record.certificateExpiry) errors.push("修了証明書有効年月日を登録する場合は発行日が必要です。");
@@ -3646,7 +3672,7 @@
         if (record.suspensionCourse === "あり") {
           const practicalExerciseMinutes = trainingMinutes(record, "practicalExercise1");
           const practicalDiscussionMinutes = trainingMinutes(record, "practicalDiscussion");
-          const exerciseMinimum = record.licenseClass === "一等" ? 5 : 6;
+          const exerciseMinimum = 5;
           if (practicalExerciseMinutes !== null && practicalExerciseMinutes < exerciseMinimum) errors.push("実地の操縦演習は" + exerciseMinimum + "分以上必要です。");
           if (practicalDiscussionMinutes !== null && practicalDiscussionMinutes < (record.licenseClass === "一等" ? 10 : 5)) {
             errors.push("実地の指導・質疑応答は" + (record.licenseClass === "一等" ? "10" : "5") + "分以上必要です。");
@@ -4605,9 +4631,12 @@
         throw new Error("この画面では課税10%以外を発行できません。税区分の根拠資料と別担当者の承認記録を準備してください。");
       }
       const category = "TAXABLE_10";
+      const billingSubject = String(record.billingSubject || record.serviceCategory || "更新講習").trim();
+      const billingLineDescription = billingSubject +
+        (String(record.billingItemDetail || "").trim() ? "\n" + String(record.billingItemDetail).trim() : "");
       const lines = [{
         id: makeId("line"),
-        description: record.serviceCategory || "更新講習",
+        description: billingLineDescription,
         quantity: 1,
         unitAmount: fee,
         lineType: "CHARGE",
@@ -4631,7 +4660,7 @@
         invoiceDate: document.getElementById("formalInvoiceDate").value,
         accountingDate: document.getElementById("formalAccountingDate").value,
         dueDate: document.getElementById("formalDueDate").value,
-        subject: record.serviceCategory || "更新講習",
+        subject: billingSubject,
         lines: lines
       };
     }
@@ -7822,6 +7851,7 @@
       artifactSettingsVersion = Number(data.settingsVersion || 0);
       const mapping = {
         artifactIssuerCompany: "issuerCompany",
+        artifactIssuerRepresentative: "issuerRepresentative",
         artifactIssuerAddress: "issuerAddress",
         artifactIssuerPhone: "issuerPhone",
         artifactIssuerFax: "issuerFax",
@@ -8019,6 +8049,7 @@
       const button = document.getElementById("saveArtifactSettings");
       const payload = {
         issuerCompany: document.getElementById("artifactIssuerCompany").value.trim(),
+        issuerRepresentative: document.getElementById("artifactIssuerRepresentative").value.trim(),
         issuerAddress: document.getElementById("artifactIssuerAddress").value.trim(),
         issuerPhone: document.getElementById("artifactIssuerPhone").value.trim(),
         issuerFax: document.getElementById("artifactIssuerFax").value.trim(),
@@ -8680,8 +8711,8 @@
       });
       if (!data.personId) data.personId = makePersonId();
       if (!data.recordId) data.recordId = makeId("rec");
-      if (data.certificateIssuedDate) {
-        data.certificateExpiry = certificateExpiryFromIssueDate(data.certificateIssuedDate);
+      if (data.courseDate) {
+        data.certificateExpiry = certificateExpiryFromCourseDate(data.courseDate);
       }
       return normalizeRecord(Object.assign({}, data, {
         id: data.recordId,
@@ -8733,7 +8764,7 @@
 
     function syncCertificateExpiryInput() {
       const expiry = document.getElementById("certificateExpiry");
-      expiry.value = certificateExpiryFromIssueDate(document.getElementById("certificateIssuedDate").value);
+      expiry.value = certificateExpiryFromCourseDate(document.getElementById("courseDate").value);
     }
 
     function syncTrainingLabels() {
@@ -8742,7 +8773,7 @@
       const suspensionRequired = suspensionStatus === "あり";
       document.getElementById("practicalExercise1Label").textContent = isFirstClass ?
         "緊急着陸を伴う八の字飛行（一等・5分以上／停止処分者のみ）" :
-        "操縦演習（異常事態における飛行）（二等・6分以上／停止処分者のみ）";
+        "操縦演習（異常事態における飛行）（二等・5分以上／停止処分者のみ）";
       document.getElementById("practicalExercise1Label").title = suspensionStatus === "未確認" ?
         "停止処分者向け実地講習の要否を先に確認してください。" :
         (suspensionRequired ? "停止処分者向け実地講習の対象です。" : "通常更新では実地講習を記録しません。");
@@ -9182,7 +9213,7 @@
     document.getElementById("licenseExpiry").addEventListener("change", syncDerivedScheduleInputs);
     document.getElementById("licenseClass").addEventListener("change", syncTrainingLabels);
     document.getElementById("suspensionCourse").addEventListener("change", syncTrainingLabels);
-    document.getElementById("certificateIssuedDate").addEventListener("change", syncCertificateExpiryInput);
+    document.getElementById("courseDate").addEventListener("change", syncCertificateExpiryInput);
     document.querySelectorAll("[data-screen]").forEach(function (button) {
       button.addEventListener("click", function () { showScreen(button.dataset.screen); });
     });

@@ -80,11 +80,11 @@ var RENEWAL_ARTIFACT = {
   // 各成果物の列・セル・数式・表示・コピー後補正を変更した場合は、原本更新の有無にかかわらず対象版を増分する。
   LAYOUT_VERSIONS: {
     ledger: "LEDGER_OUTPUT_V4",
-    certificate: "CERTIFICATE_OUTPUT_V3",
+    certificate: "CERTIFICATE_OUTPUT_V4",
     dipsCsv: "DIPS_MANUAL_11COL_V2",
     guidance: "GUIDANCE_OUTPUT_V2",
-    training: "TRAINING_OUTPUT_V2",
-    billing: "CDP_CLEAN_BILLING_V3"
+    training: "TRAINING_OUTPUT_V3",
+    billing: "CDP_CLEAN_BILLING_V4"
   },
   CERTIFICATE_BASE_TAB_ID: "t.0",
   // 画面・正本では正式名称を保持し、承認済み証明書原本の区分表だけ
@@ -452,6 +452,7 @@ function apiSaveArtifactSettings(input) {
     }
     var next = {
       issuerCompany: artifactText_(input.issuerCompany !== undefined ? input.issuerCompany : current.issuerCompany),
+      issuerRepresentative: artifactText_(input.issuerRepresentative !== undefined ? input.issuerRepresentative : current.issuerRepresentative),
       issuerAddress: artifactText_(input.issuerAddress !== undefined ? input.issuerAddress : current.issuerAddress),
       issuerPhone: artifactText_(input.issuerPhone !== undefined ? input.issuerPhone : current.issuerPhone),
       issuerFax: artifactText_(input.issuerFax !== undefined ? input.issuerFax : current.issuerFax),
@@ -796,7 +797,9 @@ function artifactValidateFormalBillingSnapshot_(input) {
     "recipientName",
     "recipientHonorific",
     "recipientAddress",
+    "traineeName",
     "issuerCompany",
+    "issuerRepresentative",
     "issuerAddress",
     "issuerPhone",
     "issuerFax",
@@ -818,7 +821,9 @@ function artifactValidateFormalBillingSnapshot_(input) {
     recipientName: 200,
     recipientHonorific: 2,
     recipientAddress: 500,
+    traineeName: 200,
     issuerCompany: 200,
+    issuerRepresentative: 100,
     issuerAddress: 500,
     issuerPhone: 50,
     issuerFax: 50,
@@ -837,6 +842,9 @@ function artifactValidateFormalBillingSnapshot_(input) {
   var result = {};
   fields.forEach(function (field) {
     if (!Object.prototype.hasOwnProperty.call(input, field)) {
+      // 代表者項目の導入前に発行済みとなった請求は、その時点の
+      // スナップショットを改変せず、代表者空欄のまま再現する。
+      if (field === "issuerRepresentative" || field === "traineeName") return;
       throw new Error("正式請求スナップショットの項目が不足しています: " + field);
     }
     var text = String(input[field] === undefined || input[field] === null ? "" : input[field]);
@@ -892,11 +900,16 @@ function artifactBuildFormalBillingSnapshotForFinance_(spreadsheet, customerId) 
     throw new Error("正式請求の対象者データが不正なため処理を停止しました。");
   }
   var settings = artifactLoadSettings_();
+  if (!artifactText_(settings.issuerRepresentative)) {
+    throw new Error("正式請求の発行前に、事業者設定へ帳票に表示する代表者名を登録してください。");
+  }
   return artifactValidateFormalBillingSnapshot_({
     recipientName: artifactText_(payload.billingRecipientName),
     recipientHonorific: artifactText_(payload.billingHonorific),
     recipientAddress: artifactText_(payload.billingAddress),
+    traineeName: artifactText_(payload.targetName),
     issuerCompany: artifactText_(settings.issuerCompany),
+    issuerRepresentative: artifactText_(settings.issuerRepresentative),
     issuerAddress: artifactText_(settings.issuerAddress),
     issuerPhone: artifactText_(settings.issuerPhone),
     issuerFax: artifactText_(settings.issuerFax),
@@ -1122,8 +1135,10 @@ function artifactBillingRenderInputs_(record, settings) {
       recipientName: snapshot.recipientName,
       recipientHonorific: snapshot.recipientHonorific,
       recipientAddress: snapshot.recipientAddress,
+      traineeName: snapshot.traineeName || "",
       subject: artifactText_(record._formalBillingSubject) || "更新講習",
       issuerCompany: snapshot.issuerCompany,
+      issuerRepresentative: snapshot.issuerRepresentative || "",
       issuerAddress: snapshot.issuerAddress,
       issuerPhone: snapshot.issuerPhone,
       issuerFax: snapshot.issuerFax,
@@ -1136,8 +1151,10 @@ function artifactBillingRenderInputs_(record, settings) {
     recipientName: artifactText_(record.billingRecipientName || record.targetName),
     recipientHonorific: artifactText_(record.billingHonorific) || (record.companyName ? "御中" : "様"),
     recipientAddress: artifactText_(record.billingAddress),
-    subject: artifactText_(record.serviceCategory) || "更新講習",
+    traineeName: artifactText_(record.targetName),
+    subject: artifactText_(record.billingSubject || record.serviceCategory) || "更新講習",
     issuerCompany: artifactText_(settings.issuerCompany),
+    issuerRepresentative: artifactText_(settings.issuerRepresentative),
     issuerAddress: artifactText_(settings.issuerAddress),
     issuerPhone: artifactText_(settings.issuerPhone),
     issuerFax: artifactText_(settings.issuerFax),
@@ -1543,7 +1560,9 @@ function apiCreateArtifacts(request) {
         );
       }
       if (certificateDateErrors.length) throw new Error(certificateDateErrors.join(" "));
-      var calculatedExpiry = artifactAddCalendarMonthsMinusOne_(certificateIssuedDate);
+      // 参照元の修了証明書・発行台帳どおり、有効期限は発行日ではなく
+      // 講習修了日から3暦月後の応当日前日とする。
+      var calculatedExpiry = artifactAddCalendarMonthsMinusOne_(courseDate);
       record.certificateExpiry = calculatedExpiry;
       recordUpdates.certificateExpiry = calculatedExpiry;
     }
@@ -2085,10 +2104,10 @@ function artifactValidateKind_(kind, record, settings, schedules, errors, warnin
   if (kind === "dipsCsv" && record.dipsApplicantId && courseDate && artifactText_(record.dipsApplicantId).indexOf(artifactYyMm_(courseDate)) !== 0) {
     errors.push("DIPS申請者IDのYYMMは講習修了日の年月と一致させてください。");
   }
-  if (usesCertificateNumber && certificateIssuedDate && record.certificateExpiry) {
-    var expectedExpiry = artifactAddCalendarMonthsMinusOne_(certificateIssuedDate);
+  if (usesCertificateNumber && courseDate && record.certificateExpiry) {
+    var expectedExpiry = artifactAddCalendarMonthsMinusOne_(courseDate);
     if (artifactText_(record.certificateExpiry) !== expectedExpiry) {
-      warnings.push("修了証明書有効期限は証明書発行日から3暦月後の応当日前日（応当日がない月は月末、" + expectedExpiry + "）で作成します。");
+      warnings.push("修了証明書有効期限は講習修了日から3暦月後の応当日前日（応当日がない月は月末、" + expectedExpiry + "）で作成します。");
     }
   }
 
@@ -2147,7 +2166,10 @@ function artifactValidateKind_(kind, record, settings, schedules, errors, warnin
       : artifactText_(record.billingHonorific);
     if (["御中", "様"].indexOf(billingHonorific) < 0) errors.push("敬称は「御中」または「様」を選択してください。");
     artifactValidateBillingDatesAndNumbers_(record, errors);
-    if (record._formalFinanceInvoice !== true) artifactRequireIssuer_(settings, errors, false, true);
+    if (record._formalFinanceInvoice !== true) {
+      artifactRequireIssuer_(settings, errors, false, true);
+      if (!artifactText_(settings.issuerRepresentative)) errors.push("事業者設定の代表者名が必要です。");
+    }
   }
 }
 
@@ -2437,7 +2459,7 @@ function artifactValidateTraining_(record, classValue, errors, warnings, todayIs
     artifactRequireMinutes_(record, "academicFirstClassVideo", 10, "一等動画", errors);
   }
   if (requiresPractical) {
-    artifactRequireMinutes_(record, "practicalExercise1", classValue === 1 ? 5 : 6, "実地・操縦演習", errors);
+    artifactRequireMinutes_(record, "practicalExercise1", 5, "実地・操縦演習", errors);
     artifactRequireMinutes_(record, "practicalDiscussion", classValue === 1 ? 10 : 5, "実地・指導及び質疑応答", errors);
   } else {
     var practicalFields = [
@@ -4305,7 +4327,6 @@ function artifactCreateTraining_(context) {
     for (var i = 0; i < sheets.length; i++) if (sheets[i].getSheetId() !== sheet.getSheetId()) ss.deleteSheet(sheets[i]);
     if (sheet.getMaxRows() > 32) sheet.deleteRows(33, sheet.getMaxRows() - 32);
     if (sheet.getMaxColumns() > keepColumns) sheet.deleteColumns(keepColumns + 1, sheet.getMaxColumns() - keepColumns);
-    if (!firstClass && requiresPractical) artifactReplaceSecondClassPracticalMinimum_(sheet);
     sheet.getRange("A1").setValue(artifactSheetText_("講習記録簿　　受講者氏名（　" + artifactRecordName_(record) + "　）"));
     sheet.getRange("A4").setValue(artifactSheetText_(artifactClassLongLabel_(record.licenseClass)));
     sheet.getRange("A5").setValue(artifactSheetText_("受講日（" + artifactSlashDate_(record.courseDate) + "）"));
@@ -4340,41 +4361,6 @@ function artifactWriteTrainingModule_(sheet, column, prefix, record, dateRow, ti
   sheet.getRange(dateRow, column).setValue(artifactSheetText_(artifactSlashDate_(record[prefix + "Date"])));
   sheet.getRange(timeRow, column).setValue(artifactSheetText_(artifactText_(record[prefix + "Start"]) + " ～ " + artifactText_(record[prefix + "End"])));
   sheet.getRange(instructorRow, column).setValue(artifactSheetText_(record[prefix + "Instructor"]));
-}
-
-/** 二等様式の「操縦演習」列だけを特定する。指導・質疑列の5分は対象外。 */
-function artifactFindSecondClassPracticalMinimumCells_(values) {
-  var matches = [];
-  var rows = Array.isArray(values) ? values : [];
-  for (var row = 0; row < rows.length - 1; row++) {
-    var columns = Array.isArray(rows[row]) ? rows[row] : [];
-    for (var column = 0; column < columns.length; column++) {
-      if (artifactText_(columns[column]) !== "操縦演習（異常事態における飛行）") continue;
-      var following = Array.isArray(rows[row + 1]) ? artifactText_(rows[row + 1][column]) : "";
-      if (!/^[5５]分以上$/.test(following)) continue;
-      matches.push({
-        row: row + 2,
-        column: column + 1,
-        oldText: following,
-        newText: following.charAt(0) === "５" ? "６分以上" : "6分以上"
-      });
-    }
-  }
-  return matches;
-}
-
-function artifactReplaceSecondClassPracticalMinimum_(sheet) {
-  var values = sheet.getRange(1, 1, 32, 6).getDisplayValues();
-  var matches = artifactFindSecondClassPracticalMinimumCells_(values);
-  if (matches.length !== 1) {
-    throw new Error("二等講習記録簿の操縦演習最低時間セルを一意に確認できないため、作成を停止しました。");
-  }
-  var match = matches[0];
-  var cell = sheet.getRange(match.row, match.column);
-  if (artifactText_(cell.getDisplayValue()) !== match.oldText) {
-    throw new Error("二等講習記録簿の操縦演習最低時間表示が読み取り時から変わったため、作成を停止しました。");
-  }
-  cell.setValue(artifactSheetText_(match.newText));
 }
 
 function artifactCreateBilling_(context) {
@@ -4420,7 +4406,7 @@ function artifactBuildBillingSheet_(sheet, docType, record, settings) {
   var isInvoice = docType === "invoice";
   var billing = artifactCalculateBilling_(record);
   var isFormalBilling = record._formalFinanceInvoice === true;
-  var title = isInvoice && isFormalBilling ? "請求書" : (isInvoice ? "請求書（下書き）" : "見積書");
+  var title = isInvoice && isFormalBilling ? "請 求 書" : (isInvoice ? "請 求 書（下書き）" : "御 見 積 書");
   var number = isInvoice ? record.invoiceNo : record.quoteNo;
   var issueDate = isInvoice ? record.invoiceDate : record.quoteDate;
   var limitDate = isInvoice ? record.paymentDueDate : record.quoteExpiry;
@@ -4449,7 +4435,8 @@ function artifactBuildBillingSheet_(sheet, docType, record, settings) {
     .setFontSize(12).setFontWeight("bold")
     .setBorder(false, false, true, false, false, false, line, SpreadsheetApp.BorderStyle.SOLID);
   artifactBillingMerge_(sheet, "B6:H6", renderInputs.recipientAddress).setFontColor(muted);
-  artifactBillingMerge_(sheet, "B8:H8", "件名: " + subject).setFontColor(muted);
+  artifactBillingMerge_(sheet, "B7:H7", renderInputs.traineeName ? "受講予定者: " + renderInputs.traineeName + " 様" : "").setFontColor(muted);
+  artifactBillingMerge_(sheet, "B8:H8", "コース名: " + subject).setFontColor(muted);
   artifactBillingMerge_(sheet, "B9:H9", isInvoice ? "下記の通りご請求申し上げます。" : "下記のとおりお見積り申し上げます。").setFontColor(muted);
 
   artifactBillingMerge_(sheet, "K5:M5", isInvoice ? "請求書番号" : "見積書番号").setHorizontalAlignment("right").setFontColor(muted);
@@ -4464,10 +4451,11 @@ function artifactBuildBillingSheet_(sheet, docType, record, settings) {
   }
 
   artifactBillingMerge_(sheet, "K9:Q9", renderInputs.issuerCompany).setFontSize(12).setFontWeight("bold");
-  artifactBillingMerge_(sheet, "K10:Q10", renderInputs.issuerAddress);
-  artifactBillingMerge_(sheet, "K11:Q11", "TEL: " + renderInputs.issuerPhone + (renderInputs.issuerFax ? "　FAX: " + renderInputs.issuerFax : ""));
-  artifactBillingMerge_(sheet, "K12:Q12", renderInputs.issuerEmail || "");
-  artifactBillingMerge_(sheet, "K13:Q13", renderInputs.invoiceRegistrationNo ? "登録番号: " + renderInputs.invoiceRegistrationNo : "").setFontColor(muted);
+  artifactBillingMerge_(sheet, "K10:Q10", renderInputs.issuerRepresentative || "");
+  artifactBillingMerge_(sheet, "K11:Q11", renderInputs.issuerAddress);
+  artifactBillingMerge_(sheet, "K12:Q12", "TEL: " + renderInputs.issuerPhone + (renderInputs.issuerFax ? "　FAX: " + renderInputs.issuerFax : ""));
+  artifactBillingMerge_(sheet, "K13:Q13", renderInputs.issuerEmail || "");
+  artifactBillingMerge_(sheet, "K14:Q14", renderInputs.invoiceRegistrationNo ? "登録番号: " + renderInputs.invoiceRegistrationNo : "").setFontColor(muted);
 
   var headers = [
     ["B16:C16", "コード"], ["D16:J16", "品目"], ["K16:M16", "単価 税抜"],
@@ -4510,7 +4498,9 @@ function artifactBuildBillingSheet_(sheet, docType, record, settings) {
     }
   } else {
     sheet.getRange("B17:C17").setValue("REN-001").setHorizontalAlignment("center");
-    sheet.getRange("D17:J17").setValue(artifactSheetText_(subject)).setWrap(true);
+    var itemDescription = subject +
+      (artifactText_(record.billingItemDetail) ? "\n" + artifactText_(record.billingItemDetail) : "");
+    sheet.getRange("D17:J17").setValue(artifactSheetText_(itemDescription)).setWrap(true);
     sheet.getRange("K17:M17").setValue(billing.feeExTax).setNumberFormat('¥#,##0').setHorizontalAlignment("right");
     sheet.getRange("N17:O17").setValue(1).setHorizontalAlignment("center");
     sheet.getRange("P17").setValue("式").setHorizontalAlignment("center");
@@ -4554,14 +4544,21 @@ function artifactBuildBillingSheet_(sheet, docType, record, settings) {
     remarks.push("振込手数料はお客様にてご負担ください。");
   } else {
     remarks.push("本見積書は発行済み正式請求の明細・税額を基に作成しています。送付は別途記録してください。");
-    remarks.push("講習日程・実施場所はお申し込み内容をご確認ください。");
+    var scheduleDate = artifactValidIsoDateOrBlank_(record.courseScheduledDate) || artifactValidIsoDateOrBlank_(record.courseDate);
+    var scheduleNote1 = artifactText_(record.billingScheduleNote1);
+    var scheduleNote2 = artifactText_(record.billingScheduleNote2);
+    remarks.push("講習日程①: " + (scheduleNote1 ||
+      ((scheduleDate ? artifactFormatJapaneseLongDate_(scheduleDate) : "未定") + " / " +
+        (artifactText_(record.courseVenue) || "未定"))));
+    if (scheduleNote2) remarks.push("講習日程②: " + scheduleNote2);
+    remarks.push("eラーニングを含む場合は、実技講習開始日までに修了してください。");
     remarks.push("本見積書は発行日時点の内容に基づき作成しています。");
   }
   artifactBillingMerge_(sheet, "B36:Q40", remarks.join("\n")).setWrap(true).setVerticalAlignment("top");
   sheet.getRange("B35:Q40").setBorder(true, true, true, true, false, false, line, SpreadsheetApp.BorderStyle.SOLID);
   artifactBillingMerge_(sheet, "B43:Q43", "消費税の1円未満は、1帳票・税率ごとの税抜合計に対して1回だけ" + billing.rounding + "処理しています。")
     .setFontSize(8).setFontColor(muted);
-  sheet.getRange("Z1").setValue(isInvoice ? "CDP_CLEAN_INVOICE_V3" : "CDP_CLEAN_QUOTE_V3");
+  sheet.getRange("Z1").setValue(isInvoice ? "CDP_CLEAN_INVOICE_V4" : "CDP_CLEAN_QUOTE_V4");
   try { sheet.hideColumns(19, sheet.getMaxColumns() - 18); } catch (ignoredHide) {}
 }
 
@@ -4585,6 +4582,7 @@ function artifactTaxFormula_(netCell, taxRate, rounding) {
 function artifactSettingsDefaults_() {
   return {
     issuerCompany: "株式会社ＣＤＰ北海道",
+    issuerRepresentative: "代表取締役　小田　喜之",
     issuerAddress: "〒002-8053 札幌市北区篠路町篠路389-72",
     issuerPhone: "011-790-7925",
     issuerFax: "011-790-7935",
@@ -4936,11 +4934,16 @@ function artifactLoadSettingsState_() {
   ) {
     throw new Error("保存済みの成果物設定V2の版または識別情報が不正です。旧設定へ戻さず監査してください。");
   }
+  var legacyRepresentativeMissing = !parsed.settings ||
+    !Object.prototype.hasOwnProperty.call(parsed.settings, "issuerRepresentative");
   var semantic = artifactSettingsSemanticValue_(
     parsed.settings,
     parsed.bankAccountText,
     parsed.legacyOutputFolders
   );
+  // V2の旧保存値は代表者項目を持たない。既存hashを改変せず検証し、
+  // 次回の明示保存時にだけ新項目を含むstateへ更新する。
+  if (legacyRepresentativeMissing) delete semantic.settings.issuerRepresentative;
   var contentHash = artifactHashHex_(semantic);
   if (contentHash !== artifactText_(parsed.contentHash)) {
     throw new Error("保存済みの成果物設定V2の内容hashが一致しません。旧設定へ戻さず監査してください。");
@@ -4969,7 +4972,9 @@ function artifactLoadSettingsState_() {
   if (!normalizedState.updatedAt || !artifactIsEmail_(normalizedState.updatedBy)) {
     throw new Error("保存済みの成果物設定V2の更新者または更新日時が不正です。旧設定へ戻さず監査してください。");
   }
-  var envelopeHash = artifactHashHex_(artifactSettingsStateEnvelopeValue_(normalizedState));
+  var envelopeValue = artifactSettingsStateEnvelopeValue_(normalizedState);
+  if (legacyRepresentativeMissing) delete envelopeValue.settings.issuerRepresentative;
+  var envelopeHash = artifactHashHex_(envelopeValue);
   if (envelopeHash !== artifactText_(parsed.envelopeHash)) {
     throw new Error("保存済みの成果物設定V2の封筒hashが一致しません。旧設定へ戻さず監査してください。");
   }
@@ -5293,6 +5298,7 @@ function artifactPublicSettings_(settings, includeAdminDetails) {
   );
   var result = {
     issuerCompany: settings.issuerCompany,
+    issuerRepresentative: settings.issuerRepresentative,
     issuerAddress: settings.issuerAddress,
     issuerPhone: settings.issuerPhone,
     issuerFax: settings.issuerFax,
@@ -5936,7 +5942,10 @@ function artifactSettingsForHash_(kind, settings, holidayMaster, record) {
     allowedOutputEmails: artifactNormalizeAllowedEmails_(settings.allowedOutputEmails),
     referenceSourcePins: artifactReferenceFingerprintForKind_(kind)
   };
-  if (!formalBilling) base.issuerCompany = settings.issuerCompany;
+  if (!formalBilling) {
+    base.issuerCompany = settings.issuerCompany;
+    base.issuerRepresentative = settings.issuerRepresentative;
+  }
   if (kind === "ledger") base.ledgerTemplateId = artifactText_(settings.ledgerTemplateId);
   if (kind === "certificate") base.certificateTemplateId = artifactText_(settings.certificateTemplateId);
   if (["ledger", "certificate", "dipsCsv"].indexOf(kind) >= 0) {
@@ -6233,7 +6242,8 @@ function artifactValidateCertificateDateContinuity_(rows, record, errors, warnin
     return original;
   }
   var proposedIssuedDate = artifactValidIsoDateOrBlank_(record.certificateIssuedDate);
-  var proposedExpiry = proposedIssuedDate ? artifactAddCalendarMonthsMinusOne_(proposedIssuedDate) : artifactValidIsoDateOrBlank_(record.certificateExpiry);
+  var proposedCourseDate = artifactValidIsoDateOrBlank_(record.courseDate);
+  var proposedExpiry = proposedCourseDate ? artifactAddCalendarMonthsMinusOne_(proposedCourseDate) : artifactValidIsoDateOrBlank_(record.certificateExpiry);
   if (proposedIssuedDate && (proposedIssuedDate !== original.issuedDate || proposedExpiry !== original.expiry)) {
     errors.push("再発行は未対応です。初回発行日（" + original.issuedDate + "）・元期限（" + original.expiry + "）を維持し、担当部署に確認が必要です。");
   }
@@ -6587,12 +6597,16 @@ function artifactRecordForHash_(kind, record) {
         "invoiceNo", "invoiceStatus", "invoiceDate", "accountingDate", "paymentDueDate",
         "financeInvoiceId", "financeInvoiceImmutableKey",
         "_formalBillingSubject", "formalBillingSnapshot",
+        "courseScheduledDate", "courseDate", "courseVenue",
+        "billingScheduleNote1", "billingScheduleNote2",
         "formalBillingLines", "formalBillingTaxCategory",
         "formalBillingTotalExTax", "formalBillingTotalTax", "formalBillingTotalInclTax"
       ];
     } else {
       fields = [
-        "targetName", "billingRecipientName", "billingHonorific", "billingAddress", "serviceCategory",
+        "targetName", "billingRecipientName", "billingHonorific", "billingAddress", "serviceCategory", "billingSubject",
+        "billingItemDetail", "billingScheduleNote1", "billingScheduleNote2",
+        "courseScheduledDate", "courseDate", "courseVenue",
         "feeExTax", "discountExTax", "taxRate", "taxRounding",
         "quoteNo", "quoteDate", "quoteExpiry", "invoiceNo", "invoiceStatus", "invoiceDate", "accountingDate", "paymentDueDate",
         "taxExceptionApprovalDate", "taxExceptionApprovedBy", "taxExceptionReason",

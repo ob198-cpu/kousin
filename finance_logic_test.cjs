@@ -49,7 +49,9 @@ function billingSnapshot(overrides = {}) {
     recipientName: "株式会社受講者",
     recipientHonorific: "御中",
     recipientAddress: "〒060-0001 北海道札幌市中央区北一条西1丁目",
+    traineeName: "受講 太郎",
     issuerCompany: "株式会社CDP北海道",
+    issuerRepresentative: "代表取締役 テスト 太郎",
     issuerAddress: "〒002-8053 北海道札幌市北区篠路町篠路389-72",
     issuerPhone: "011-790-7925",
     issuerFax: "011-790-7935",
@@ -59,6 +61,12 @@ function billingSnapshot(overrides = {}) {
     ...overrides
   };
 }
+
+const legacyBillingSnapshot = billingSnapshot();
+delete legacyBillingSnapshot.traineeName;
+delete legacyBillingSnapshot.issuerRepresentative;
+assert.doesNotThrow(() => context.financeNormalizeBillingSnapshot_(legacyBillingSnapshot, true),
+  "新項目導入前の発行済請求スナップショットは互換読込できる必要があります");
 
 function draft(id, customerId, amount, no = "") {
   return {

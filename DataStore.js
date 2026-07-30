@@ -61,7 +61,8 @@ var RENEWAL_STORE = {
   PROTECTED_SOURCE_IDS: [
     "14bzaYZ_9dz4BMHNVDx7AfpKFN-3pStoWjKdKOMVeiv0",
     "1b2gjUL0I2vfK-XOvbDhg8oXg36EdADajamivX7wfgC4",
-    "1lAO89hPt2FRu-EoqfkS_xCFKVkfrglz5o-ms-qD92yE"
+    "1lAO89hPt2FRu-EoqfkS_xCFKVkfrglz5o-ms-qD92yE",
+    "1GFMynPtdX1qHCC-GP0rI7XqfWBh_lbC5J_SV91NkN30"
   ],
   ROLES: ["admin", "renewal", "accounting", "viewer"],
   PERMISSIONS: {
@@ -71,7 +72,8 @@ var RENEWAL_STORE = {
     viewer: ["read"]
   },
   ACCOUNTING_FIELDS: [
-    "billingRecipientName", "billingHonorific", "billingAddress", "serviceCategory",
+    "billingRecipientName", "billingHonorific", "billingAddress", "serviceCategory", "billingSubject",
+    "billingItemDetail", "billingScheduleNote1", "billingScheduleNote2",
     "feeExTax", "discountExTax", "taxRate", "taxRounding",
     "taxExceptionApprovalDate", "taxExceptionApprovedBy", "taxExceptionReason",
     "quoteNo", "quoteDate", "quoteExpiry",
@@ -91,6 +93,10 @@ var RENEWAL_STORE = {
     billingHonorific: "御中",
     billingAddress: "",
     serviceCategory: "更新講習",
+    billingSubject: "",
+    billingItemDetail: "",
+    billingScheduleNote1: "",
+    billingScheduleNote2: "",
     feeExTax: "0",
     discountExTax: "0",
     taxRate: "10",

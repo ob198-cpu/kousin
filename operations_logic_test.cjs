@@ -167,11 +167,16 @@ assert(artifactSettingsSaveBlock.includes("expectedVersion: artifactSettingsVers
 assert.deepEqual($("input[name='artifactKind']").map((_, element) => $(element).val()).get(),
   ["ledger", "certificate", "dipsCsv", "guidance", "training", "billing"]);
 assert.equal($("#certificateExpiry").is("[readonly]"), true, "修了証明書期限は自動計算欄である必要があります");
+assert.equal($("#billingSubject").length, 1, "見積・請求のコース名入力欄が必要です");
+assert.equal($("#billingItemDetail").length, 1, "講習コード・日数・リスキリング入力欄が必要です");
+assert.equal($("#billingScheduleNote1").length, 1, "見積書の講習日程①入力欄が必要です");
+assert.equal($("#billingScheduleNote2").length, 1, "見積書の講習日程②入力欄が必要です");
+assert.equal($("#artifactIssuerRepresentative").length, 1, "帳票の代表者役職・氏名設定欄が必要です");
 assert.deepEqual($("#dipsRecordMode option").map((_, element) => $(element).text()).get(),
   ["新規登録", "既存情報更新", "削除"]);
 assert.deepEqual($("#suspensionCourse option").map((_, element) => $(element).text()).get(),
   ["未確認", "なし", "あり"]);
-assert(html.includes("二等・6分以上"), "二等マルチローターの実地操縦演習は6分以上と表示する必要があります");
+assert(html.includes("二等・5分以上"), "二等マルチローターの実地操縦演習は参照原本どおり5分以上と表示する必要があります");
 assert(html.includes("DIPS修了者情報を5営業日以内に連携"), "DIPSの5営業日タスクがありません");
 assert(html.includes("担当部署に確認が必要"), "DIPS営業日定義の未確認表示がありません");
 assert.equal(scriptMatch[1].includes('if (!(raw || {}).invoiceStatus && record.invoiceDate) record.invoiceStatus = "発行済"'), false,
@@ -1091,7 +1096,7 @@ assert.equal(
 
 const logicNames = [
   "fiscalYearOf", "toDate", "today", "dateValue", "addMonths", "addDays", "applyDerivedSchedule",
-  "periodExpiryFromDate", "certificateExpiryFromIssueDate", "daysUntil", "numberValue", "roundTax", "financeOf",
+  "periodExpiryFromDate", "certificateExpiryFromCourseDate", "daysUntil", "numberValue", "roundTax", "financeOf",
   "normalizeDateText", "normalizeTimeText", "trainingMinutes", "csvEscape"
 ];
 const context = {};
@@ -1107,9 +1112,9 @@ assert.equal(logic.dateValue(logic.addMonths(logic.toDate("2028-08-31"), -6)), "
 assert.equal(logic.toDate("2026-02-30"), null);
 assert.equal(logic.normalizeDateText("2026/7/4"), "2026-07-04");
 assert.equal(logic.normalizeTimeText("9:05"), "09:05");
-assert.equal(logic.certificateExpiryFromIssueDate("2026-01-31"), "2026-04-30");
-assert.equal(logic.certificateExpiryFromIssueDate("2028-11-30"), "2029-02-28");
-assert.equal(logic.certificateExpiryFromIssueDate("2026-06-10"), "2026-09-09");
+assert.equal(logic.certificateExpiryFromCourseDate("2026-01-31"), "2026-04-30");
+assert.equal(logic.certificateExpiryFromCourseDate("2028-11-30"), "2029-02-28");
+assert.equal(logic.certificateExpiryFromCourseDate("2026-06-10"), "2026-09-09");
 
 const schedule = logic.applyDerivedSchedule({ licenseExpiry: "2026-09-30" });
 assert.equal(schedule.courseAvailableDate, "2026-03-30");
