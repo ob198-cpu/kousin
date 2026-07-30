@@ -318,6 +318,25 @@ assert(runtimeBannerBlock.includes('banner.querySelector(".mode-banner-text")') 
   "実行時の案内更新は本番版リンクを残して本文だけを変更する必要があります");
 assert.equal(runtimeBannerBlock.includes("banner.textContent ="), false,
   "実行時に案内帯全体を上書きして本番版リンクを消してはいけません");
+assert(runtimeBannerBlock.includes("banner.hidden = true;") &&
+  runtimeBannerBlock.includes("banner.hidden = false;"),
+  "Apps Script本番版では案内帯を隠し、公開Pages版では本番導線を表示する必要があります");
+assert.equal($("#showArchived").length, 0,
+  "受講者台帳に無効化済み表示チェックを残してはいけません");
+assert.equal(scriptMatch[1].includes("showArchived"), false,
+  "削除した無効化済み表示チェックをJavaScriptから参照してはいけません");
+assert.equal($(".ledger-filter-bar #ledgerSearch").length, 1,
+  "受講者台帳の検索欄が横一列フィルタ内にありません");
+assert.equal($(".ledger-filter-bar select").length, 2,
+  "受講者台帳の年度・区分が横一列フィルタ内にありません");
+assert(html.includes("grid-template-columns: minmax(280px, 1fr) 180px 180px;"),
+  "受講者台帳の検索・年度・区分をPCで横一列にする指定がありません");
+const ledgerRenderBlock = scriptMatch[1].slice(
+  scriptMatch[1].indexOf("function renderLedger()"),
+  scriptMatch[1].indexOf("function currentFinanceRows()")
+);
+assert(ledgerRenderBlock.includes("return !record.archived &&"),
+  "無効化済み記録は表示切替なしで受講者台帳から除外する必要があります");
 assert(scriptMatch[1].includes('const LEGACY_STORAGE_KEYS = ["cdp-renewal-license-records-v3"]'), "旧版ブラウザ保存データの移行元がありません");
 assert.equal(
   /localStorage\.setItem\(\s*(?:STORAGE_KEY|AUDIT_KEY)\b/.test(scriptMatch[1]),

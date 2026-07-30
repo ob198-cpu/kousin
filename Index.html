@@ -185,6 +185,16 @@
     }
     .filter-bar input { min-width: 260px; flex: 1 1 300px; }
     .filter-bar select { min-width: 150px; }
+    .ledger-filter-bar {
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) 180px 180px;
+      align-items: center;
+    }
+    .ledger-filter-bar input,
+    .ledger-filter-bar select {
+      width: 100%;
+      min-width: 0;
+    }
     .record-totals {
       color: var(--muted);
       font-size: 14px;
@@ -661,6 +671,9 @@
     .mode-banner-text {
       min-width: 0;
     }
+    .mode-banner[hidden] {
+      display: none !important;
+    }
     .production-app-link {
       display: inline-flex;
       align-items: center;
@@ -736,6 +749,7 @@
       .filter-bar { align-items: stretch; flex-direction: column; }
       .filter-bar input,
       .filter-bar select { min-width: 0; width: 100%; }
+      .ledger-filter-bar { grid-template-columns: 1fr; }
       .task-row { grid-template-columns: 1fr; }
     }
   </style>
@@ -843,7 +857,7 @@
         <h1>受講者台帳</h1>
         <button type="button" class="primary" data-new-record>新規登録</button>
       </div>
-      <div class="filter-bar">
+      <div class="filter-bar ledger-filter-bar">
         <input id="ledgerSearch" type="search" placeholder="氏名・管理ID・免許番号・会社名で検索">
         <select id="ledgerFiscalFilter" aria-label="年度">
           <option value="">すべての年度</option>
@@ -854,7 +868,6 @@
           <option>新規</option>
           <option>初学者</option>
         </select>
-        <label><input id="showArchived" type="checkbox"> 無効化済みを表示</label>
       </div>
       <div class="toolbar">
         <h2>更新記録</h2>
@@ -4135,10 +4148,9 @@
       const search = document.getElementById("ledgerSearch").value.trim().toLowerCase();
       const fiscal = document.getElementById("ledgerFiscalFilter").value;
       const type = document.getElementById("ledgerTypeFilter").value;
-      const showArchived = document.getElementById("showArchived").checked;
       const rows = all.filter(function (record) {
         const haystack = [record.targetName, record.personId, record.licenseNo, record.companyName].join(" ").toLowerCase();
-        return (showArchived || !record.archived) &&
+        return !record.archived &&
           (!search || haystack.includes(search)) &&
           (!fiscal || record.fiscalYear === fiscal) &&
           (!type || record.customerType === type);
@@ -6342,7 +6354,6 @@
     function updateSharedStoreUi(message, isError) {
       const status = document.getElementById("sharedStoreStatus");
       const badge = document.getElementById("sharedStoreRole");
-      const runtimeBanner = document.getElementById("runtimeModeBanner");
       if (status) {
         status.textContent = message || "";
         status.classList.toggle("error", Boolean(isError));
@@ -6350,13 +6361,6 @@
       if (badge) {
         const roleLabels = { admin: "管理者", renewal: "更新担当", accounting: "経理", viewer: "閲覧" };
         badge.textContent = AppData.configured ? (roleLabels[AppData.role] || "権限未設定") : "未設定";
-      }
-      if (runtimeBanner && AppData.mode === "server") {
-        runtimeBanner.textContent = AppData.configured ?
-          "Apps Script版：対象者データは専用共有正本を使用します。権限は「" +
-            (badge ? badge.textContent : AppData.role) +
-            "」です。変更は版競合検査とサーバー監査を通して保存します。" :
-          "Apps Script版：共有正本を確認できないため読取・保存を停止しています。Google認可または初回設定を管理者が完了してください。";
       }
       const admin = AppData.configured && AppData.role === "admin";
       const rolePanel = document.getElementById("roleAdminPanel");
@@ -6401,7 +6405,7 @@
       const allowedIds = new Set([
         "homeSearch", "riskFilter", "stageFilter", "homeFiscalFilter",
         "clearHomeFilters", "ledgerSearch", "ledgerFiscalFilter",
-        "ledgerTypeFilter", "showArchived", "financeSearch", "paymentFilter",
+        "ledgerTypeFilter", "financeSearch", "paymentFilter",
         "financeAccountingFrom", "financeAccountingTo", "reportFiscalFilter",
         "downloadTemplate", "exportCsv", "exportFinanceCsv",
         "exportLegacyBrowserData", "purgeLegacyBrowserData"
@@ -9996,9 +10000,10 @@
       const bannerText = banner.querySelector(".mode-banner-text");
       const productionLink = banner.querySelector(".production-app-link");
       if (typeof google !== "undefined" && google.script && google.script.run) {
-        (bannerText || banner).textContent = "Apps Script版：専用共有正本へ接続を確認中です。接続・Google認可・利用権限のいずれかを確認できない場合は、ブラウザ保存へ切り替えず読取・保存を停止します。";
-        if (productionLink) productionLink.hidden = true;
+        banner.hidden = true;
+        return;
       } else {
+        banner.hidden = false;
         (bannerText || banner).textContent = "公開Pages版：合成サンプルだけを表示する閲覧専用デモです。実際の受講者データの閲覧・登録・保存は認証済み本番版を使用してください。";
         if (productionLink) productionLink.hidden = false;
       }
@@ -10046,7 +10051,7 @@
       document.getElementById("homeFiscalFilter").value = "";
       renderHome();
     });
-    ["ledgerSearch", "ledgerFiscalFilter", "ledgerTypeFilter", "showArchived"].forEach(function (id) {
+    ["ledgerSearch", "ledgerFiscalFilter", "ledgerTypeFilter"].forEach(function (id) {
       document.getElementById(id).addEventListener(id === "ledgerSearch" ? "input" : "change", renderLedger);
     });
     ["financeSearch", "paymentFilter", "financeAccountingFrom", "financeAccountingTo"].forEach(function (id) {
