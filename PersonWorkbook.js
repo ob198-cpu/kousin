@@ -1053,38 +1053,25 @@ function personWorkbookRenderStatus_(sheet, context) {
 }
 
 function personWorkbookRenderLedger_(sheet, context) {
-  personWorkbookPrepareGrid_(sheet, 20, 10);
-  personWorkbookTitle_(sheet, "A1:J1", "事務規程、別添13 無人航空機更新講習修了証明書発行台帳", context);
-  var record = context.record;
-  var expiry = artifactValidIsoDateOrBlank_(record.certificateExpiry) ||
-    (artifactValidIsoDateOrBlank_(record.courseDate)
-      ? artifactAddCalendarMonthsMinusOne_(record.courseDate)
-      : "");
-  var headers = [[
-    "番号", "更新講習修了証明書番号", "氏名", "区分",
-    "更新講習修了日", "交付", "修了証明書交付日",
-    "有効期間満了日", "備考", "recordId"
-  ]];
-  sheet.getRange("A3:J3").setValues(headers)
+  personWorkbookPrepareGrid_(sheet, 20, 8);
+  personWorkbookTitle_(sheet, "A1:H1", "事務規程、別添13 無人航空機更新講習修了証明書発行台帳", context);
+  var values = artifactLedgerOutputFields_(context.record);
+  [3, 5, 6].forEach(function(index) {
+    values[index] = values[index] ? artifactDateObject_(values[index]) : "";
+  });
+  sheet.getRange("A3:H3").setValues([
+    RENEWAL_ARTIFACT.LEDGER_OUTPUT_HEADERS.slice()
+  ])
     .setBackground("#dbeafe").setFontWeight("bold");
-  sheet.getRange("A4:J4").setValues(artifactSafeSheetMatrix_([[
-    record.certificateNo ? 1 : "",
-    record.certificateNo,
-    artifactRecordName_(record),
-    artifactClassLabel_(record.licenseClass),
-    record.courseDate,
-    record.certificateDelivered,
-    record.certificateDeliveredDate,
-    expiry,
-    record.certificateLedgerMemo,
-    record.recordId
-  ]]));
-  sheet.getRange("E4:H4").setNumberFormat("@");
-  sheet.getRange("A3:J4")
+  sheet.getRange("A4:H4").setValues(artifactSafeSheetMatrix_([values]));
+  sheet.getRange("D4").setNumberFormat('yyyy"年"m"月"d"日');
+  sheet.getRange("F4:G4").setNumberFormat('yyyy"年"m"月"d"日');
+  sheet.getRange("A3:H4")
     .setBorder(true, true, true, true, true, true)
     .setWrap(true);
+  sheet.setRowHeight(3, 54);
   sheet.setFrozenRows(3);
-  [85, 185, 125, 85, 145, 85, 145, 145, 190, 235]
+  [190, 160, 130, 125, 170, 165, 185, 210]
     .forEach(function(width, index) {
       sheet.setColumnWidth(index + 1, width);
     });

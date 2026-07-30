@@ -665,7 +665,9 @@ function complianceOutputIdentity_(kind, context) {
     value.sampleRecordPayloadHash = artifactText_(context.sampleCanonical.payloadHash);
     value.sampleGeneratorVersion = 1;
   }
-  if (kind === "implementationPlan") {
+  if (kind === "ledger") {
+    if (context.sampleMode) value.sampleGeneratorVersion = 2;
+  } else if (kind === "implementationPlan") {
     value.planMonth = context.planMonth;
     value.counts = context.counts;
     if (context.sampleMode) value.sampleGeneratorVersion = 2;
@@ -1032,28 +1034,12 @@ function complianceCreateSampleLedger_(context, folder, fileName) {
   var label = complianceResultLabel_(kind, true);
   var mimeType = complianceOutputMimeType_(kind, context);
   var record = complianceSampleRecord_(context);
-  var headers = [
-    "番号",
-    "更新講習修了証明書番号",
-    "氏名",
-    "区分",
-    "更新講習修了日",
-    "交付",
-    "修了証明書交付日",
-    "有効期間満了日",
-    "備考"
-  ];
-  var row = [
-    1,
-    record.certificateNo,
-    record.targetName,
-    artifactClassLabel_(record.licenseClass),
-    artifactSlashDate_(record.courseDate),
-    "有り",
-    artifactSlashDate_(record.certificateDeliveredDate),
-    artifactSlashDate_(record.certificateExpiry),
-    "【サンプル・正式使用禁止】正式台帳・採番・監査履歴には登録されません。"
-  ];
+  var headers = RENEWAL_ARTIFACT.LEDGER_OUTPUT_HEADERS.slice();
+  var row = artifactLedgerOutputFields_(record);
+  row[3] = artifactSlashDate_(row[3]);
+  row[5] = artifactSlashDate_(row[5]);
+  row[6] = artifactSlashDate_(row[6]);
+  row[7] = "【サンプル・正式使用禁止】正式台帳・採番・監査履歴には登録されません。";
   var csv = "\uFEFF" +
     artifactCsvRow_(["【サンプル・正式使用禁止】別添13　無人航空機更新講習修了証明書発行台帳"]) +
     "\r\n" + artifactCsvRow_(headers) + "\r\n" + artifactCsvRow_(row) + "\r\n";

@@ -151,13 +151,14 @@ const pureNames = [
   "artifactTemplateId_", "artifactAssertRequiredTemplateSettings_",
   "artifactOriginalCertificateDates_", "artifactValidateCertificateDateContinuity_", "artifactAssertCertificateDateContinuity_",
   "artifactCertificateTemplateMissingSentinels_", "artifactLedgerTemplateRowsHaveData_",
+  "artifactLedgerOutputFields_",
   "artifactStripLedgerOldVersionMarkers_", "artifactLedgerOldVersionMarkers_", "artifactLedgerVisibleHash_",
   "artifactLedgerStateHash_", "artifactLedgerStableFieldsHash_", "artifactAnnualLedgerRowIssue_", "artifactAnnualLedgerRowsIssue_", "artifactNextLedgerRow_",
   "artifactRegistryRowsIssue_", "artifactRegistryGlobalRowsIssue_", "artifactFindExisting_", "artifactRecordNumberState_", "artifactAssertRecordNumberContinuity_",
   "artifactReadRegistryRows_", "artifactRegistryRowObject_", "artifactPreparedRegistryMatches_", "artifactAppendRegistry_", "artifactAppendPreparedRegistry_",
   "artifactRegistryEntryValues_", "artifactRegistryOutcomeUncertainError_", "artifactUpdatePreparedRegistry_",
   "artifactFindPrepared_", "artifactReplaceRegistryRow_", "artifactNextVersion_",
-  "artifactGuidanceTemplateMissingSentinels_", "artifactCertificateTableSelection_", "artifactClassValue_",
+  "artifactGuidanceTemplateMissingSentinels_", "artifactCertificateTableSelection_", "artifactClassValue_", "artifactClassLabel_",
   "artifactFlattenDocumentTabs_", "artifactGetDocumentTab_",
   "artifactIteratorItems_", "artifactCreateDriveItemInFolder_", "artifactOpenSpreadsheetByIdWithRetry_", "artifactCreateSpreadsheetInFolder_",
   "artifactUpdateBlobFileContent_", "artifactCreateFolderInFolder_", "artifactCopyFileInFolder_",
@@ -287,6 +288,11 @@ const context = {
       ledger: "発行台帳", certificate: "講習修了証明書", dipsCsv: "DIPS提出CSV",
       guidance: "更新講習のご案内", training: "講習記録簿", billing: "見積書・請求書"
     },
+    LEDGER_OUTPUT_HEADERS: [
+      "更新講習修了証明書番号", "受講者氏名", "修了証明書種別", "講習日",
+      "修了証明書の交付の有無", "修了証明書の交付年月日",
+      "講習修了証明書の有効年月日", "備考"
+    ],
     BILLING_NUMBER_NAMESPACE: "UC0157",
     ORGANIZATION_CODE: "0157",
     PINNED_OUTPUT_PARENT_FOLDER_ID: "1XmQirjBrQR-uC_GuBVXAyRK5zfqtoQwN",
@@ -3170,10 +3176,32 @@ assert.equal(hashRecord.certificateIssuedDate, "2026-07-15");
 assert.equal(hashRecord.eligibilityCheckStatus, "一致確認済み");
 assert.equal(hashRecord.eligibilityEvidence, "DIPS画面");
 const ledgerHashRecord = logic.artifactRecordForHash_("ledger", {
-  certificateIssuedDate: "2026-07-15", certificateDeliveredDate: "2026-07-16"
+  certificateIssuedDate: "2026-07-15",
+  certificateDelivered: "無し",
+  certificateDeliveredDate: "2026-07-16"
 });
 assert.equal(ledgerHashRecord.certificateIssuedDate, "2026-07-15");
-assert.equal(ledgerHashRecord.certificateDeliveredDate, "2026-07-16");
+assert.equal(Object.prototype.hasOwnProperty.call(ledgerHashRecord, "certificateDelivered"), false,
+  "発行台帳の交付欄は証明書右上情報から固定作成し、業務進捗の交付状態をhashへ混在させてはいけません");
+assert.equal(Object.prototype.hasOwnProperty.call(ledgerHashRecord, "certificateDeliveredDate"), false,
+  "発行台帳の交付年月日は講習修了日を使い、実交付日をhashへ混在させてはいけません");
+assert.deepEqual(
+  Array.from(logic.artifactLedgerOutputFields_({
+    certificateNo: "UC015726070001",
+    targetName: "サンプル太郎",
+    licenseClass: "二等",
+    courseDate: "2026-07-15",
+    certificateExpiry: "2026-10-14",
+    certificateDelivered: "無し",
+    certificateDeliveredDate: "2026-07-30",
+    certificateLedgerMemo: "確認済み"
+  })),
+  [
+    "UC015726070001", "サンプル太郎", "二等", "2026-07-15",
+    "☑有り　・　□無し", "2026-07-15", "2026-10-14", "確認済み"
+  ],
+  "発行台帳は証明書右上の番号・講習修了日・有効期限へ一意に対応させる必要があります"
+);
 const dipsHashRecord = logic.artifactRecordForHash_("dipsCsv", {
   certificateIssuedDate: "2026-07-15", fitnessCertificateNo: "PA999999999999",
   dipsDate: "2026-06-01", dipsCompletionLinkedDate: "2026-07-16", courseProvider: "CDP"
@@ -3210,7 +3238,7 @@ assert.equal(guidanceHashRecord.taxExceptionApprovedBy, "経理");
   "artifactCreateGuidance_", "artifactCreateTraining_", "artifactCreateBilling_"
 ].forEach((name) => assert(source.includes("function " + name + "("), name + "がありません"));
 assert(source.includes("SCHEMA_VERSION: 3"), "完成版の共通スキーマ版へ増分されていません");
-assert(source.includes('ledger: "LEDGER_OUTPUT_V4"'), "台帳レイアウト版がありません");
+assert(source.includes('ledger: "LEDGER_OUTPUT_V5"'), "台帳レイアウト版がありません");
 assert(source.includes('certificate: "CERTIFICATE_OUTPUT_V4"'), "証明書レイアウト版がありません");
 assert(source.includes('dipsCsv: "DIPS_MANUAL_11COL_V2"'), "DIPSレイアウト版がありません");
 assert(source.includes('training: "TRAINING_OUTPUT_V3"'), "講習記録簿レイアウト版がありません");

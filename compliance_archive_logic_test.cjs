@@ -287,7 +287,9 @@ const sampleLedgerSource = extractFunction("complianceCreateSampleLedger_");
 assert(sampleLedgerSource.includes("artifactCreateDriveItemInFolder_"));
 assert(sampleLedgerSource.includes("artifactUpdateBlobFileContent_"));
 assert(!sampleLedgerSource.includes("SpreadsheetApp"));
-assert(sampleLedgerSource.includes('"更新講習修了証明書番号"'));
+assert(sampleLedgerSource.includes("RENEWAL_ARTIFACT.LEDGER_OUTPUT_HEADERS.slice()"));
+assert(sampleLedgerSource.includes("artifactLedgerOutputFields_(record)"));
+assert(!sampleLedgerSource.includes("certificateDeliveredDate"));
 assert(sampleLedgerSource.includes('"CREATE", "", fileName'));
 assert(!extractFunction("complianceDriveOperation_").includes(
   'context.sampleMode && kind === "ledger"'

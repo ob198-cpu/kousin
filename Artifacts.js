@@ -143,7 +143,7 @@ var RENEWAL_ARTIFACT = {
   },
   // 各成果物の列・セル・数式・表示・コピー後補正を変更した場合は、原本更新の有無にかかわらず対象版を増分する。
   LAYOUT_VERSIONS: {
-    ledger: "LEDGER_OUTPUT_V4",
+    ledger: "LEDGER_OUTPUT_V5",
     certificate: "CERTIFICATE_OUTPUT_V4",
     dipsCsv: "DIPS_MANUAL_11COL_V2",
     guidance: "GUIDANCE_OUTPUT_V2",
@@ -190,6 +190,16 @@ var RENEWAL_ARTIFACT = {
   LEDGER_HEADER_ALLOWLIST: [
     ["別添13　無人航空機更新講習講習修了証明書発行台帳", "", "", "", "", "", "", "", ""],
     ["", "更新講習\n修了証明書発行番号", "受講者氏名", "修了証明書種別", "講習日", "修了証明書の\n交付の有無", "修了証明書の\n交付年月日", "修了証明書の\n有効年月日", "備考"]
+  ],
+  LEDGER_OUTPUT_HEADERS: [
+    "更新講習修了証明書番号",
+    "受講者氏名",
+    "修了証明書種別",
+    "講習日",
+    "修了証明書の交付の有無",
+    "修了証明書の交付年月日",
+    "講習修了証明書の有効年月日",
+    "備考"
   ],
   TRAINING_TEXT_ALLOWLISTS: {
     "一等無人航空機操縦士": {
@@ -1779,16 +1789,6 @@ function apiCreateArtifacts(request) {
       certificateIssuedDate = artifactValidateCertificateDates_(
         courseDate, record.certificateIssuedDate, artifactTodayIso_(), certificateDateErrors
       );
-      if (kinds.indexOf("ledger") >= 0) {
-        artifactValidateCertificateDelivery_(
-          record.certificateDelivered,
-          record.certificateDeliveredDate,
-          certificateIssuedDate,
-          artifactTodayIso_(),
-          certificateDateErrors,
-          []
-        );
-      }
       if (certificateDateErrors.length) throw new Error(certificateDateErrors.join(" "));
       // 参照元の修了証明書・発行台帳どおり、有効期限は発行日ではなく
       // 講習修了日から3暦月後の応当日前日とする。
@@ -2353,16 +2353,6 @@ function artifactValidateKind_(kind, record, settings, schedules, errors, warnin
     certificateIssuedDate = artifactValidateCertificateDates_(
       courseDate, record.certificateIssuedDate, artifactTodayIso_(), errors
     );
-    if (kind === "ledger") {
-      artifactValidateCertificateDelivery_(
-        record.certificateDelivered,
-        record.certificateDeliveredDate,
-        certificateIssuedDate,
-        artifactTodayIso_(),
-        errors,
-        warnings
-      );
-    }
   }
   if (usesCertificateNumber && !artifactText_(record.certificateNo)) {
     artifactValidateAutomaticNumberingForPreflight_(settings, certificateIssuedDate, "修了証明書番号", errors);
@@ -4060,7 +4050,15 @@ function artifactAssertAnnualLedgerStructure_(file, ss, autoRootId, year, templa
   }
   var expectedVisibleHeader = templateBase.getRange(1, 1, 2, 9).getDisplayValues();
   var actualVisibleHeader = sheet.getRange(1, 1, 2, 9).getDisplayValues();
-  if (artifactCanonicalJson_(actualVisibleHeader) !== artifactCanonicalJson_(expectedVisibleHeader)) {
+  var currentVisibleHeader = [
+    expectedVisibleHeader[0].slice(0, 9),
+    [""].concat(RENEWAL_ARTIFACT.LEDGER_OUTPUT_HEADERS)
+  ];
+  var actualHeaderJson = artifactCanonicalJson_(actualVisibleHeader);
+  if (
+    actualHeaderJson !== artifactCanonicalJson_(expectedVisibleHeader) &&
+    actualHeaderJson !== artifactCanonicalJson_(currentVisibleHeader)
+  ) {
     throw new Error("年次発行台帳の表題・見出しが専用原本と一致しないため停止しました。");
   }
   var auditHeaders = sheet.getRange(2, 10, 1, 5).getDisplayValues()[0];
@@ -4187,11 +4185,43 @@ function artifactClearPublishedOutputDriveAttempt_(
   );
 }
 
+function artifactLedgerOutputFields_(record) {
+  var source = record || {};
+  var courseDate = artifactValidIsoDateOrBlank_(source.courseDate);
+  var expiry = artifactValidIsoDateOrBlank_(source.certificateExpiry) ||
+    (courseDate ? artifactAddCalendarMonthsMinusOne_(courseDate) : "");
+  return [
+    artifactText_(source.certificateNo),
+    artifactRecordName_(source),
+    artifactClassLabel_(source.licenseClass),
+    courseDate,
+    "☑有り　・　□無し",
+    courseDate,
+    expiry,
+    artifactText_(source.certificateLedgerMemo)
+  ];
+}
+
+function artifactApplyLedgerOutputHeaders_(sheet) {
+  if (!sheet) throw new Error("発行台帳の見出しを更新するシートを確認できません。");
+  var headers = RENEWAL_ARTIFACT.LEDGER_OUTPUT_HEADERS.slice();
+  sheet.getRange(2, 2, 1, headers.length)
+    .setValues(artifactSafeSheetMatrix_([headers]))
+    .setWrap(true);
+  SpreadsheetApp.flush();
+  var readBack = sheet.getRange(2, 2, 1, headers.length).getDisplayValues()[0];
+  if (artifactCanonicalJson_(readBack) !== artifactCanonicalJson_(headers)) {
+    throw new Error("発行台帳の見出しを保存・読戻しできません。");
+  }
+  return headers;
+}
+
 function artifactCreateLedger_(context) {
   var record = context.record;
   var year = Number(artifactText_(record.certificateIssuedDate).slice(0, 4));
   var ledger = artifactEnsureAnnualLedger_(context.autoRoot, year, context.settings);
   var sheet = ledger.sheet;
+  artifactApplyLedgerOutputHeaders_(sheet);
   var row = artifactNextLedgerRow_(sheet);
   if (row > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), row - sheet.getMaxRows());
   var originalRowValues = sheet.getRange(row, 2, 1, 13).getValues();
@@ -4199,23 +4229,19 @@ function artifactCreateLedger_(context) {
     if (row > 3) {
       sheet.getRange(3, 2, 1, 13).copyTo(sheet.getRange(row, 2, 1, 13), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     }
-    var deliveryState = artifactText_(record.certificateDelivered);
-    var delivered = deliveryState === "有り"
-      ? "☑有り　・　□無し"
-      : (deliveryState === "無し" ? "□有り　・　☑無し" : "□有り　・　□無し");
-    var deliveredDate = artifactValidIsoDateOrBlank_(record.certificateDeliveredDate);
-    var visibleMemo = artifactText_(record.certificateLedgerMemo);
+    var outputFields = artifactLedgerOutputFields_(record);
+    var visibleMemo = outputFields[7];
     if (context.version > 1) {
       visibleMemo = (visibleMemo ? visibleMemo + " " : "") + "【訂正版v" + context.version + "・旧版行を残置】";
     }
     var values = [[
-      record.certificateNo,
-      artifactRecordName_(record),
-      artifactClassLabel_(record.licenseClass),
-      artifactDateObject_(record.courseDate),
-      delivered,
-      deliveredDate ? artifactDateObject_(deliveredDate) : "",
-      artifactDateObject_(record.certificateExpiry),
+      outputFields[0],
+      outputFields[1],
+      outputFields[2],
+      outputFields[3] ? artifactDateObject_(outputFields[3]) : "",
+      outputFields[4],
+      outputFields[5] ? artifactDateObject_(outputFields[5]) : "",
+      outputFields[6] ? artifactDateObject_(outputFields[6]) : "",
       visibleMemo
     ]];
     sheet.getRange(row, 2, 1, 8).setValues(artifactSafeSheetMatrix_(values));
@@ -7081,7 +7107,7 @@ function artifactRecordForHash_(kind, record) {
   record = record || {};
   var fields = [];
   if (kind === "ledger") {
-    fields = ["certificateNo", "targetName", "licenseClass", "aircraftType", "suspensionCourse", "courseProvider", "courseDate", "certificateIssuedDate", "certificateDelivered", "certificateDeliveredDate", "certificateExpiry", "certificateLedgerMemo"];
+    fields = ["certificateNo", "targetName", "licenseClass", "aircraftType", "suspensionCourse", "courseProvider", "courseDate", "certificateIssuedDate", "certificateExpiry", "certificateLedgerMemo"];
   } else if (kind === "certificate") {
     fields = ["certificateNo", "courseDate", "certificateIssuedDate", "certificateExpiry", "targetName", "skillsApplicantNo", "licenseClass", "aircraftType", "suspensionCourse", "courseProvider", "certificateInstructor"];
   } else if (kind === "dipsCsv") {

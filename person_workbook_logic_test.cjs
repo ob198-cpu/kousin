@@ -66,6 +66,31 @@ assert(source.includes("Google Sheetsはシート別の閲覧権限を設定で�
   "会計情報を同居させる場合は管理者限定検査が必要です");
 assert(source.includes("complianceEnsureSampleFolder_"),
   "合成サンプルは正式保存先から分離する必要があります");
+const ledgerRenderer = source.slice(
+  source.indexOf("function personWorkbookRenderLedger_("),
+  source.indexOf("function personWorkbookRenderEvidence_(")
+);
+[
+  "更新講習修了証明書番号",
+  "受講者氏名",
+  "修了証明書種別",
+  "講習日",
+  "修了証明書の交付の有無",
+  "修了証明書の交付年月日",
+  "講習修了証明書の有効年月日",
+  "備考"
+].forEach((header) => {
+  assert(
+    fs.readFileSync("Artifacts.js", "utf8").includes('"' + header + '"'),
+    "発行台帳の見出しがありません: " + header
+  );
+});
+assert(ledgerRenderer.includes("artifactLedgerOutputFields_(context.record)"),
+  "対象者資料ブックの発行台帳は共通転記規則を使用する必要があります");
+assert(ledgerRenderer.includes('"A3:H3"') && ledgerRenderer.includes('"A4:H4"'),
+  "対象者資料ブックの発行台帳は正式8列だけを表示する必要があります");
+assert(!ledgerRenderer.includes("certificateDeliveredDate") && !ledgerRenderer.includes("record.recordId"),
+  "発行台帳の可視列へ実交付日や内部recordIdを混在させてはいけません");
 
 const updateStart = source.indexOf("function personWorkbookUpdate_(");
 const updateEnd = source.indexOf("function personWorkbookEnsureSystemSheet_(");
