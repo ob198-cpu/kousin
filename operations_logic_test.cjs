@@ -341,6 +341,23 @@ assert(html.includes("repeat(3, minmax(130px, 1fr))"),
   "ホーム画面の検索・判定・段階・年度・条件クリアをPCで横一列にする指定がありません");
 assert(html.includes(".home-filter-bar { grid-template-columns: 1fr; }"),
   "小画面でホーム画面の絞込欄を安全に縦並びへ戻す指定がありません");
+assert.equal($("#homeScreen .home-list-toolbar h2").length, 0,
+  "ホーム一覧に「優先順」見出しを残してはいけません");
+assert.equal($("#homeScreen .home-list-toolbar .record-totals").length, 1,
+  "優先順見出し削除後も件数表示を保持してください");
+const homeRenderSource = extractFunction(scriptMatch[1], "renderHome");
+assert(homeRenderSource.includes('class="home-task-cell"') &&
+  homeRenderSource.indexOf("data-status") <
+    homeRenderSource.indexOf('class="status-text"'),
+  "一覧ボタンは「次にやること」セル内へ配置してください");
+const homeOperationCellSource = homeRenderSource.slice(
+  homeRenderSource.indexOf("'<td><div class=\"row-actions\">'"),
+  homeRenderSource.indexOf('"</div></td></tr>"')
+);
+assert.equal(homeOperationCellSource.includes("data-status"), false,
+  "ホームの操作欄に一覧ボタンを残してはいけません");
+assert(homeOperationCellSource.includes("data-edit"),
+  "一覧ボタン移動後も操作欄の編集ボタンを保持してください");
 assert.equal($("#showArchived").length, 0,
   "受講者台帳に無効化済み表示チェックを残してはいけません");
 assert.equal(scriptMatch[1].includes("showArchived"), false,

@@ -217,6 +217,7 @@
       font-size: 14px;
       font-weight: 800;
     }
+    .home-list-toolbar { justify-content: flex-end; }
     .table-wrap {
       overflow: auto;
       border: 1px solid var(--line);
@@ -282,6 +283,14 @@
       font-weight: 900;
       line-height: 1.45;
     }
+    .home-task-cell {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .home-task-cell > div { min-width: 0; }
+    .home-task-cell .status-button { flex: 0 0 auto; }
     .person-link {
       min-height: 0;
       border: 0;
@@ -839,8 +848,7 @@
         </select>
         <button type="button" id="clearHomeFilters">条件クリア</button>
       </div>
-      <div class="toolbar">
-        <h2>優先順</h2>
+      <div class="toolbar home-list-toolbar">
         <span class="record-totals"><b id="filteredCount">－</b>件 / 総人数 <b id="peopleCount">－</b>人 / 総回数 <b id="sessionCount">－</b>件</span>
       </div>
       <div class="table-wrap">
@@ -849,10 +857,10 @@
             <col style="width: 88px">
             <col style="width: 128px">
             <col style="width: 190px">
-            <col style="width: 245px">
+            <col style="width: 285px">
             <col style="width: 210px">
             <col style="width: 180px">
-            <col style="width: 145px">
+            <col style="width: 105px">
           </colgroup>
           <thead>
             <tr>
@@ -4140,13 +4148,15 @@
           '<td><button type="button" class="person-link" data-detail="' + escapeHtml(record.id) + '">' +
             escapeHtml(record.targetName) + '</button><div class="sub-info">' +
             escapeHtml(record.customerType + " / " + record.courseProvider) + "</div></td>" +
-          '<td><div class="task">' + escapeHtml(taskProgress.nextLabel) +
+          '<td><div class="home-task-cell"><div><div class="task">' +
+            escapeHtml(taskProgress.nextLabel) +
             '</div><div class="sub-info">完了 ' + taskProgress.completedCount + " / " +
-            taskProgress.totalCount + "</div></td>" +
+            taskProgress.totalCount + '</div></div>' +
+            '<button type="button" class="small-button status-button" data-status="' +
+            escapeHtml(record.id) + '">一覧</button></div></td>' +
           '<td><div class="status-text">' + escapeHtml(result.status) + "</div></td>" +
           '<td><div class="basis-line">' + basisHtml(result) + "</div></td>" +
           '<td><div class="row-actions">' +
-            '<button type="button" class="small-button status-button" data-status="' + escapeHtml(record.id) + '">一覧</button>' +
             '<button type="button" class="small-button" data-edit="' + escapeHtml(record.id) + '">編集</button>' +
           "</div></td></tr>";
       }).join("") : '<tr><td colspan="7" class="empty">該当する記録はありません。</td></tr>';
