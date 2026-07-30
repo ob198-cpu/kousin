@@ -292,6 +292,7 @@
       padding: 5px 8px;
       font-size: 13px;
     }
+    .workbook-action-button { white-space: nowrap; }
     .status-button {
       border-color: var(--blue);
       background: var(--blue);
@@ -870,7 +871,7 @@
             <col style="width: 260px">
             <col style="width: 150px">
             <col style="width: 155px">
-            <col style="width: 240px">
+            <col style="width: 430px">
           </colgroup>
           <thead>
             <tr>
@@ -4147,6 +4148,7 @@
         const result = analyze(record);
         const finance = financeForRecord(record);
         const taskProgress = renewalTaskProgress(record);
+        const canCreateWorkbook = canCreateOrUpdatePersonWorkbook(record);
         return "<tr>" +
           "<td><strong>" + escapeHtml(record.personId) + "</strong><div class=\"sub-info\">" +
             escapeHtml(record.fiscalYear + "年度 / " + record.sessionNo + "回目") + "</div></td>" +
@@ -4162,6 +4164,10 @@
           "<td>" + fmtDateTime(record.updatedAt) + "</td>" +
           '<td><div class="row-actions">' +
             '<button type="button" class="small-button status-button" data-status="' + escapeHtml(record.id) + '">一覧</button>' +
+            '<button type="button" class="small-button primary workbook-action-button" data-artifacts="' +
+              escapeHtml(record.id) + '"' +
+              (canCreateWorkbook ? "" : ' disabled title="管理者が有効な更新記録で使用できます"') +
+              '>資料一式を作成・更新</button>' +
             '<button type="button" class="small-button" data-detail="' + escapeHtml(record.id) + '">詳細</button>' +
             '<button type="button" class="small-button" data-edit="' + escapeHtml(record.id) + '">編集</button>' +
             '<button type="button" class="small-button danger-button" data-archive="' + escapeHtml(record.id) + '">' +
@@ -8830,7 +8836,21 @@
       document.querySelectorAll(".compliance-create-button").forEach(function (button) {
         button.disabled = disabled;
       });
-      document.getElementById("createOrUpdatePersonWorkbook").disabled = disabled;
+      const workbookButton = document.getElementById("createOrUpdatePersonWorkbook");
+      const workbookRecord = findRecord(artifactRecordId);
+      workbookButton.disabled =
+        disabled || !canCreateOrUpdatePersonWorkbook(workbookRecord);
+    }
+
+    function canCreateOrUpdatePersonWorkbook(record) {
+      return Boolean(
+        record &&
+        !record.archived &&
+        AppData.mode === "server" &&
+        AppData.configured &&
+        !AppData.readOnly &&
+        AppData.role === "admin"
+      );
     }
 
     function personWorkbookRequest(record) {
@@ -8896,6 +8916,13 @@
     async function runPersonWorkbook(record) {
       if (personWorkbookBusy || complianceArchiveBusy) return;
       const currentRecord = record || findRecord(artifactRecordId);
+      if (currentRecord && !canCreateOrUpdatePersonWorkbook(currentRecord)) {
+        renderPersonWorkbookResponse({
+          success: false,
+          message: "資料一式の作成・更新は、管理者が有効な更新記録に対して実行できます。"
+        });
+        return;
+      }
       const request = personWorkbookRequest(currentRecord);
       if (
         !currentRecord ||
@@ -9267,6 +9294,8 @@
       document.getElementById("artifactPreflight").innerHTML = "";
       document.getElementById("artifactCreateResults").innerHTML = "";
       document.getElementById("createArtifacts").disabled = true;
+      document.getElementById("createOrUpdatePersonWorkbook").disabled =
+        !canCreateOrUpdatePersonWorkbook(record);
       openModal("artifactModal");
     }
 
