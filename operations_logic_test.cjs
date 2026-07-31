@@ -1285,10 +1285,13 @@ const secondSuspensionTasks = taskLogic.renewalTaskProgress({
   suspensionCourse: "あり",
   taskChecklist: emptyChecklist
 });
-assert.equal(firstClassTasks.totalCount, secondClassTasks.totalCount + 2,
-  "一等講習は一等専用の座学2項目を追加する必要があります");
-assert.equal(secondSuspensionTasks.totalCount, secondClassTasks.totalCount + 3,
-  "二等の停止処分者向け講習は実技3項目を追加する必要があります");
+assert.equal(firstClassTasks.totalCount, secondClassTasks.totalCount,
+  "削除済みの一等専用座学項目をタスクリストへ戻してはいけません");
+assert.equal(secondSuspensionTasks.totalCount, secondClassTasks.totalCount,
+  "削除済みの停止処分者向け実技項目をタスクリストへ戻してはいけません");
+assert.equal(secondClassTasks.tasks.some((task) =>
+  task.category === "座学講習" || task.category === "実技講習"), false,
+  "座学講習・実技講習のタスク区分は削除済みである必要があります");
 assert.equal(secondClassTasks.nextLabel, "事前準備： 受講問い合わせ");
 const firstTwoCompleted = taskLogic.renewalTaskProgress({
   licenseClass: "二等",
@@ -1305,8 +1308,8 @@ assert.equal(taskLogic.renewalTaskProgress({
   licenseClass: "未確認",
   suspensionCourse: "未確認",
   taskChecklist: emptyChecklist
-}).warnings.length, 2,
-"未確認の資格区分と停止処分者向け講習は一覧で注意表示する必要があります");
+}).warnings.length, 0,
+"削除済みの座学・実技項目に関する注意を表示してはいけません");
 
 assert.equal(logic.fiscalYearOf(new Date(2026, 2, 31)), "2025");
 assert.equal(logic.fiscalYearOf(new Date(2026, 3, 1)), "2026");

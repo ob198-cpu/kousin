@@ -2298,23 +2298,6 @@
       { id: "pre_dips_attribute_change", category: "事前準備", title: "技能証明申請者番号属性情報変更申請手続き", detail: "" },
       { id: "pre_payment_confirmation", category: "事前準備", title: "入金確認", detail: "" },
       { id: "reception", category: "受付", title: "受付", detail: "所要時間30分" },
-      { id: "academic_overview", category: "座学講習", title: "無人航空機操縦士技能証明制度の概要", detail: "" },
-      { id: "academic_obligations", category: "座学講習", title: "無人航空機操縦者が遵守すべき事項及びマナー", detail: "" },
-      { id: "academic_recent_revisions", category: "座学講習", title: "最近の無人航空機関連の制度改正", detail: "" },
-      { id: "academic_incidents", category: "座学講習", title: "事故・重大インシデント事例及び教訓", detail: "" },
-      { id: "academic_rules", category: "座学講習", title: "運航ルール・事故防止に関する情報", detail: "" },
-      { id: "academic_accident_video", category: "座学講習", title: "無人航空機の事故発生状況", detail: "動画6分" },
-      { id: "academic_case_multi", category: "座学講習", title: "実際の事例とその教訓（マルチ）", detail: "動画5分" },
-      { id: "academic_case_verification", category: "座学講習", title: "実際の事例とその教訓（検証動画）", detail: "動画4分" },
-      { id: "academic_compliance_video", category: "座学講習", title: "事故を発生させないための遵守事項", detail: "動画6分" },
-      { id: "academic_first_class_text", category: "座学講習", title: "一等無人航空機操縦士が留意すべき事項", detail: "教本15分", licenseClass: "一等" },
-      { id: "academic_first_class_video", category: "座学講習", title: "一等無人航空機操縦士が留意すべき事項", detail: "動画10分", licenseClass: "一等" },
-      { id: "academic_exercise", category: "座学講習", title: "問題実施", detail: "" },
-      { id: "academic_answer", category: "座学講習", title: "回答", detail: "" },
-      { id: "practical_explanation", category: "実技講習", title: "説明", detail: "停止処分者向け講習の対象者のみ", suspensionOnly: true },
-      { id: "practical_second_emergency", category: "実技講習", title: "異常事態における飛行", detail: "6分", licenseClass: "二等", suspensionOnly: true },
-      { id: "practical_first_emergency", category: "実技講習", title: "緊急着陸を伴う八の字飛行", detail: "5分", licenseClass: "一等", suspensionOnly: true },
-      { id: "practical_discussion", category: "実技講習", title: "操縦演習に基づく指導及び質疑応答", detail: "二等5分／一等10分", suspensionOnly: true },
       { id: "post_csv_upload", category: "講習後", title: "CSVファイルアップロード", detail: "" },
       { id: "post_certificate_create", category: "講習後", title: "無人航空機更新講習修了証明書　作成", detail: "" },
       { id: "post_certificate_print", category: "講習後", title: "無人航空機更新講習修了証明書　プリントアウト", detail: "" },
@@ -2811,12 +2794,6 @@
       });
       const next = tasks.find(function (task) { return !task.completed; }) || null;
       const warnings = [];
-      if (record.licenseClass !== "一等" && record.licenseClass !== "二等") {
-        warnings.push("資格区分が未確認のため、一等・二等の専用項目は表示していません。");
-      }
-      if (record.suspensionCourse === "未確認") {
-        warnings.push("停止処分者向け講習の要否が未確認のため、実技講習の項目は表示していません。");
-      }
       return {
         checklist: checklist,
         tasks: tasks,
