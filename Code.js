@@ -112,6 +112,274 @@ function ownerAuthorizeDeployment() {
   return result;
 }
 
+/**
+ * One-time editor action for the approved private shared operation.
+ * The canonical data is not rewritten; only the audited role row is added or
+ * corrected after the Drive items have been shared with the approved account.
+ */
+function ownerConfigureApprovedSharedAccess() {
+  var authorization = authorizeDeploymentOwner_();
+  if (!authorization.authorized) {
+    throw apiError_(
+      "OWNER_AUTHORIZATION_REQUIRED",
+      "Google authorization must be completed before configuring shared access."
+    );
+  }
+  var actor = apiNormalizeWebEmail_(
+    Session.getActiveUser().getEmail()
+  );
+  storeAssertApprovedPersonalAccessEmail_(actor);
+  var spreadsheet = storeOpen_();
+  storeRequirePermission_(spreadsheet, actor, "role.write");
+  var targetEmail = "cdp.hokkaido.drone@gmail.com";
+  var current = storeFindRoleByEmail_(
+    storeReadRoles_(spreadsheet),
+    targetEmail
+  );
+  if (
+    current &&
+    current.active === true &&
+    current.role === "admin"
+  ) {
+    return {
+      configured: true,
+      changed: false,
+      email: targetEmail,
+      role: "admin",
+      version: current.version
+    };
+  }
+  var result = storeSetRole_({
+    email: targetEmail,
+    role: "admin",
+    active: true,
+    expectedVersion: current ? current.version : 0,
+    reasonCode: "APPROVED_PRIVATE_SHARED_ACCESS"
+  });
+  return {
+    configured: true,
+    changed: true,
+    email: result.email,
+    role: result.role,
+    version: result.version
+  };
+}
+
+/**
+ * One-time recovery for ownership-transfer invitations that were sent before
+ * the approved private shared-operation design was adopted. The files remain
+ * privately owned by the current owner and the approved CDP account remains a
+ * writer. Record data and spreadsheet contents are not changed.
+ */
+function ownerCancelPendingOwnershipTransfers() {
+  var authorization = authorizeDeploymentOwner_();
+  if (!authorization.authorized) {
+    throw apiError_(
+      "OWNER_AUTHORIZATION_REQUIRED",
+      "Google authorization must be completed before repairing Drive permissions."
+    );
+  }
+  var targetEmail = "cdp.hokkaido.drone@gmail.com";
+  var resourceIds = [
+    "1X_vXjXWZgYx0MEoCHfN01V0MJsJhNEL3",
+    "1bsPJwZObwAtGGG5dPqXppVuO-Ao1wI6uLUH-y0qMbzc",
+    "1ovX5MGN7vyPmVCJbXuuItB_3biFA1cie",
+    "1XmQirjBrQR-uC_GuBVXAyRK5zfqtoQwN",
+    "1j3SPimZyJFIz6hYy_SSphTktBzKCGHB8qbimeBMi3ckFBJ5d4UQ2DlBs"
+  ];
+  var results = resourceIds.map(function(resourceId) {
+    console.log("Drive permission repair: " + resourceId);
+    try {
+      return ownerEnsureApprovedWriterWithoutPendingOwner_(
+        resourceId,
+        targetEmail
+      );
+    } catch (error) {
+      var message = error && error.message
+        ? String(error.message)
+        : String(error);
+      console.error(
+        "Drive permission repair failed: " +
+        resourceId +
+        " / " +
+        message
+      );
+      return {
+        resourceId: resourceId,
+        changed: false,
+        failed: true,
+        message: message
+      };
+    }
+  });
+  var failures = results.filter(function(result) {
+    return result && result.failed === true;
+  });
+  console.log(JSON.stringify(results));
+  if (failures.length) {
+    throw apiError_(
+      "DRIVE_PERMISSION_REPAIR_FAILED",
+      failures.map(function(failure) {
+        return failure.resourceId + ": " + failure.message;
+      }).join(" / ")
+    );
+  }
+  return {
+    repaired: true,
+    targetEmail: targetEmail,
+    resources: results
+  };
+}
+
+function ownerEnsureApprovedWriterWithoutPendingOwner_(
+  resourceIdValue,
+  targetEmailValue
+) {
+  var resourceId = String(resourceIdValue || "").trim();
+  var targetEmail = apiNormalizeWebEmail_(targetEmailValue);
+  var permission = ownerFindDrivePermissionByEmail_(
+    resourceId,
+    targetEmail
+  );
+  if (
+    permission &&
+    permission.pendingOwner !== true &&
+    ownerIsDriveEditorRole_(permission.role)
+  ) {
+    return {
+      resourceId: resourceId,
+      changed: false,
+      role: String(permission.role || "").toLowerCase(),
+      pendingOwner: false
+    };
+  }
+
+  if (permission) {
+    try {
+      Drive.Permissions.update(
+        {
+          role: "writer",
+          pendingOwner: false
+        },
+        resourceId,
+        permission.id,
+        { supportsAllDrives: true }
+      );
+    } catch (updateError) {}
+    permission = ownerFindDrivePermissionByEmail_(
+      resourceId,
+      targetEmail
+    );
+    if (
+      !permission ||
+      permission.pendingOwner === true ||
+      !ownerIsDriveEditorRole_(permission.role)
+    ) {
+      if (permission && permission.id) {
+        try {
+          Drive.Permissions.remove(
+            resourceId,
+            permission.id,
+            { supportsAllDrives: true }
+          );
+        } catch (removeError) {
+          throw apiError_(
+            "DRIVE_PERMISSION_REMOVE_FAILED",
+            resourceId + ": " + String(removeError && removeError.message
+              ? removeError.message
+              : removeError)
+          );
+        }
+      }
+      Drive.Permissions.create(
+        {
+          type: "user",
+          role: "writer",
+          emailAddress: targetEmail
+        },
+        resourceId,
+        {
+          sendNotificationEmail: false,
+          supportsAllDrives: true
+        }
+      );
+    }
+  } else {
+    Drive.Permissions.create(
+      {
+        type: "user",
+        role: "writer",
+        emailAddress: targetEmail
+      },
+      resourceId,
+      {
+        sendNotificationEmail: false,
+        supportsAllDrives: true
+      }
+    );
+  }
+
+  var verified = ownerFindDrivePermissionByEmail_(
+    resourceId,
+    targetEmail
+  );
+  if (
+    !verified ||
+    verified.pendingOwner === true ||
+    !ownerIsDriveEditorRole_(verified.role)
+  ) {
+    throw apiError_(
+      "DRIVE_PERMISSION_REPAIR_FAILED",
+      "The approved account could not be verified as a non-pending writer."
+    );
+  }
+  return {
+    resourceId: resourceId,
+    changed: true,
+    role: "writer",
+    pendingOwner: false
+  };
+}
+
+function ownerIsDriveEditorRole_(roleValue) {
+  var role = String(roleValue || "").toLowerCase();
+  return (
+    role === "owner" ||
+    role === "writer" ||
+    role === "fileorganizer" ||
+    role === "organizer"
+  );
+}
+
+function ownerFindDrivePermissionByEmail_(resourceIdValue, emailValue) {
+  var resourceId = String(resourceIdValue || "").trim();
+  var email = apiNormalizeWebEmail_(emailValue);
+  var pageToken = "";
+  do {
+    var options = {
+      pageSize: 100,
+      supportsAllDrives: true,
+      fields:
+        "nextPageToken,permissions(id,type,role,deleted,emailAddress,pendingOwner,permissionDetails)"
+    };
+    if (pageToken) options.pageToken = pageToken;
+    var page = Drive.Permissions.list(resourceId, options);
+    var found = (page.permissions || []).filter(function(row) {
+      var rowEmail = row && row.emailAddress
+        ? apiNormalizeWebEmail_(row.emailAddress)
+        : "";
+      return (
+        row &&
+        row.deleted !== true &&
+        rowEmail === email
+      );
+    })[0];
+    if (found) return found;
+    pageToken = String(page.nextPageToken || "");
+  } while (pageToken);
+  return null;
+}
+
 function authorizeDeploymentOwner_() {
   var active = String(Session.getActiveUser().getEmail() || "").trim().toLowerCase();
   var effective = String(Session.getEffectiveUser().getEmail() || "").trim().toLowerCase();

@@ -29,7 +29,7 @@
   ],
   "webapp": {
     "access": "ANYONE",
-    "executeAs": "USER_DEPLOYING"
+    "executeAs": "USER_ACCESSING"
   },
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8"

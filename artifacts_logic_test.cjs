@@ -3825,6 +3825,6 @@ const scopes = new Set(manifest.oauthScopes || []);
   "https://www.googleapis.com/auth/userinfo.email"
 ].forEach((scope) => assert(scopes.has(scope), "OAuth scopeがありません: " + scope));
 assert.equal(manifest.webapp.access, "ANYONE");
-assert.equal(manifest.webapp.executeAs, "USER_DEPLOYING");
+assert.equal(manifest.webapp.executeAs, "USER_ACCESSING");
 
 console.log("artifacts_logic_test: OK");

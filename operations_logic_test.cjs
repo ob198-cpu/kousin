@@ -616,8 +616,8 @@ assert(
 });
 assert(
   appsScriptManifest.oauthScopes.includes("openid") &&
-  appsScriptManifest.webapp.executeAs === "USER_DEPLOYING",
-  "署名済みGoogle identityのWorkspace確認とデプロイ所有者実行が必要です"
+  appsScriptManifest.webapp.executeAs === "USER_ACCESSING",
+  "複数の許可済み個人Googleアカウントを識別するため、Webアプリはアクセスしたユーザーとして実行する必要があります"
 );
 
 const financeCorrectionSource = extractParsedFunction(

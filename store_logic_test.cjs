@@ -209,7 +209,7 @@ class MockBlob {
 }
 
 class MockFile {
-  constructor(id, blob) {
+  constructor(id, blob, ownerEmail = "") {
     this.id = id;
     this.blob = blob;
     this.parent = null;
@@ -219,6 +219,7 @@ class MockFile {
     this.editors = [];
     this.viewers = [];
     this.commenters = [];
+    this.ownerEmail = ownerEmail;
   }
   getId() { return this.id; }
   getName() { return this.blob.name; }
@@ -237,6 +238,7 @@ class MockFile {
   getEditors() { return this.editors.slice(); }
   getViewers() { return this.viewers.slice(); }
   getCommenters() { return this.commenters.slice(); }
+  getOwner() { return { getEmail: () => this.ownerEmail }; }
   getParents() {
     const parents = this.parent ? [this.parent] : [];
     let index = 0;
@@ -282,7 +284,11 @@ class MockFolder {
       this.state.backupFileFailure = "";
       throw new Error("simulated stop before backup file creation");
     }
-    const file = new MockFile(`file-${++this.state.sequence}`, blob);
+    const file = new MockFile(
+      `file-${++this.state.sequence}`,
+      blob,
+      this.state.effective
+    );
     file.parent = this;
     if (this.state.nextBackupFileEditor) {
       file.editors.push(this.state.nextBackupFileEditor);
@@ -457,7 +463,8 @@ const context = {
           state.spreadsheets.set(id, spreadsheet);
           item = new MockFile(
             id,
-            new MockBlob("", metadata.mimeType, String(metadata.name))
+            new MockBlob("", metadata.mimeType, String(metadata.name)),
+            state.effective
           );
           item.parent = parent;
           item.setDescription(metadata.description);
@@ -528,11 +535,16 @@ const context = {
         }
         const pages = state.permissionPages.get(String(id));
         if (!pages) {
+          const item =
+            state.files.get(String(id)) || state.folders.get(String(id));
+          const ownerEmail =
+            item && item.ownerEmail ? String(item.ownerEmail) : state.effective;
           return {
             permissions: [{
               id: `owner-${id}`,
               type: "user",
               role: "owner",
+              emailAddress: ownerEmail,
               deleted: false
             }]
           };
@@ -698,11 +710,17 @@ assert.equal(
   context.RENEWAL_STORE.SETUP_MODE_WORKSPACE
 );
 assert.doesNotThrow(
-  () => context.storeAssertBootstrapOwnershipAnchor_("owner@example.com")
+  () => context.storeAssertBootstrapOwnershipAnchor_(
+    "owner@example.com",
+    context.RENEWAL_STORE.SETUP_MODE_WORKSPACE
+  )
 );
 bootstrapOwnershipFolder.ownerEmail = "other-owner@example.com";
 expectCode(
-  () => context.storeAssertBootstrapOwnershipAnchor_("owner@example.com"),
+  () => context.storeAssertBootstrapOwnershipAnchor_(
+    "owner@example.com",
+    context.RENEWAL_STORE.SETUP_MODE_WORKSPACE
+  ),
   "STORE_BOOTSTRAP_OWNER_MISMATCH"
 );
 bootstrapOwnershipFolder.ownerEmail = "owner@example.com";
@@ -824,6 +842,7 @@ const setupDataFolderOwnerPermission = {
   id: "owner-setup-data",
   type: "user",
   role: "owner",
+  emailAddress: "owner@example.com",
   deleted: false
 };
 state.permissionPages.set(setupDataFolder.getId(), {
@@ -914,27 +933,27 @@ assert.deepEqual(
 );
 assert.deepEqual(
   Array.from(context.storeArtifactAccessEmailsFromRows_(
-    "owner@gmail.com",
+    "obata1986@gmail.com",
     context.RENEWAL_STORE.SETUP_MODE_PERSONAL,
-    "owner@gmail.com",
-    [{ email: "owner@gmail.com", role: "admin", active: true }],
+    "obata1986@gmail.com",
+    [{ email: "obata1986@gmail.com", role: "admin", active: true }],
     ["admin", "renewal", "accounting", "viewer"]
   )),
-  ["owner@gmail.com"],
+  ["obata1986@gmail.com"],
   "個人単独運用は所有者1名だけを自動許可する必要があります"
 );
 expectCode(
   () => context.storeArtifactAccessEmailsFromRows_(
-    "owner@gmail.com",
+    "obata1986@gmail.com",
     context.RENEWAL_STORE.SETUP_MODE_PERSONAL,
-    "owner@gmail.com",
+    "obata1986@gmail.com",
     [
-      { email: "owner@gmail.com", role: "admin", active: true },
+      { email: "obata1986@gmail.com", role: "admin", active: true },
       { email: "other@gmail.com", role: "viewer", active: true }
     ],
     ["admin", "renewal", "accounting", "viewer"]
   ),
-  "STORE_WORKSPACE_REQUIRED"
+  "STORE_PERSONAL_ACCESS_NOT_APPROVED"
 );
 assert.deepEqual(
   Array.from(context.storeArtifactAccessEmailsFromRows_(
@@ -1241,7 +1260,14 @@ expectCode(
     "colleague@gmail.com",
     context.RENEWAL_STORE.SETUP_MODE_PERSONAL
   ),
-  "STORE_WORKSPACE_REQUIRED"
+  "STORE_PERSONAL_ACCESS_NOT_APPROVED"
+);
+assert.doesNotThrow(
+  () => context.storeAssertRoleDomainPair_(
+    "obata1986@gmail.com",
+    "cdp.hokkaido.drone@gmail.com",
+    context.RENEWAL_STORE.SETUP_MODE_PERSONAL
+  )
 );
 assert.doesNotThrow(
   () => context.storeAssertRoleDomainPair_(
@@ -1253,7 +1279,7 @@ assert.doesNotThrow(
 const personalPolicyStore = new MockSpreadsheet("personal-policy-store", "personal policy");
 context.storeInitializeSpreadsheet_(personalPolicyStore, {
   createdAt: new Date().toISOString(),
-  createdBy: "owner@gmail.com",
+  createdBy: "obata1986@gmail.com",
   deploymentMode: context.RENEWAL_STORE.SETUP_MODE_PERSONAL,
   dataFolderId: "personal-policy-data",
   backupFolderId: "personal-policy-backup"
@@ -1261,23 +1287,23 @@ context.storeInitializeSpreadsheet_(personalPolicyStore, {
 const personalPolicyBody = {
   records: [],
   roles: [{
-    email: "owner@gmail.com", role: "admin", active: true, version: 1,
+    email: "obata1986@gmail.com", role: "admin", active: true, version: 1,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    updatedBy: "owner@gmail.com"
+    updatedBy: "obata1986@gmail.com"
   }, {
     email: "colleague@gmail.com", role: "viewer", active: true, version: 1,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    updatedBy: "owner@gmail.com"
+    updatedBy: "obata1986@gmail.com"
   }]
 };
 expectCode(() => context.storeBuildRestorePlan_(
   context.storeReadRecords_(personalPolicyStore),
   context.storeReadRoles_(personalPolicyStore),
   personalPolicyBody,
-  "owner@gmail.com",
-  ["owner@gmail.com"],
+  "obata1986@gmail.com",
+  ["obata1986@gmail.com"],
   personalPolicyStore
-), "STORE_WORKSPACE_REQUIRED");
+), "STORE_PERSONAL_ACCESS_NOT_APPROVED");
 
 state.actor = "viewer@example.com";
 assert.equal(context.storeListRecords_().length, 2);

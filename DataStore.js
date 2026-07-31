@@ -18,6 +18,10 @@ var RENEWAL_STORE = {
   SETUP_MODE_PERSONAL: "PERSONAL_SINGLE_USER",
   PERSONAL_SETUP_CONFIRM:
     "CREATE_PERSONAL_SINGLE_USER_STORE_WITHOUT_WORKSPACE_TRANSFER",
+  APPROVED_PERSONAL_ACCESS_EMAILS: [
+    "obata1986@gmail.com",
+    "cdp.hokkaido.drone@gmail.com"
+  ],
   BOOTSTRAP_OWNERSHIP_FOLDER_ID:
     "1XmQirjBrQR-uC_GuBVXAyRK5zfqtoQwN",
   BOOTSTRAP_OWNERSHIP_FOLDER_NAME: "2026年度",
@@ -199,7 +203,7 @@ function storeSetup_(input) {
     // identity is hidden by Google Workspace / consumer-account policy.
     var actor = storeBootstrapActorEmail_();
     var deploymentMode = storeAssertSetupDeploymentMode_(actor, input);
-    storeAssertBootstrapOwnershipAnchor_(actor);
+    storeAssertBootstrapOwnershipAnchor_(actor, deploymentMode);
     var now = storeNowIso_();
     var suffix = now.slice(0, 10).replace(/-/g, "") + "_" + now.slice(11, 19).replace(/:/g, "");
     var rootFolder;
@@ -770,16 +774,15 @@ function storeAssertRoleDomainPolicy_(spreadsheet, email, active, current) {
 function storeAssertRoleDomainPair_(ownerValue, memberValue, deploymentModeValue) {
   var owner = storeEmail_(ownerValue);
   var member = storeEmail_(memberValue);
+  var deploymentMode = String(deploymentModeValue || "").trim();
+  if (deploymentMode === RENEWAL_STORE.SETUP_MODE_PERSONAL) {
+    storeAssertApprovedPersonalAccessEmail_(owner);
+    storeAssertApprovedPersonalAccessEmail_(member);
+    return true;
+  }
   if (owner === member) return true;
   var ownerDomain = owner.split("@")[1];
   var memberDomain = member.split("@")[1];
-  var deploymentMode = String(deploymentModeValue || "").trim();
-  if (deploymentMode === RENEWAL_STORE.SETUP_MODE_PERSONAL) {
-    storeFail_(
-      "STORE_WORKSPACE_REQUIRED",
-      "A personal single-user store cannot activate another user."
-    );
-  }
   if (deploymentMode !== RENEWAL_STORE.SETUP_MODE_WORKSPACE) {
     storeFail_(
       "STORE_WORKSPACE_POLICY_UNVERIFIED",
@@ -793,6 +796,29 @@ function storeAssertRoleDomainPair_(ownerValue, memberValue, deploymentModeValue
     );
   }
   return true;
+}
+
+function storeApprovedPersonalAccessEmails_() {
+  var seen = {};
+  return (RENEWAL_STORE.APPROVED_PERSONAL_ACCESS_EMAILS || [])
+    .map(storeEmail_)
+    .filter(function(email) {
+      if (!email || seen[email]) return false;
+      seen[email] = true;
+      return true;
+    })
+    .sort();
+}
+
+function storeAssertApprovedPersonalAccessEmail_(emailValue) {
+  var email = storeEmail_(emailValue);
+  if (storeApprovedPersonalAccessEmails_().indexOf(email) < 0) {
+    storeFail_(
+      "STORE_PERSONAL_ACCESS_NOT_APPROVED",
+      "This Google account is not approved for the private shared store."
+    );
+  }
+  return email;
 }
 
 /**
@@ -837,7 +863,7 @@ function storeAssertSetupDeploymentMode_(actorValue, input) {
     ) {
       storeFail_(
         "STORE_PERSONAL_SINGLE_USER_CONFIRM_REQUIRED",
-        "Personal-account setup is single-user only and requires the exact manual confirmation."
+        "Personal-account setup requires the exact manual confirmation for the approved private shared store."
       );
     }
   }
@@ -919,8 +945,12 @@ function storeVerifiedGoogleIdentityForActor_(actorValue) {
  * Even if a deployment drifts to execute-as-user, another visitor cannot
  * become the first administrator because they do not own this exact folder.
  */
-function storeAssertBootstrapOwnershipAnchor_(actorValue) {
+function storeAssertBootstrapOwnershipAnchor_(actorValue, deploymentModeValue) {
   var actor = storeEmail_(actorValue);
+  var deploymentMode = String(deploymentModeValue || "").trim();
+  if (deploymentMode !== RENEWAL_STORE.SETUP_MODE_WORKSPACE) {
+    storeAssertApprovedPersonalAccessEmail_(actor);
+  }
   var folder;
   try {
     folder = DriveApp.getFolderById(
@@ -947,11 +977,37 @@ function storeAssertBootstrapOwnershipAnchor_(actorValue) {
       RENEWAL_STORE.BOOTSTRAP_OWNERSHIP_FOLDER_ID ||
     String(folder.getName() || "") !==
       RENEWAL_STORE.BOOTSTRAP_OWNERSHIP_FOLDER_NAME ||
-    ownerEmail !== actor
+    (
+      deploymentMode === RENEWAL_STORE.SETUP_MODE_WORKSPACE
+        ? ownerEmail !== actor
+        : storeApprovedPersonalAccessEmails_().indexOf(ownerEmail) < 0
+    )
   ) {
     storeFail_(
       "STORE_BOOTSTRAP_OWNER_MISMATCH",
-      "The final deployment owner must own the exact approved 2026 output folder before initial setup."
+      "The approved 2026 output folder must be privately owned by an approved operator."
+    );
+  }
+  storeAssertResourcePrivate_(folder, "approved 2026 output folder");
+  var actorHasAccess = ownerEmail === actor;
+  if (!actorHasAccess) {
+    ["getEditors", "getViewers"].some(function(method) {
+      if (typeof folder[method] !== "function") return false;
+      var users = folder[method]() || [];
+      actorHasAccess = users.some(function(user) {
+        try {
+          return storeEmail_(user.getEmail()) === actor;
+        } catch (ignored) {
+          return false;
+        }
+      });
+      return actorHasAccess;
+    });
+  }
+  if (!actorHasAccess) {
+    storeFail_(
+      "STORE_BOOTSTRAP_ACCESS_MISSING",
+      "The approved operator cannot access the approved 2026 output folder."
     );
   }
   return true;
@@ -3186,15 +3242,6 @@ function storeArtifactAccessEmailsFromRows_(
     storeFail_(
       "STORE_ARTIFACT_ACCESS_POLICY_INVALID",
       "The canonical active roles cannot establish the artifact Drive access policy."
-    );
-  }
-  if (
-    deploymentMode === RENEWAL_STORE.SETUP_MODE_PERSONAL &&
-    (emails.length !== 1 || emails[0] !== owner || actor !== owner)
-  ) {
-    storeFail_(
-      "STORE_PERSONAL_ARTIFACT_OWNER_ONLY_REQUIRED",
-      "Personal single-user artifact storage must remain owner-only."
     );
   }
   return emails;
@@ -6067,9 +6114,9 @@ function storeSecureBackupFile_(file, label) {
 
 /**
  * Fail closed when an ACL API reports public/domain/link sharing or direct
- * collaborators. DriveApp's convenience methods are retained, and Advanced
- * Drive must independently enumerate every permission page.  A partial ACL
- * listing is not owner-only evidence.
+ * collaborators outside the approved operator list. DriveApp's convenience
+ * methods are retained, and Advanced Drive must independently enumerate every
+ * permission page. A partial ACL listing is not sufficient evidence.
  */
 function storeAssertResourcePrivate_(resource, label) {
   if (!resource) storeFail_("STORE_ACL_RESOURCE_MISSING", label + " missing.");
@@ -6080,15 +6127,48 @@ function storeAssertResourcePrivate_(resource, label) {
       storeFail_("STORE_ACL_NOT_PRIVATE", label + " is shared by link/domain/anyone.");
     }
   }
+  var approvedMap = {};
+  storeApprovedPersonalAccessEmails_().forEach(function(email) {
+    approvedMap[email] = true;
+  });
+  var ownerEmail = "";
+  try {
+    if (resource && typeof resource.getOwner === "function") {
+      var owner = resource.getOwner();
+      ownerEmail = storeEmail_(owner && owner.getEmail());
+      if (ownerEmail) approvedMap[ownerEmail] = true;
+    }
+  } catch (ignoredOwner) {}
   ["getEditors", "getViewers", "getCommenters"].forEach(function(method) {
     if (typeof resource[method] !== "function") return;
     var people = resource[method]() || [];
-    if (people.length) storeFail_("STORE_ACL_UNEXPECTED_COLLABORATOR", label + " has direct collaborators.");
+    people.forEach(function(person) {
+      var email = "";
+      try {
+        email = storeEmail_(person.getEmail());
+      } catch (ignored) {}
+      if (!email || !approvedMap[email]) {
+        storeFail_(
+          "STORE_ACL_UNEXPECTED_COLLABORATOR",
+          label + " has an unapproved collaborator."
+        );
+      }
+    });
   });
-  storeAssertAdvancedDriveOwnerOnly_(resource, label);
+  storeAssertAdvancedDriveApprovedPrivate_(
+    resource,
+    label,
+    approvedMap,
+    ownerEmail
+  );
 }
 
-function storeAssertAdvancedDriveOwnerOnly_(resource, label) {
+function storeAssertAdvancedDriveApprovedPrivate_(
+  resource,
+  label,
+  approvedMapValue,
+  ownerEmailValue
+) {
   var resourceId = "";
   try {
     if (resource && typeof resource.getId === "function") {
@@ -6119,6 +6199,8 @@ function storeAssertAdvancedDriveOwnerOnly_(resource, label) {
   var seenTokens = {};
   var ownerCount = 0;
   var pageCount = 0;
+  var approvedMap = approvedMapValue || {};
+  var ownerEmail = storeEmail_(ownerEmailValue);
   do {
     if (pageToken && seenTokens[pageToken]) {
       storeFail_(
@@ -6163,20 +6245,36 @@ function storeAssertAdvancedDriveOwnerOnly_(resource, label) {
       if (permission.deleted === true) return;
       var role = String(permission.role || "").toLowerCase();
       var type = String(permission.type || "").toLowerCase();
+      var email = permission.emailAddress
+        ? storeEmail_(permission.emailAddress)
+        : "";
       if (!String(permission.id || "") || !role || !type) {
         storeFail_(
           "STORE_ACL_PERMISSION_ENTRY_INVALID",
           label + " contains an incomplete permission entry."
         );
       }
-      if (role !== "owner" || type !== "user" ||
-          permission.pendingOwner === true) {
+      if (
+        type !== "user" ||
+        ["owner", "writer", "fileorganizer", "organizer"].indexOf(role) < 0 ||
+        !email ||
+        !(
+          approvedMap[email] ||
+          (
+            ownerEmail &&
+            role !== "owner" &&
+            email.split("@")[1] === ownerEmail.split("@")[1] &&
+            ownerEmail.split("@")[1] !== "gmail.com"
+          )
+        ) ||
+        permission.pendingOwner === true
+      ) {
         storeFail_(
           "STORE_ACL_UNEXPECTED_PERMISSION",
-          label + " has a non-owner permission."
+          label + " has a public, pending, read-only, or unapproved permission."
         );
       }
-      ownerCount += 1;
+      if (role === "owner") ownerCount += 1;
     });
     var nextToken = page.nextPageToken;
     if (nextToken !== undefined && nextToken !== null &&
@@ -6192,7 +6290,7 @@ function storeAssertAdvancedDriveOwnerOnly_(resource, label) {
   if (ownerCount !== 1) {
     storeFail_(
       "STORE_ACL_OWNER_INVALID",
-      label + " must have exactly one owner permission."
+      label + " must have exactly one approved owner permission."
     );
   }
 }
