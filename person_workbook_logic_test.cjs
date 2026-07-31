@@ -124,6 +124,16 @@ const trainingRenderer = source.slice(
 assert(trainingRenderer.includes("personWorkbookMarkCopiedSample_(sheet)") &&
   !trainingRenderer.includes("insertRowAfter(32)"),
   "講習記録簿のサンプル表示で承認済み原本の行・結合・見た目を変えてはいけません");
+assert(trainingRenderer.includes('classValue === 1') &&
+  trainingRenderer.includes('"一等無人航空機操縦士"') &&
+  trainingRenderer.includes('"二等無人航空機操縦士"') &&
+  trainingRenderer.includes("source.getSheetByName(sourceName)"),
+  "資格区分に応じて一等・二等の該当原本シートだけを選択する必要があります");
+assert(trainingRenderer.includes(
+  "講習記録簿原本のシート名と資格区分が一致しないため作成を停止しました。"
+) && trainingRenderer.includes(
+  "作成した講習記録簿の資格区分または列構成が一致しないため保存を停止しました。"
+), "講習記録簿は原本選択前と作成後の双方で資格区分を再検査する必要があります");
 assert(planRenderer.includes("sourceSheet.copyTo(spreadsheet)") &&
   planRenderer.includes("personWorkbookAssertCopiedLayout_") &&
   planRenderer.includes('"B4:C5"') &&

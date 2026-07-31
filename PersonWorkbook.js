@@ -1309,9 +1309,19 @@ function personWorkbookRenderTraining_(spreadsheet, tempName, context) {
   var sourceName = classValue === 1
     ? "一等無人航空機操縦士"
     : "二等無人航空機操縦士";
+  var expectedClassLabel = classValue === 1
+    ? "一等無人航空機操縦士"
+    : "二等無人航空機操縦士";
   var sourceSheet = source.getSheetByName(sourceName);
   if (!sourceSheet) {
     throw new Error("講習記録簿原本の対象区分シートがありません。");
+  }
+  if (Number(artifactClassValue_(
+    sourceSheet.getRange("A4").getDisplayValue()
+  )) !== classValue) {
+    throw new Error(
+      "講習記録簿原本のシート名と資格区分が一致しないため作成を停止しました。"
+    );
   }
   var sheet = sourceSheet.copyTo(spreadsheet);
   sheet.setName(tempName);
@@ -1331,7 +1341,7 @@ function personWorkbookRenderTraining_(spreadsheet, tempName, context) {
     "講習記録簿　　受講者氏名（　" + artifactRecordName_(record) + "　）"
   ));
   sheet.getRange("A4").setValue(
-    artifactSheetText_(artifactClassLongLabel_(record.licenseClass))
+    artifactSheetText_(expectedClassLabel)
   );
   sheet.getRange("A5").setValue(artifactSheetText_(
     artifactValidIsoDateOrBlank_(record.courseDate)
@@ -1386,6 +1396,13 @@ function personWorkbookRenderTraining_(spreadsheet, tempName, context) {
   }
   if (context.sampleMode) {
     personWorkbookMarkCopiedSample_(sheet);
+  }
+  if (Number(artifactClassValue_(
+    sheet.getRange("A4").getDisplayValue()
+  )) !== classValue || sheet.getMaxColumns() !== keepColumns) {
+    throw new Error(
+      "作成した講習記録簿の資格区分または列構成が一致しないため保存を停止しました。"
+    );
   }
   try { sheet.setHiddenGridlines(true); } catch (ignoredGrid) {}
   return sheet;
