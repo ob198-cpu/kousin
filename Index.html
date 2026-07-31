@@ -146,6 +146,12 @@
       font-size: 13px;
       font-weight: 700;
     }
+    .metric .definition {
+      margin-top: 7px;
+      color: #475569;
+      font-size: 12px;
+      line-height: 1.4;
+    }
     .danger { border-color: #fecdca; background: var(--red-bg); }
     .danger .label,
     .danger strong { color: var(--red); }
@@ -447,6 +453,13 @@
     }
     .report-block { min-width: 0; }
     .report-block h3 { margin-bottom: 7px; }
+    .report-definition {
+      min-height: 42px;
+      margin: 0 0 7px;
+      color: #475569;
+      font-size: 12px;
+      line-height: 1.45;
+    }
     .data-section {
       margin-bottom: 12px;
       padding: 14px;
@@ -1558,38 +1571,44 @@
       </div>
       <p class="operation-note">管理年度（4月〜翌3月）に属する更新案件の参考集計です。売上・入金の会計期間集計ではありません。会計確認は「請求・入金」で取引日を指定し、経理CSVを使用してください。</p>
       <section class="summary">
-        <div class="metric neutral">
-          <div class="label">総人数</div>
+        <div class="metric neutral" title="同じ管理IDは1人として数えます。管理IDがない場合は免許番号、氏名の順で重複を判定します。">
+          <div class="label">登録者数（重複除外）</div>
           <strong id="reportPeople">0</strong><span class="note">人</span>
+          <div class="definition">管理ID（なければ免許番号・氏名）で重複を除き、同じ人を1人として数えた人数</div>
         </div>
-        <div class="metric neutral">
-          <div class="label">総回数</div>
+        <div class="metric neutral" title="選択した管理年度に属する、無効化されていない更新記録の件数です。">
+          <div class="label">更新案件数</div>
           <strong id="reportSessions">0</strong><span class="note">件</span>
+          <div class="definition">無効化済みを除く更新記録の件数。同じ人でも年度・受講回が違えば別件</div>
         </div>
-        <div class="metric guide">
-          <div class="label">更新完了</div>
+        <div class="metric guide" title="更新完了確認日と新しい免許期限の両方が登録されている更新記録を数えます。">
+          <div class="label">更新完了案件</div>
           <strong id="reportCompleted">0</strong><span class="note">件</span>
+          <div class="definition">「更新完了確認日」と「新しい免許期限」が登録済みの件数</div>
         </div>
-        <div class="metric warning">
-          <div class="label">未収金（参考）</div>
+        <div class="metric warning" title="選択した管理年度の案件に紐づく請求残高です。取引日による会計期間集計ではありません。">
+          <div class="label">未収金残高（参考）</div>
           <strong id="reportOutstanding">0</strong><span class="note">円</span>
+          <div class="definition">発行済請求額から入金・値引・相殺等を差し引いた残額</div>
         </div>
       </section>
       <div class="report-grid">
         <section class="report-block">
           <h3>区分別</h3>
+          <p class="report-definition">人数は同じ登録者を1人として重複除外、更新案件数は更新記録の件数、完了案件数は更新完了確認日と新しい免許期限が登録済みの件数です。</p>
           <div class="table-wrap">
             <table class="report-table">
-              <thead><tr><th>区分</th><th>人数</th><th>回数</th><th>更新完了</th></tr></thead>
+              <thead><tr><th>区分</th><th>人数（重複除外）</th><th>更新案件数</th><th>完了案件数</th></tr></thead>
               <tbody id="typeReportBody"></tbody>
             </table>
           </div>
         </section>
         <section class="report-block">
           <h3>受講機関別</h3>
+          <p class="report-definition">人数は同じ登録者を1人として重複除外、更新案件数は更新記録の件数、請求額は選択した管理年度の案件に紐づく発行済請求（税込）の合計です。</p>
           <div class="table-wrap">
             <table class="report-table">
-              <thead><tr><th>受講機関</th><th>人数</th><th>回数</th><th>発行済請求額（参考）</th></tr></thead>
+              <thead><tr><th>受講機関</th><th>人数（重複除外）</th><th>更新案件数</th><th>発行済請求額合計（参考）</th></tr></thead>
               <tbody id="providerReportBody"></tbody>
             </table>
           </div>
@@ -8934,18 +8953,76 @@
           return;
         }
         let result = null;
-        for (let batchIndex = 0; batchIndex < 5; batchIndex += 1) {
+        const batchCount = 9;
+        const appsScriptLocation = await new Promise((resolve) => {
+          if (
+            typeof google !== "undefined" &&
+            google.script &&
+            google.script.url &&
+            typeof google.script.url.getLocation === "function"
+          ) {
+            google.script.url.getLocation((location) => resolve(location || {}));
+          } else {
+            resolve({});
+          }
+        });
+        const resumeBatchValue = Number(
+          appsScriptLocation &&
+          appsScriptLocation.parameter &&
+          appsScriptLocation.parameter.resumeBatch !== undefined
+            ? appsScriptLocation.parameter.resumeBatch
+            : new URLSearchParams(window.location.search).get("resumeBatch")
+        );
+        const startBatchIndex =
+          isSyntheticSampleRecord(currentRecord) &&
+          Number.isInteger(resumeBatchValue) &&
+          resumeBatchValue >= 0 &&
+          resumeBatchValue < batchCount
+            ? resumeBatchValue
+            : 0;
+        for (
+          let batchIndex = startBatchIndex;
+          batchIndex < batchCount;
+          batchIndex += 1
+        ) {
           document.getElementById("personWorkbookResult").innerHTML =
             artifactResultRow(
               "warning",
               "対象者資料一式",
-              "全9シートを5回に分けて安全に更新しています。" +
-              " 現在 " + (batchIndex + 1) + " / 5 回目です。"
+              "全9シートを1シートずつ安全に更新しています。" +
+              " 現在 " + (batchIndex + 1) + " / " + batchCount + " 回目です。"
             );
-          result = await serverCall(
-            "apiCreateOrUpdatePersonWorkbookBatch",
-            Object.assign({}, request, { batchIndex: batchIndex })
-          );
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            result = await serverCall(
+              "apiCreateOrUpdatePersonWorkbookBatch",
+              Object.assign({}, request, { batchIndex: batchIndex })
+            );
+            const transientMessage = String(
+              result && (result.message || result.error) || ""
+            );
+            const busyRetry =
+              /別の成果物作成が実行中/i.test(transientMessage);
+            const mayRetry =
+              result &&
+              result.success === false &&
+              result.preservationRequired !== true &&
+              /サービスに接続できなくなりました|Service unavailable|一時的なエラー|別の成果物作成が実行中/i
+                .test(transientMessage);
+            if (!mayRetry || attempt > 0) break;
+            const retryDelay = busyRetry ? 30000 : 3000;
+            document.getElementById("personWorkbookResult").innerHTML =
+              artifactResultRow(
+                "warning",
+                "対象者資料一式",
+                (batchIndex + 1) + " / " + batchCount +
+                " 回目でGoogleの一時エラーを検出しました。" +
+                " " + Math.round(retryDelay / 1000) +
+                "秒後に同じシートだけを1回再試行します。"
+              );
+            await new Promise((resolve) =>
+              window.setTimeout(resolve, retryDelay)
+            );
+          }
           if (!result || result.success === false || result.ready === false) {
             renderPersonWorkbookResponse(result || {}, "create");
             showToast("作成結果に確認事項があります。");

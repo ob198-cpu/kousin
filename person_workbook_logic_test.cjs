@@ -87,16 +87,20 @@ const ledgerRenderer = source.slice(
 });
 assert(ledgerRenderer.includes("artifactLedgerOutputFields_(context.record)"),
   "対象者資料ブックの発行台帳は共通転記規則を使用する必要があります");
-assert(ledgerRenderer.includes("RENEWAL_ARTIFACT.LEDGER_HEADER_ALLOWLIST") &&
-  ledgerRenderer.includes('"B2:I22"'),
-  "対象者資料ブックの発行台帳は検査済み専用原本の固定様式を再現する必要があります");
-assert(!ledgerRenderer.includes("artifactApplyLedgerOutputHeaders_") &&
-  !ledgerRenderer.includes("deleteColumns(") &&
-  ledgerRenderer.includes('"F4:F22"') &&
+assert(!ledgerRenderer.includes("artifactAssertLedgerTemplateClean_") &&
+  ledgerRenderer.includes("personWorkbookCopyPinnedGrid_(") &&
+  !ledgerRenderer.includes("SpreadsheetApp.openById") &&
+  ledgerRenderer.includes("artifactApplyLedgerOutputHeaders_"),
+  "対象者資料ブックの発行台帳はSpreadsheetサービスで原本全体を開かず必要範囲だけを複製する必要があります");
+assert(!ledgerRenderer.includes("deleteColumns(") &&
+  ledgerRenderer.includes("sheet.getRange(3, 2, 1, values.length)") &&
   ledgerRenderer.includes("personWorkbookSetValuesWithRetry_"),
   "発行台帳は原本のB:I列へ正式8項目を転記する必要があります");
 assert(!ledgerRenderer.includes("certificateDeliveredDate") && !ledgerRenderer.includes("record.recordId"),
   "発行台帳の可視列へ実交付日や内部recordIdを混在させてはいけません");
+assert(ledgerRenderer.includes("personWorkbookMarkCopiedSample_(sheet)") &&
+  !ledgerRenderer.includes('"A24:I24"'),
+  "発行台帳のサンプル表示で承認済み原本の行・結合・見た目を変えてはいけません");
 
 const personWorkbookPreflight = source.slice(
   source.indexOf("function apiPreflightPersonWorkbook("),
@@ -106,20 +110,28 @@ assert(!personWorkbookPreflight.includes("artifactAssertLedgerTemplateClean_"),
   "作成前検査でDrive原本の完全検査を重複実行してはいけません");
 assert(personWorkbookPreflight.includes("固定した本文版との一致"),
   "作成時の版固定照合を説明する必要があります");
+assert(personWorkbookPreflight.includes("if (!sampleMode) complianceRequireTemplatesReady_();"),
+  "合成サンプルだけは未準備の正式用専用原本で停止させてはいけません");
 
 const planRenderer = source.slice(
   source.indexOf("function personWorkbookRenderPlan_("),
   source.indexOf("function personWorkbookRenderStatus_(")
 );
-assert(planRenderer.includes('"A1:AH5"') &&
-  planRenderer.includes('"D1:AH1"') &&
-  planRenderer.includes('"二等無人航空機操縦士"') &&
-  planRenderer.includes('"一等無人航空機操縦士"') &&
-  !planRenderer.includes("setFrozenColumns("),
-  "別添04は承認済み固定構造の34列様式を再現する必要があります");
-assert(!planRenderer.includes("PLAN_SOURCE_ID") &&
-  !planRenderer.includes("complianceLoadTemplateState_"),
-  "対象者資料ブックの別添04を外部原本の状態へ依存させてはいけません");
+const trainingRenderer = source.slice(
+  source.indexOf("function personWorkbookRenderTraining_("),
+  source.indexOf("function personWorkbookRenderPlan_(")
+);
+assert(trainingRenderer.includes("personWorkbookMarkCopiedSample_(sheet)") &&
+  !trainingRenderer.includes("insertRowAfter(32)"),
+  "講習記録簿のサンプル表示で承認済み原本の行・結合・見た目を変えてはいけません");
+assert(planRenderer.includes("sourceSheet.copyTo(spreadsheet)") &&
+  planRenderer.includes("personWorkbookAssertCopiedLayout_") &&
+  planRenderer.includes('"B4:C5"') &&
+  planRenderer.includes("getRange(2, 4, 1, 31)") &&
+  planRenderer.includes("personWorkbookMarkCopiedSample_(sheet)") &&
+  !planRenderer.includes('"A10:AK10"') &&
+  !planRenderer.includes("setColumnWidths("),
+  "別添04は承認済み専用原本を複製し、月・曜日・人数だけ更新する必要があります");
 
 const statusRenderer = source.slice(
   source.indexOf("function personWorkbookRenderStatus_("),
@@ -149,6 +161,51 @@ assert(!titleRenderer.includes("#0b4f8a") &&
   titleRenderer.includes('.setBackground("#ffffff")'),
   "帳票見出しをアプリ風の濃紺帯にしてはいけません");
 
+const layoutHelper = source.slice(
+  source.indexOf("function personWorkbookReadGridSnapshotById_("),
+  source.indexOf("function personWorkbookRenderOverview_(")
+);
+[
+  "Sheets.Spreadsheets.get",
+  "userEnteredFormat",
+  "rowMetadata(pixelSize,hiddenByUser)",
+  "columnMetadata(pixelSize,hiddenByUser)",
+  "frozenRowCount",
+  "frozenColumnCount",
+  "hideGridlines",
+  "merges",
+  "Sheets.Spreadsheets.batchUpdate",
+  "updateDimensionProperties",
+  "mergeCells"
+].forEach((token) => {
+  assert(layoutHelper.includes(token),
+    "原本コピー後のレイアウト検査が不足しています: " + token);
+});
+assert(!layoutHelper.includes("getColumnWidth") &&
+  !layoutHelper.includes("getRowHeight") &&
+  !layoutHelper.includes("getBackgrounds"),
+  "原本照合でGoogle Sheetsへ多数の小分け取得を実行してはいけません");
+const manifest = JSON.parse(fs.readFileSync("appsscript.json", "utf8"));
+assert((manifest.dependencies &&
+  manifest.dependencies.enabledAdvancedServices || []).some((service) =>
+  service.userSymbol === "Sheets" &&
+  service.serviceId === "sheets" &&
+  service.version === "v4"
+), "原本レイアウトの一括検査用にAdvanced Sheets API v4が必要です");
+assert(source.includes('LAYOUT_VERSION: "OFFICIAL_FORMS_V2"'),
+  "対象者資料ブックの帳票レイアウト版がありません");
+
+const dipsRenderer = source.slice(
+  source.indexOf("function personWorkbookRenderDips_("),
+  source.indexOf("function personWorkbookRenderPayment_(")
+);
+assert(dipsRenderer.includes("personWorkbookApplyDocumentStyle_(sheet, 2, 11)") &&
+  dipsRenderer.includes("sheet.getRange(1, 1, 1, 11)") &&
+  dipsRenderer.includes("sheet.getRange(2, 1, 1, 11)") &&
+  dipsRenderer.includes('sheet.getRange("A1").setNote(note)') &&
+  !dipsRenderer.includes("personWorkbookTitle_"),
+  "DIPSシートはCSV出力可能な1行目ヘッダー・2行目データだけにする必要があります");
+
 const updateStart = source.indexOf("function personWorkbookUpdate_(");
 const updateEnd = source.indexOf("function personWorkbookEnsureSystemSheet_(");
 const updateSource = source.slice(updateStart, updateEnd);
@@ -156,6 +213,15 @@ assert(updateSource.includes("artifactAssertDedicatedTemplatePin_") &&
   updateSource.indexOf("artifactAssertDedicatedTemplatePin_") <
     updateSource.indexOf("spreadsheet.setSpreadsheetTimeZone"),
   "発行台帳専用原本は対象者ブックへ書き込む前に固定本文版を照合する必要があります");
+assert(updateSource.includes('"certificate", context.settings.certificateTemplateId') &&
+  updateSource.includes("complianceAssertPlanTemplateClean_") &&
+  updateSource.includes("complianceAssertStatusTemplateClean_") &&
+  updateSource.includes('artifactAssertPinnedReferenceSource_("implementationPlanSource")') &&
+  updateSource.includes('artifactAssertPinnedReferenceSource_("implementationStatusSource")'),
+  "別添04・05・修了証明書の専用原本も書込み前に固定版を検査する必要があります");
+assert(source.includes("RENEWAL_COMPLIANCE_ARCHIVE.PLAN_SOURCE_ID") &&
+  source.includes("RENEWAL_COMPLIANCE_ARCHIVE.STATUS_SOURCE_ID"),
+  "合成サンプルは固定した公開参照元から別添04・05を作成する必要があります");
 const systemVerifyPosition = updateSource.indexOf(
   "personWorkbookAssertSystemSheet_("
 );
@@ -173,12 +239,20 @@ assert(systemVerifyPosition >= 0 &&
 assert(updateSource.includes("systemBefore") &&
   updateSource.includes("systemRollbackError"),
   "更新失敗時は管理シートも元に戻す必要があります");
+assert(updateSource.includes('var temporarySheetPrefix = "__準備_" + runTag + "_"') &&
+  updateSource.includes("remainingPreparedName.indexOf(temporarySheetPrefix) === 0") &&
+  updateSource.includes("spreadsheet.deleteSheet(currentSheets[preparedIndex])"),
+  "更新途中で例外になった場合は、その実行で作った準備シートだけを削除する必要があります");
 assert(updateSource.includes("cleanupWarnings"),
   "更新確定後の旧シート削除失敗は新シートを破壊せず警告にする必要があります");
 assert(updateSource.includes("personWorkbookFlushWithRetry_()") &&
   updateSource.indexOf("personWorkbookFlushWithRetry_()") <
     updateSource.indexOf("prepared.push({"),
   "各シートは次の帳票へ進む前に変更を確定する必要があります");
+assert(updateSource.match(/personWorkbookHasReadableContent_/g).length >= 2 &&
+  source.includes("function personWorkbookHasReadableContent_(") &&
+  !updateSource.includes('getRange("A1").getDisplayValue()'),
+  "帳票の読戻し検査はA1固定ではなく、様式内の表示内容全体を確認する必要があります");
 assert(updateSource.includes("personWorkbookQuarantineName_") &&
   updateSource.includes("__中断_") &&
   updateSource.includes("削除せず"),
@@ -189,10 +263,22 @@ assert(!updateSource.includes("前回の更新途中シート") ||
 
 assert(scriptMatch[1].includes('serverCall(\n          "apiPreflightPersonWorkbook"'),
   "画面は資料一式の作成前検査APIを呼ぶ必要があります");
-assert(scriptMatch[1].includes(
-  'serverCall(\n            "apiCreateOrUpdatePersonWorkbookBatch"'
-) && scriptMatch[1].includes("batchIndex < 5"),
-  "画面は発行台帳を単独段階に分けて作成・更新する必要があります");
+assert(scriptMatch[1].includes('"apiCreateOrUpdatePersonWorkbookBatch"') &&
+  scriptMatch[1].includes("batchIndex < batchCount") &&
+  scriptMatch[1].includes("const batchCount = 9") &&
+  source.includes("var boundaries = [1, 2, 3, 4, 5, 6, 7, 8, 9]") &&
+  source.includes("batchIndex > 8") &&
+  source.includes("finalize: batchIndex === 8"),
+  "画面は9帳票を1シートずつ分けて作成・更新する必要があります");
+assert(scriptMatch[1].includes("google.script.url.getLocation") &&
+  scriptMatch[1].includes('get("resumeBatch")') &&
+  scriptMatch[1].includes("isSyntheticSampleRecord(currentRecord)") &&
+  scriptMatch[1].includes("let batchIndex = startBatchIndex"),
+  "合成サンプルだけは確認済みの途中段階から安全に再開できる必要があります");
+assert(scriptMatch[1].includes("Googleの一時エラーを検出しました") &&
+  scriptMatch[1].includes("preservationRequired !== true") &&
+  scriptMatch[1].includes("attempt < 2"),
+  "Google Sheetsの一時エラーだけを同じシートで1回再試行する必要があります");
 assert(scriptMatch[1].includes("openArtifactModal(record);\n          runPersonWorkbook(record);"),
   "詳細画面の資料作成ボタン1回で全資料の作成を開始する必要があります");
 

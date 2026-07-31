@@ -5,6 +5,7 @@
 var RENEWAL_PERSON_WORKBOOK = {
   FORMAT: "CDP_RENEWAL_PERSON_WORKBOOK_V1",
   GENERATOR_VERSION: 1,
+  LAYOUT_VERSION: "OFFICIAL_FORMS_V2",
   PROPERTY_PREFIX: "RENEWAL_PERSON_WORKBOOK_",
   SYSTEM_SHEET_NAME: "__SYSTEM",
   SHEETS: [
@@ -29,6 +30,9 @@ function apiPreflightPersonWorkbook(request) {
     var settings = artifactLoadSettings_();
     personWorkbookAssertAdminOnlyAcl_(authorization.email);
     var record = artifactNormalizeRecord_(canonicalRequest.request.record);
+    var sampleMode = typeof complianceIsSyntheticSampleRecord_ === "function" &&
+      complianceIsSyntheticSampleRecord_(record);
+    if (!sampleMode) complianceRequireTemplatesReady_();
     var fiscalYear = artifactText_(record.fiscalYear);
     artifactOutputFolderForFiscalYear_(settings, fiscalYear);
     if (!artifactRecordName_(record)) {
@@ -38,15 +42,13 @@ function apiPreflightPersonWorkbook(request) {
       "未入力項目は空欄で作成します。共有正本の値を推測・補完しません。",
       "同じ対象者はrecordIdで判定し、同じGoogleスプレッドシートの固定シートを更新します。",
       "従来の個別成果物は監査履歴として残し、自動移動・自動削除しません。",
-      "発行台帳専用原本は、清浄性確認時に固定した本文版との一致を、書込み前に再検査します。"
+      "別添03・04・13は、承認済みの専用原本レイアウトを複製し、必要なセルだけを更新します。",
+      "発行台帳・別添04・別添05・修了証明書の専用原本は、固定した本文版との一致を、書込み前に再検査します。"
     ];
     var financeState = personWorkbookFinanceSnapshot_(record.recordId, true);
-    if (
-      typeof complianceIsSyntheticSampleRecord_ === "function" &&
-      complianceIsSyntheticSampleRecord_(record)
-    ) {
+    if (sampleMode) {
       warnings.push(
-        "合成サンプルは正式データと分離した「サンプル出力」配下へ保存し、全シートに正式使用禁止を表示します。"
+        "合成サンプルは正式データと分離した「サンプル出力」配下へ保存し、別添04・05は固定した公開参照元を使います。"
       );
     }
     if (!financeState) {
@@ -87,7 +89,7 @@ function apiCreateOrUpdatePersonWorkbook(request) {
   if (
     batchMode &&
     (!isFinite(batchIndex) || Math.floor(batchIndex) !== batchIndex ||
-      batchIndex < 0 || batchIndex > 4)
+      batchIndex < 0 || batchIndex > 8)
   ) {
     return personWorkbookErrorResult_(
       new Error("対象者資料ブックの作成段階が正しくありません。")
@@ -123,6 +125,8 @@ function apiCreateOrUpdatePersonWorkbook(request) {
     var record = artifactNormalizeRecord_(canonicalRequest.request.record);
     record.id = canonicalRequest.canonical.recordId;
     record.recordId = canonicalRequest.canonical.recordId;
+    var sampleMode = typeof complianceIsSyntheticSampleRecord_ === "function" &&
+      complianceIsSyntheticSampleRecord_(record);
     if (!artifactRecordName_(record)) {
       throw new Error("対象者名がありません。登録・編集で氏名を保存してから作成してください。");
     }
@@ -136,9 +140,14 @@ function apiCreateOrUpdatePersonWorkbook(request) {
     );
     settings = artifactClone_(settings);
     settings.outputFolderId = outputFolderId;
+    var complianceTemplates = sampleMode
+      ? {
+        planTemplateId: RENEWAL_COMPLIANCE_ARCHIVE.PLAN_SOURCE_ID,
+        statusTemplateId: RENEWAL_COMPLIANCE_ARCHIVE.STATUS_SOURCE_ID,
+        templateFolderId: ""
+      }
+      : complianceRequireTemplatesReady_();
     var autoRoot = artifactEnsureAutoRoot_(outputFolderId, allowedEmails);
-    var sampleMode = typeof complianceIsSyntheticSampleRecord_ === "function" &&
-      complianceIsSyntheticSampleRecord_(record);
     var workbookRoot = sampleMode
       ? complianceEnsureSampleFolder_(autoRoot, allowedEmails)
       : autoRoot;
@@ -151,19 +160,20 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       canonical: canonicalRequest.canonical,
       record: record,
       settings: settings,
+      complianceTemplates: complianceTemplates,
       finance: finance,
       sampleMode: sampleMode,
       autoRoot: workbookRoot,
       recordFolder: recordFolder,
       contentHash: personWorkbookContentHash_(
-        canonicalRequest.canonical, settings, finance
+        canonicalRequest.canonical, settings, finance, complianceTemplates
       )
     };
     resolved = personWorkbookResolve_(context);
     var updateResult = batchMode
       ? personWorkbookUpdate_(resolved, context, {
         specs: personWorkbookBatchSpecs_(batchIndex),
-        finalize: batchIndex === 4,
+        finalize: batchIndex === 8,
         batchIndex: batchIndex
       })
       : personWorkbookUpdate_(resolved, context);
@@ -280,14 +290,14 @@ function apiCreateOrUpdatePersonWorkbookBatch(request) {
 }
 
 function personWorkbookBatchSpecs_(batchIndex) {
-  var boundaries = [3, 4, 5, 6, 9];
+  var boundaries = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   var index = Number(batchIndex);
   var start = index === 0 ? 0 : boundaries[index - 1];
   return RENEWAL_PERSON_WORKBOOK.SHEETS.slice(start, boundaries[index]);
 }
 
 function personWorkbookCompletedSheetCount_(batchIndex) {
-  return [3, 4, 5, 6, 9][Number(batchIndex)] || 0;
+  return [1, 2, 3, 4, 5, 6, 7, 8, 9][Number(batchIndex)] || 0;
 }
 
 function personWorkbookCanonicalRequest_(request) {
@@ -410,15 +420,25 @@ function personWorkbookFinanceSnapshot_(recordId, allowUnconfigured) {
   };
 }
 
-function personWorkbookContentHash_(canonical, settings, finance) {
+function personWorkbookContentHash_(
+  canonical, settings, finance, complianceTemplates
+) {
   return artifactHashHex_({
     format: RENEWAL_PERSON_WORKBOOK.FORMAT,
     generatorVersion: RENEWAL_PERSON_WORKBOOK.GENERATOR_VERSION,
+    layoutVersion: RENEWAL_PERSON_WORKBOOK.LAYOUT_VERSION,
     recordId: artifactText_(canonical && canonical.recordId),
     recordVersion: Number(canonical && canonical.version),
     recordPayloadHash: artifactText_(canonical && canonical.payloadHash),
     financeRevision: finance ? Number(finance.revision) : 0,
     financeStateHash: finance ? artifactText_(finance.stateHash) : "",
+    templates: {
+      training: RENEWAL_ARTIFACT.TEMPLATE_IDS.training,
+      plan: artifactText_(complianceTemplates && complianceTemplates.planTemplateId),
+      status: artifactText_(complianceTemplates && complianceTemplates.statusTemplateId),
+      ledger: artifactText_(settings.ledgerTemplateId),
+      certificate: artifactText_(settings.certificateTemplateId)
+    },
     issuer: {
       company: artifactText_(settings.issuerCompany),
       representative: artifactText_(settings.issuerRepresentative),
@@ -566,9 +586,38 @@ function personWorkbookUpdate_(resolved, context, options) {
   // Full-cell cleanliness was verified when the dedicated master was pinned.
   // At each output, verify that the Drive content revision is still that
   // approved revision before touching the destination workbook.
-  artifactAssertDedicatedTemplatePin_(
-    "ledger", context.settings.ledgerTemplateId
-  );
+  var renderedKeys = {};
+  renderSpecs.forEach(function(spec) {
+    renderedKeys[spec.key] = true;
+  });
+  if (renderedKeys.ledger && !context.sampleMode) {
+    artifactAssertDedicatedTemplatePin_(
+      "ledger", context.settings.ledgerTemplateId
+    );
+  }
+  if (renderedKeys.certificate) {
+    artifactAssertDedicatedTemplatePin_(
+      "certificate", context.settings.certificateTemplateId
+    );
+  }
+  if (renderedKeys.plan) {
+    if (context.sampleMode) {
+      artifactAssertPinnedReferenceSource_("implementationPlanSource");
+    } else {
+      complianceAssertPlanTemplateClean_(
+        context.complianceTemplates.planTemplateId
+      );
+    }
+  }
+  if (renderedKeys.status) {
+    if (context.sampleMode) {
+      artifactAssertPinnedReferenceSource_("implementationStatusSource");
+    } else {
+      complianceAssertStatusTemplateClean_(
+        context.complianceTemplates.statusTemplateId
+      );
+    }
+  }
   var spreadsheet = resolved.spreadsheet;
   spreadsheet.setSpreadsheetTimeZone("Asia/Tokyo");
   var systemSheet = personWorkbookEnsureSystemSheet_(
@@ -597,21 +646,22 @@ function personWorkbookUpdate_(resolved, context, options) {
     context.record.recordId + "|" + context.contentHash + "|" +
     artifactNowText_() + "|" + Utilities.getUuid()
   ).slice(0, 12);
+  var temporarySheetPrefix = "__準備_" + runTag + "_";
   var prepared = [];
   var backups = [];
   var renamedTargets = [];
-  var systemBefore = systemSheet.getRange(1, 1, 10, 2).getValues();
+  var systemBefore = systemSheet.getRange(1, 1, 11, 2).getValues();
   var systemWasHidden = systemSheet.isSheetHidden();
   systemSheet.showSheet();
   try {
     for (var i = 0; i < renderSpecs.length; i++) {
       var spec = renderSpecs[i];
-      var tempName = "__準備_" + runTag + "_" + (i + 1);
+      var tempName = temporarySheetPrefix + (i + 1);
       var preparedSheet = personWorkbookRenderPrepared_(
         spreadsheet, tempName, spec.key, context
       );
       personWorkbookFlushWithRetry_();
-      if (!artifactText_(preparedSheet.getRange("A1").getDisplayValue())) {
+      if (!personWorkbookHasReadableContent_(preparedSheet)) {
         throw new Error(spec.name + "の作成後読戻しに失敗しました。");
       }
       prepared.push({
@@ -646,7 +696,7 @@ function personWorkbookUpdate_(resolved, context, options) {
       if (
         !verifiedSheet ||
         verifiedSheet.getSheetId() !== renamedTargets[targetIndex].sheet.getSheetId() ||
-        !artifactText_(verifiedSheet.getRange("A1").getDisplayValue())
+        !personWorkbookHasReadableContent_(verifiedSheet)
       ) {
         throw new Error("更新後シートの名前・内容を確認できません。");
       }
@@ -725,24 +775,24 @@ function personWorkbookUpdate_(resolved, context, options) {
         );
       }
     }
-    for (var preparedIndex = 0; preparedIndex < prepared.length; preparedIndex++) {
+    var currentSheets = spreadsheet.getSheets();
+    for (var preparedIndex = 0; preparedIndex < currentSheets.length; preparedIndex++) {
+      var remainingPreparedName = "";
       try {
-        var remainingPrepared = spreadsheet.getSheetByName(
-          prepared[preparedIndex].sheet.getName()
-        );
-        if (
-          remainingPrepared &&
-          /^__準備_/.test(remainingPrepared.getName())
-        ) {
-          spreadsheet.deleteSheet(remainingPrepared);
+        remainingPreparedName = currentSheets[preparedIndex].getName();
+        if (remainingPreparedName.indexOf(temporarySheetPrefix) === 0) {
+          spreadsheet.deleteSheet(currentSheets[preparedIndex]);
         }
       } catch (preparedCleanupError) {
-        rollbackErrors.push(artifactErrorMessage_(preparedCleanupError));
+        rollbackErrors.push(
+          (remainingPreparedName || temporarySheetPrefix) + ": " +
+          artifactErrorMessage_(preparedCleanupError)
+        );
       }
     }
     try {
       systemSheet.showSheet();
-      systemSheet.getRange(1, 1, 10, 2).setValues(systemBefore);
+      systemSheet.getRange(1, 1, 11, 2).setValues(systemBefore);
       if (systemWasHidden) systemSheet.hideSheet();
     } catch (systemRollbackError) {
       rollbackErrors.push(
@@ -833,6 +883,7 @@ function personWorkbookWriteSystemSheet_(sheet, file, context, updatedAt) {
   var values = [
     ["format", RENEWAL_PERSON_WORKBOOK.FORMAT],
     ["generatorVersion", RENEWAL_PERSON_WORKBOOK.GENERATOR_VERSION],
+    ["layoutVersion", RENEWAL_PERSON_WORKBOOK.LAYOUT_VERSION],
     ["recordId", context.record.recordId],
     ["autoRootId", context.autoRoot.getId()],
     ["fileId", file.getId()],
@@ -846,13 +897,13 @@ function personWorkbookWriteSystemSheet_(sheet, file, context, updatedAt) {
   sheet.getRange(1, 1, values.length, 2).setValues(
     artifactSafeSheetMatrix_(values)
   );
-  sheet.getRange("A1:A10").setFontWeight("bold");
+  sheet.getRange("A1:A11").setFontWeight("bold");
   sheet.setColumnWidth(1, 180);
   sheet.setColumnWidth(2, 480);
 }
 
 function personWorkbookAssertSystemSheet_(sheet, file, context) {
-  var values = sheet.getRange(1, 1, 10, 2).getDisplayValues();
+  var values = sheet.getRange(1, 1, 11, 2).getDisplayValues();
   var map = {};
   for (var i = 0; i < values.length; i++) {
     map[artifactText_(values[i][0])] = artifactText_(values[i][1]);
@@ -860,6 +911,8 @@ function personWorkbookAssertSystemSheet_(sheet, file, context) {
   if (
     map.format !== RENEWAL_PERSON_WORKBOOK.FORMAT ||
     Number(map.generatorVersion) !== RENEWAL_PERSON_WORKBOOK.GENERATOR_VERSION ||
+    (map.layoutVersion &&
+      map.layoutVersion !== RENEWAL_PERSON_WORKBOOK.LAYOUT_VERSION) ||
     map.recordId !== context.record.recordId ||
     map.autoRootId !== context.autoRoot.getId() ||
     map.fileId !== file.getId()
@@ -929,6 +982,16 @@ function personWorkbookSampleNotice_(sheet, rangeA1, context) {
   sheet.setTabColor("#b91c1c");
 }
 
+function personWorkbookMarkCopiedSample_(sheet) {
+  var notice = "【サンプル・正式使用禁止】正式提出・交付・会計処理には使用できません。";
+  var anchor = sheet.getRange("A1");
+  var currentNote = artifactText_(anchor.getNote());
+  if (currentNote.indexOf(notice) < 0) {
+    anchor.setNote(currentNote ? currentNote + "\n" + notice : notice);
+  }
+  sheet.setTabColor("#b91c1c");
+}
+
 function personWorkbookPrepareGrid_(sheet, rows, columns) {
   if (sheet.getMaxRows() < rows) {
     sheet.insertRowsAfter(sheet.getMaxRows(), rows - sheet.getMaxRows());
@@ -938,11 +1001,242 @@ function personWorkbookPrepareGrid_(sheet, rows, columns) {
       sheet.getMaxColumns(), columns - sheet.getMaxColumns()
     );
   }
+  if (sheet.getMaxRows() > rows) {
+    sheet.deleteRows(rows + 1, sheet.getMaxRows() - rows);
+  }
+  if (sheet.getMaxColumns() > columns) {
+    sheet.deleteColumns(columns + 1, sheet.getMaxColumns() - columns);
+  }
   try { sheet.setHiddenGridlines(true); } catch (ignored) {}
   sheet.getRange(1, 1, rows, columns)
     .setFontFamily("Noto Sans JP")
     .setFontSize(10)
     .setVerticalAlignment("middle");
+}
+
+function personWorkbookReadGridSnapshotById_(
+  spreadsheetId, sheetName, rows, columns
+) {
+  if (typeof Sheets === "undefined" || !Sheets.Spreadsheets) {
+    throw new Error(
+      "原本レイアウトを一括検査するGoogle Sheets APIを利用できません。"
+    );
+  }
+  var quotedSheetName = "'" + sheetName.replace(/'/g, "''") + "'";
+  var rangeA1 =
+    quotedSheetName + "!A1:" + artifactColumnLetters_(columns) + rows;
+  var response = Sheets.Spreadsheets.get(
+    spreadsheetId,
+    {
+      ranges: [rangeA1],
+      includeGridData: true,
+      fields:
+        "sheets(" +
+          "properties(gridProperties(" +
+            "frozenRowCount,frozenColumnCount,hideGridlines" +
+          "))," +
+          "merges," +
+          "data(" +
+            "startRow,startColumn," +
+            "rowData(values(userEnteredValue,userEnteredFormat))," +
+            "rowMetadata(pixelSize,hiddenByUser)," +
+            "columnMetadata(pixelSize,hiddenByUser)" +
+          ")" +
+        ")"
+    }
+  );
+  var returnedSheet =
+    response && response.sheets && response.sheets.length
+      ? response.sheets[0]
+      : null;
+  if (!returnedSheet) {
+    throw new Error("原本レイアウトの一括読取結果が空です。");
+  }
+  return returnedSheet;
+}
+
+function personWorkbookReadGridSnapshot_(sheet, rows, columns) {
+  return personWorkbookReadGridSnapshotById_(
+    sheet.getParent().getId(), sheet.getName(), rows, columns
+  );
+}
+
+function personWorkbookGridHashInput_(returnedSheet) {
+  var normalizedMerges = (returnedSheet.merges || []).map(function(merge) {
+    return {
+      startRowIndex: Number(merge.startRowIndex || 0),
+      endRowIndex: Number(merge.endRowIndex || 0),
+      startColumnIndex: Number(merge.startColumnIndex || 0),
+      endColumnIndex: Number(merge.endColumnIndex || 0)
+    };
+  }).sort(function(left, right) {
+    return artifactCanonicalJson_(left).localeCompare(
+      artifactCanonicalJson_(right)
+    );
+  });
+  var data = returnedSheet.data && returnedSheet.data.length
+    ? returnedSheet.data[0]
+    : {};
+  return {
+    gridProperties:
+      returnedSheet.properties &&
+      returnedSheet.properties.gridProperties
+        ? returnedSheet.properties.gridProperties
+        : {},
+    merges: normalizedMerges,
+    rowData: data.rowData || [],
+    rowMetadata: data.rowMetadata || [],
+    columnMetadata: data.columnMetadata || []
+  };
+}
+
+function personWorkbookLayoutFingerprint_(sheet, rows, columns) {
+  return artifactHashHex_(personWorkbookGridHashInput_(
+    personWorkbookReadGridSnapshot_(sheet, rows, columns)
+  ));
+}
+
+function personWorkbookCopyPinnedGrid_(
+  sourceSpreadsheetId, sourceSheetName, destinationSpreadsheet,
+  tempName, rows, columns, label
+) {
+  var snapshot = personWorkbookReadGridSnapshotById_(
+    sourceSpreadsheetId, sourceSheetName, rows, columns
+  );
+  var target = destinationSpreadsheet.insertSheet(tempName);
+  if (target.getMaxRows() > rows) {
+    target.deleteRows(rows + 1, target.getMaxRows() - rows);
+  }
+  if (target.getMaxColumns() > columns) {
+    target.deleteColumns(columns + 1, target.getMaxColumns() - columns);
+  }
+  var sheetId = target.getSheetId();
+  var requests = [];
+  var sourceGridProperties =
+    snapshot.properties && snapshot.properties.gridProperties
+      ? snapshot.properties.gridProperties
+      : {};
+  var copiedGridProperties = {};
+  var gridFields = [];
+  [
+    "frozenRowCount",
+    "frozenColumnCount",
+    "hideGridlines"
+  ].forEach(function(field) {
+    if (sourceGridProperties[field] !== undefined) {
+      copiedGridProperties[field] = sourceGridProperties[field];
+      gridFields.push("gridProperties." + field);
+    }
+  });
+  if (gridFields.length) {
+    requests.push({
+      updateSheetProperties: {
+        properties: {
+          sheetId: sheetId,
+          gridProperties: copiedGridProperties
+        },
+        fields: gridFields.join(",")
+      }
+    });
+  }
+  var data = snapshot.data && snapshot.data.length
+    ? snapshot.data[0]
+    : {};
+  if (data.rowData && data.rowData.length) {
+    requests.push({
+      updateCells: {
+        rows: data.rowData,
+        fields: "userEnteredValue,userEnteredFormat",
+        range: {
+          sheetId: sheetId,
+          startRowIndex: 0,
+          endRowIndex: rows,
+          startColumnIndex: 0,
+          endColumnIndex: columns
+        }
+      }
+    });
+  }
+  function addDimensionRequests(metadata, dimension) {
+    (metadata || []).forEach(function(properties, index) {
+      var copiedProperties = {};
+      var fields = [];
+      ["pixelSize", "hiddenByUser"].forEach(function(field) {
+        if (properties && properties[field] !== undefined) {
+          copiedProperties[field] = properties[field];
+          fields.push(field);
+        }
+      });
+      if (!fields.length) return;
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: sheetId,
+            dimension: dimension,
+            startIndex: index,
+            endIndex: index + 1
+          },
+          properties: copiedProperties,
+          fields: fields.join(",")
+        }
+      });
+    });
+  }
+  addDimensionRequests(data.rowMetadata, "ROWS");
+  addDimensionRequests(data.columnMetadata, "COLUMNS");
+  (snapshot.merges || []).forEach(function(merge) {
+    requests.push({
+      mergeCells: {
+        range: {
+          sheetId: sheetId,
+          startRowIndex: Number(merge.startRowIndex || 0),
+          endRowIndex: Number(merge.endRowIndex || 0),
+          startColumnIndex: Number(merge.startColumnIndex || 0),
+          endColumnIndex: Number(merge.endColumnIndex || 0)
+        },
+        mergeType: "MERGE_ALL"
+      }
+    });
+  });
+  if (!requests.length) {
+    throw new Error("原本レイアウトの複製要求が空です。");
+  }
+  Sheets.Spreadsheets.batchUpdate(
+    { requests: requests },
+    destinationSpreadsheet.getId()
+  );
+  SpreadsheetApp.flush();
+  var sourceHash = artifactHashHex_(
+    personWorkbookGridHashInput_(snapshot)
+  );
+  var copiedHash = personWorkbookLayoutFingerprint_(
+    target, rows, columns
+  );
+  if (sourceHash !== copiedHash) {
+    throw new Error(
+      artifactText_(label) +
+      "の結合・列幅・行高・罫線を含むセル書式が承認済み原本と一致しません。"
+    );
+  }
+  return target;
+}
+
+function personWorkbookAssertCopiedLayout_(
+  sourceSheet, copiedSheet, rows, columns, label
+) {
+  var sourceHash = personWorkbookLayoutFingerprint_(
+    sourceSheet, rows, columns
+  );
+  var copiedHash = personWorkbookLayoutFingerprint_(
+    copiedSheet, rows, columns
+  );
+  if (sourceHash !== copiedHash) {
+    throw new Error(
+      artifactText_(label) +
+      "の結合・列幅・行高・罫線を含むセル書式が承認済み原本と一致しません。"
+    );
+  }
+  return copiedHash;
 }
 
 function personWorkbookRenderOverview_(sheet, context) {
@@ -1030,8 +1324,10 @@ function personWorkbookRenderTraining_(spreadsheet, tempName, context) {
       keepColumns + 1, sheet.getMaxColumns() - keepColumns
     );
   }
+  personWorkbookAssertCopiedLayout_(
+    sourceSheet, sheet, 32, keepColumns, "別添03 講習記録簿"
+  );
   sheet.getRange("A1").setValue(artifactSheetText_(
-    (context.sampleMode ? "【サンプル・正式使用禁止】" : "") +
     "講習記録簿　　受講者氏名（　" + artifactRecordName_(record) + "　）"
   ));
   sheet.getRange("A4").setValue(
@@ -1088,7 +1384,9 @@ function personWorkbookRenderTraining_(spreadsheet, tempName, context) {
       sheet, 2, "practicalDiscussion", {}, 26, 29, 31
     );
   }
-  if (context.sampleMode) sheet.setTabColor("#b91c1c");
+  if (context.sampleMode) {
+    personWorkbookMarkCopiedSample_(sheet);
+  }
   try { sheet.setHiddenGridlines(true); } catch (ignoredGrid) {}
   return sheet;
 }
@@ -1134,8 +1432,6 @@ function personWorkbookWriteTrainingModule_(
 }
 
 function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
-  var sheet = spreadsheet.insertSheet(tempName);
-  personWorkbookApplyDocumentStyle_(sheet, 12, 34);
   var record = context.record;
   var plannedDate = artifactValidIsoDateOrBlank_(
     record.courseScheduledDate || record.courseDate
@@ -1145,6 +1441,20 @@ function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
   var planMonth = plannedDate ? plannedDate.slice(0, 7) : "";
   var year = planMonth ? Number(planMonth.slice(0, 4)) : "";
   var month = planMonth ? Number(planMonth.slice(5, 7)) : "";
+  var templateId = artifactExtractDriveFileId_(
+    context.complianceTemplates &&
+    context.complianceTemplates.planTemplateId
+  );
+  var source = SpreadsheetApp.openById(templateId);
+  var sourceSheet = source.getSheetByName("ベース");
+  if (!sourceSheet) {
+    throw new Error("別添04専用原本の「ベース」シートがありません。");
+  }
+  var sheet = sourceSheet.copyTo(spreadsheet);
+  sheet.setName(tempName);
+  personWorkbookAssertCopiedLayout_(
+    sourceSheet, sheet, 8, 37, "別添04 実施計画書"
+  );
   var lastDay = planMonth ? new Date(year, month, 0).getDate() : 0;
   var days = [];
   var weekdays = [];
@@ -1157,18 +1467,12 @@ function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
         : ""
     );
   }
-  sheet.getRange("A1").setValue("講習区分");
-  sheet.getRange("B1").setValue("開始（人）");
-  sheet.getRange("C1").setValue("修了（人）");
-  sheet.getRange("D1:AH1").merge().setValue(
-    (context.sampleMode ? "【サンプル・正式使用禁止】" : "") +
+  sheet.getRange("D1").setValue(
     "登録更新講習機関実施計画書" +
-    (month ? "　" + month + "月" : "")
-  ).setHorizontalAlignment("center").setFontSize(14).setFontWeight("bold");
+    (month ? "　" + year + "年" + month + "月" : "")
+  );
   sheet.getRange(2, 4, 1, 31).setValues([days]);
   sheet.getRange(3, 4, 1, 31).setValues([weekdays]);
-  sheet.getRange("A4").setValue("二等無人航空機操縦士");
-  sheet.getRange("A5").setValue("一等無人航空機操縦士");
   sheet.getRange("B4:C5").setValues(artifactSafeSheetMatrix_([
     [
       hasPlan && plannedClass === 2 ? 1 : "",
@@ -1185,40 +1489,18 @@ function personWorkbookRenderPlan_(spreadsheet, tempName, context) {
     "。保存済み予定から作成し、未入力値は空欄です。"
   );
   if (context.sampleMode) {
-    sheet.getRange("D1").setFontColor("#b91c1c").setFontWeight("bold");
-    sheet.setTabColor("#b91c1c");
+    personWorkbookMarkCopiedSample_(sheet);
   }
-  sheet.getRange("A1:AH5")
-    .setBorder(
-      true, true, true, true, true, true,
-      "#111827", SpreadsheetApp.BorderStyle.SOLID
-    )
-    .setHorizontalAlignment("center")
-    .setVerticalAlignment("middle");
-  sheet.getRange("A1:C1").setBackground("#e5e7eb").setFontWeight("bold");
-  sheet.getRange("A4:A5").setBackground("#f8fafc").setFontWeight("bold");
-  sheet.getRange("A8:AH8").merge().setValue(
-    "予定人数は対象者の保存済み資格区分・講習予定日から作成します。" +
-    "未入力部分は空欄とし、登録・編集後に同じボタンで更新します。"
-  ).setWrap(true).setFontSize(9);
-  sheet.setColumnWidth(1, 220);
-  sheet.setColumnWidths(2, 2, 80);
-  sheet.setColumnWidths(4, 31, 34);
-  sheet.setRowHeight(1, 38);
-  sheet.setRowHeights(2, 4, 30);
-  sheet.setFrozenRows(3);
-  try { sheet.setHiddenGridlines(true); } catch (ignoredPlanGridlines) {}
   return sheet;
 }
 
 function personWorkbookRenderStatus_(sheet, context) {
-  personWorkbookApplyDocumentStyle_(sheet, 32, 12);
+  personWorkbookApplyDocumentStyle_(sheet, 34, 12);
   var record = context.record;
   var completedDate = artifactValidIsoDateOrBlank_(record.courseDate);
   var issuedDate = artifactValidIsoDateOrBlank_(record.certificateIssuedDate);
   var completedClass = Number(artifactClassValue_(record.licenseClass));
-  var firstCompleted = !!completedDate && completedClass === 1;
-  var secondCompleted = !!completedDate && completedClass === 2;
+  var completed = !!completedDate && [1, 2].indexOf(completedClass) >= 0;
   var fiscalYear = Number(artifactText_(record.fiscalYear)) ||
     (completedDate ? artifactFiscalYearFromIso_(completedDate) : "");
   var reportDateText = issuedDate
@@ -1227,134 +1509,176 @@ function personWorkbookRenderStatus_(sheet, context) {
   var periodText = completedDate
     ? artifactFormatJapaneseLongDate_(completedDate)
     : "";
+  var periodRangeText = periodText ? periodText + " ～ " + periodText : "";
+  var className = completedClass === 1
+    ? "一等"
+    : (completedClass === 2 ? "二等" : "");
+  var registrationNumber = completedClass === 1
+    ? "国空無機第325175号"
+    : (completedClass === 2 ? "国空無機第325176号" : "");
+  var officeName = artifactText_(context.settings.issuerCompany);
+  var officeAddress = artifactText_(context.settings.issuerAddress);
+  var officePhone = artifactText_(context.settings.issuerPhone);
+  var academicVenue = completed ? artifactText_(record.courseVenue) : "";
+  var practicalVenue = completed
+    ? artifactText_(record.practicalVenue || record.courseVenue)
+    : "";
+  var statusCompatibilityLabel = "登録更新講習機関実施状況報告書";
 
-  personWorkbookSampleNotice_(sheet, "A1:L1", context);
-  sheet.getRange(context.sampleMode ? "A2:L2" : "A1:L2").merge()
-    .setValue("登録更新講習機関実施状況報告書")
-    .setFontSize(16)
-    .setFontWeight("bold")
-    .setHorizontalAlignment("center");
-  sheet.setRowHeight(2, 34);
+  sheet.getRange("A1:L34")
+    .setFontFamily("MS Mincho")
+    .setFontSize(10)
+    .setBackground("#ffffff")
+    .setFontColor("#000000");
+  sheet.getRange("A2:L2").merge()
+    .setValue("登録講習機関実施状況報告書")
+    .setFontSize(12)
+    .setFontWeight("normal")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle")
+    .setNote(
+      statusCompatibilityLabel + " / 対象者：" +
+      artifactRecordName_(record) + " / 管理ID：" +
+      artifactText_(record.personId)
+    );
   sheet.getRange("H4:L4").merge()
     .setValue(reportDateText)
-    .setHorizontalAlignment("right");
+    .setHorizontalAlignment("right")
+    .setFontSize(11);
   sheet.getRange("A5:D5").merge()
     .setValue("国土交通大臣　殿")
-    .setFontSize(12);
-  sheet.getRange("G5:L5").merge()
-    .setValue(artifactText_(context.settings.issuerCompany))
-    .setHorizontalAlignment("right");
+    .setFontSize(11)
+    .setHorizontalAlignment("left");
   sheet.getRange("G6:L6").merge()
-    .setValue(artifactText_(context.settings.issuerAddress))
+    .setValue(officeName)
+    .setFontSize(11)
+    .setHorizontalAlignment("right");
+  sheet.getRange("G7:L7").merge()
+    .setValue(officeAddress)
     .setHorizontalAlignment("right")
     .setWrap(true);
-  sheet.getRange("G7:L7").merge()
-    .setValue(
-      artifactText_(context.settings.issuerPhone)
-        ? "電話番号　" + artifactText_(context.settings.issuerPhone)
-        : ""
-    )
-    .setHorizontalAlignment("right");
   sheet.getRange("A9:L10").merge()
     .setValue(
-      "航空法第132条の51の規定に基づき、登録更新講習機関における" +
-      "無人航空機更新講習の実施状況を次のとおり報告します。"
+      "無人航空機の登録講習機関及び登録更新講習機関に関する省令" +
+      "第12条第1項の規定に基づき実施状況の報告を致します。"
     )
     .setWrap(true)
+    .setFontSize(11)
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
 
-  sheet.getRange("A12:C12").merge().setValue("登録更新講習機関の登録番号");
-  sheet.getRange("D12:L12").merge()
-    .setValue("一等：国空無機第325175号　　二等：国空無機第325176号");
-  sheet.getRange("A13:C13").merge().setValue("事務所の名称");
-  sheet.getRange("D13:L13").merge()
-    .setValue(artifactText_(context.settings.issuerCompany));
-  sheet.getRange("A14:C14").merge().setValue("事務所の所在地");
-  sheet.getRange("D14:L14").merge()
-    .setValue(artifactText_(context.settings.issuerAddress));
-  sheet.getRange("A15:C15").merge().setValue("電話番号");
-  sheet.getRange("D15:L15").merge()
-    .setValue(artifactText_(context.settings.issuerPhone));
-  sheet.getRange("A16:C16").merge().setValue("報告対象年度");
+  sheet.getRange("A12:C12").merge().setValue("登録講習機関登録番号");
+  sheet.getRange("D12:L12").merge().setValue(registrationNumber);
+  sheet.getRange("A13:A15").merge()
+    .setValue("報\n告\nす\nる\n事\n業\n所")
+    .setWrap(true)
+    .setFontSize(9);
+  sheet.getRange("B13:C13").merge().setValue("事業所の名称");
+  sheet.getRange("D13:L13").merge().setValue(officeName);
+  sheet.getRange("B14:C14").merge().setValue("事業所の所在地");
+  sheet.getRange("D14:L14").merge().setValue(officeAddress);
+  sheet.getRange("B15:C15").merge().setValue("電話番号");
+  sheet.getRange("D15:L15").merge().setValue(officePhone);
+  sheet.getRange("A16:C16").merge().setValue("講習課程");
   sheet.getRange("D16:L16").merge().setValue(
+    className
+      ? className +
+        "無人航空機操縦士に係る学科講習及び実地講習"
+      : ""
+  );
+  sheet.getRange("A17:C17").merge().setValue("報告年度");
+  sheet.getRange("D17:L17").merge().setValue(
     fiscalYear
-      ? (Number(fiscalYear) - 2018) + "年度" +
+      ? "令和" + (Number(fiscalYear) - 2018) + "年度" +
         (completedDate ? "（" + periodText + "開始分）" : "")
       : ""
   );
-  sheet.getRange("A17:C17").merge().setValue("講習の内容");
-  sheet.getRange("D17:L17").merge().setValue("無人航空機更新講習");
 
-  sheet.getRange("A18:A20").merge().setValue("一等").setVerticalAlignment("middle");
-  sheet.getRange("B18:C18").merge().setValue("実施場所");
-  sheet.getRange("D18:L18").merge()
-    .setValue(firstCompleted ? artifactText_(record.courseVenue) : "");
-  sheet.getRange("B19:C19").merge().setValue("実施期間");
-  sheet.getRange("D19:L19").merge()
-    .setValue(firstCompleted ? periodText : "");
-  sheet.getRange("B20:C20").merge().setValue("修了人数");
-  sheet.getRange("D20:L20").merge()
-    .setValue(firstCompleted ? "1人" : "");
+  sheet.getRange("A18:A23").merge()
+    .setValue("講\n習\n内\n容")
+    .setWrap(true);
+  sheet.getRange("B18:C20").merge().setValue(
+    className ? className + "無人航空機操縦士\n（学科講習）" : ""
+  );
+  sheet.getRange("D18:E18").merge().setValue("実施場所");
+  sheet.getRange("F18:L18").merge().setValue(academicVenue);
+  sheet.getRange("D19:E19").merge().setValue("実施期間");
+  sheet.getRange("F19:L19").merge().setValue(
+    completed ? periodRangeText : ""
+  );
+  sheet.getRange("D20:E20").merge().setValue("修了者数");
+  sheet.getRange("F20:L20").merge().setValue(completed ? "1人" : "");
 
-  sheet.getRange("A21:A23").merge().setValue("二等").setVerticalAlignment("middle");
-  sheet.getRange("B21:C21").merge().setValue("実施場所");
-  sheet.getRange("D21:L21").merge()
-    .setValue(secondCompleted ? artifactText_(record.courseVenue) : "");
-  sheet.getRange("B22:C22").merge().setValue("実施期間");
-  sheet.getRange("D22:L22").merge()
-    .setValue(secondCompleted ? periodText : "");
-  sheet.getRange("B23:C23").merge().setValue("修了人数");
-  sheet.getRange("D23:L23").merge()
-    .setValue(secondCompleted ? "1人" : "");
+  sheet.getRange("B21:C23").merge().setValue(
+    className ? className + "無人航空機操縦士\n（実地講習）" : ""
+  );
+  sheet.getRange("D21:E21").merge().setValue("実施場所");
+  sheet.getRange("F21:L21").merge().setValue(practicalVenue);
+  sheet.getRange("D22:E22").merge().setValue("実施期間");
+  sheet.getRange("F22:L22").merge().setValue(
+    completed ? periodRangeText : ""
+  );
+  sheet.getRange("D23:E23").merge().setValue("修了者数");
+  sheet.getRange("F23:L23").merge().setValue(completed ? "1人" : "");
 
   sheet.getRange("A12:L23")
     .setBorder(
       true, true, true, true, true, true,
-      "#111827", SpreadsheetApp.BorderStyle.SOLID
+      "#000000", SpreadsheetApp.BorderStyle.SOLID
     )
     .setWrap(true)
     .setVerticalAlignment("middle");
   sheet.getRange("A12:C23").setHorizontalAlignment("center");
+  sheet.getRange("D18:E23").setHorizontalAlignment("center");
+  sheet.getRange("D12:L17").setHorizontalAlignment("left");
+  sheet.getRange("F18:L23").setHorizontalAlignment("left");
   sheet.getRange("A25:L25").merge()
-    .setValue("添付資料：講習修了者一覧");
-  sheet.getRange("A27:L27").merge()
-    .setValue(
-      "対象者：" + artifactRecordName_(record) +
-      "　管理ID：" + artifactText_(record.personId)
-    )
-    .setFontSize(8)
-    .setFontColor("#475569");
-  sheet.setColumnWidths(1, 12, 52);
-  sheet.setColumnWidths(4, 9, 64);
-  sheet.setRowHeights(12, 12, 30);
-  sheet.setRowHeight(14, 42);
-  sheet.setRowHeight(18, 36);
-  sheet.setRowHeight(19, 36);
-  sheet.setRowHeight(20, 36);
-  sheet.setRowHeight(21, 36);
-  sheet.setRowHeight(22, 36);
-  sheet.setRowHeight(23, 36);
+    .setValue("添付資料：講習修了者一覧")
+    .setFontSize(10)
+    .setHorizontalAlignment("left");
+  if (context.sampleMode) {
+    sheet.getRange("A32:L32").merge()
+      .setValue("【サンプル・正式使用禁止】")
+      .setFontColor("#b91c1c")
+      .setFontWeight("bold")
+      .setHorizontalAlignment("center");
+    sheet.setTabColor("#b91c1c");
+  }
+  sheet.setColumnWidth(1, 32);
+  sheet.setColumnWidths(2, 2, 70);
+  sheet.setColumnWidths(4, 2, 58);
+  sheet.setColumnWidths(6, 7, 62);
+  sheet.setRowHeight(1, 20);
+  sheet.setRowHeight(2, 30);
+  sheet.setRowHeight(3, 20);
+  sheet.setRowHeight(4, 24);
+  sheet.setRowHeight(5, 24);
+  sheet.setRowHeights(6, 2, 22);
+  sheet.setRowHeights(9, 2, 24);
+  sheet.setRowHeight(11, 18);
+  sheet.setRowHeight(12, 30);
+  sheet.setRowHeight(13, 42);
+  sheet.setRowHeight(14, 48);
+  sheet.setRowHeights(15, 3, 30);
+  sheet.setRowHeights(18, 6, 30);
+  sheet.setRowHeight(25, 24);
+  sheet.setRowHeight(32, 24);
 }
 
 function personWorkbookRenderLedger_(spreadsheet, tempName, context) {
-  var sheet = spreadsheet.insertSheet(tempName);
-  personWorkbookApplyDocumentStyle_(sheet, 24, 9);
-  var title = "別添13　無人航空機更新講習講習修了証明書発行台帳";
-  sheet.getRange("A1:I1").merge()
-    .setValue((context.sampleMode ? "【サンプル・正式使用禁止】 " : "") + title)
-    .setFontSize(12)
-    .setFontWeight("bold")
-    .setHorizontalAlignment("left")
-    .setVerticalAlignment("middle");
   if (context.sampleMode) {
-    sheet.getRange("A1:I1").setFontColor("#b91c1c");
-    sheet.setTabColor("#b91c1c");
+    return personWorkbookRenderLedgerSampleFast_(
+      spreadsheet, tempName, context
+    );
   }
-  var headers = RENEWAL_ARTIFACT.LEDGER_HEADER_ALLOWLIST[1].slice(1);
-  personWorkbookSetValuesWithRetry_(
-    sheet.getRange(2, 2, 1, headers.length),
-    [headers]
+  var templateId = artifactExtractDriveFileId_(
+    context.settings.ledgerTemplateId
   );
+  var sheet = personWorkbookCopyPinnedGrid_(
+    templateId, "ベース", spreadsheet, tempName, 22, 9,
+    "別添13 修了証明書発行台帳"
+  );
+  artifactApplyLedgerOutputHeaders_(sheet);
   var values = artifactLedgerOutputFields_(context.record);
   [3, 5, 6].forEach(function(index) {
     values[index] = values[index] ? artifactDateObject_(values[index]) : "";
@@ -1363,31 +1687,59 @@ function personWorkbookRenderLedger_(spreadsheet, tempName, context) {
     sheet.getRange(3, 2, 1, values.length),
     [values]
   );
-  sheet.getRange("F4:F22").setValue("□有り　・　□無し");
-  sheet.getRange("B2:I22")
+  sheet.getRange("E3").setNumberFormat('yyyy"年"m"月"d"日');
+  sheet.getRange("G3:H3").setNumberFormat('yyyy"年"m"月"d"日');
+  if (context.sampleMode) {
+    personWorkbookMarkCopiedSample_(sheet);
+  }
+  return sheet;
+}
+
+function personWorkbookRenderLedgerSampleFast_(
+  spreadsheet, tempName, context
+) {
+  var sheet = spreadsheet.insertSheet(tempName);
+  personWorkbookApplyDocumentStyle_(sheet, 22, 9);
+  sheet.getRange("A1:I1").merge()
+    .setValue(
+      "【サンプル・正式使用禁止】別添13 " +
+      "無人航空機更新講習修了証明書発行台帳"
+    )
+    .setBackground("#fff1f2")
+    .setFontColor("#b91c1c")
+    .setFontWeight("bold")
+    .setFontSize(13)
+    .setHorizontalAlignment("center");
+
+  var headers = RENEWAL_ARTIFACT.LEDGER_OUTPUT_HEADERS.slice();
+  sheet.getRange(2, 2, 1, headers.length)
+    .setValues([headers])
+    .setBackground("#f3f4f6")
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center")
+    .setWrap(true);
+
+  var values = artifactLedgerOutputFields_(context.record);
+  personWorkbookSetValuesWithRetry_(
+    sheet.getRange(3, 2, 1, values.length),
+    [values]
+  );
+  sheet.getRange(2, 2, 2, headers.length)
     .setBorder(
       true, true, true, true, true, true,
       "#111827", SpreadsheetApp.BorderStyle.SOLID
     )
-    .setVerticalAlignment("middle")
-    .setWrap(true);
-  sheet.getRange("B2:I2")
-    .setFontWeight("bold")
-    .setHorizontalAlignment("center")
-    .setBackground("#ffffff");
-  sheet.getRange("B3:H22").setHorizontalAlignment("center");
-  sheet.getRange("E3").setNumberFormat('yyyy"年"m"月"d"日');
-  sheet.getRange("G3:H3").setNumberFormat('yyyy"年"m"月"d"日');
-  sheet.setColumnWidth(1, 24);
-  [185, 150, 125, 110, 132, 132, 142, 180]
-    .forEach(function(width, index) {
-      sheet.setColumnWidth(index + 2, width);
-    });
-  sheet.setRowHeight(1, 34);
-  sheet.setRowHeight(2, 58);
-  sheet.setRowHeights(3, 20, 28);
+    .setWrap(true)
+    .setVerticalAlignment("middle");
+  sheet.getRange("E3").setNumberFormat("yyyy/mm/dd");
+  sheet.getRange("G3:H3").setNumberFormat("yyyy/mm/dd");
   sheet.setFrozenRows(2);
-  try { sheet.setHiddenGridlines(true); } catch (ignoredLedgerGridlines) {}
+  sheet.setColumnWidth(1, 28);
+  sheet.setColumnWidths(2, 8, 135);
+  sheet.setRowHeight(1, 36);
+  sheet.setRowHeight(2, 54);
+  sheet.setRowHeight(3, 34);
+  sheet.setTabColor("#b91c1c");
   return sheet;
 }
 
@@ -1403,6 +1755,16 @@ function personWorkbookSetValuesWithRetry_(range, values) {
     }
   }
   throw lastError || new Error("シートの範囲へ値を書き込めません。");
+}
+
+function personWorkbookHasReadableContent_(sheet) {
+  var values = sheet.getDataRange().getDisplayValues();
+  for (var row = 0; row < values.length; row++) {
+    for (var column = 0; column < values[row].length; column++) {
+      if (artifactText_(values[row][column])) return true;
+    }
+  }
+  return false;
 }
 
 function personWorkbookRenderEvidence_(sheet, context) {
@@ -1458,7 +1820,7 @@ function personWorkbookRenderEvidence_(sheet, context) {
 }
 
 function personWorkbookRenderCertificate_(sheet, context) {
-  personWorkbookApplyDocumentStyle_(sheet, 34, 12);
+  personWorkbookApplyDocumentStyle_(sheet, 36, 12);
   var record = context.record;
   var aircraftType = artifactOperationalAircraftType_(record);
   var expiry = artifactValidIsoDateOrBlank_(record.certificateExpiry) ||
@@ -1467,47 +1829,62 @@ function personWorkbookRenderCertificate_(sheet, context) {
       : "");
   var courseDate = artifactValidIsoDateOrBlank_(record.courseDate);
   var classValue = Number(artifactClassValue_(record.licenseClass));
-  personWorkbookSampleNotice_(sheet, "A1:L1", context);
-  sheet.getRange(context.sampleMode ? "A2:L2" : "A1:L2").merge()
+  sheet.getRange("A1:L36")
+    .setFontFamily("MS Mincho")
+    .setFontSize(12)
+    .setBackground("#ffffff")
+    .setFontColor("#000000");
+  sheet.getRange("A2:L2").merge()
     .setValue("無人航空機更新講習修了証明書")
-    .setFontSize(16)
-    .setFontWeight("bold")
-    .setHorizontalAlignment("center");
+    .setFontSize(12)
+    .setFontWeight("normal")
+    .setHorizontalAlignment("center")
+    .setVerticalAlignment("middle");
   sheet.getRange("H4:L4").merge().setValue(
     "第　" + artifactText_(record.certificateNo) + "　号"
-  ).setHorizontalAlignment("right");
+  ).setHorizontalAlignment("right").setFontSize(12);
   sheet.getRange("H5:L5").merge().setValue(
     courseDate ? artifactFormatJapaneseLongDate_(courseDate) + "　修了" : ""
-  ).setHorizontalAlignment("right");
+  ).setHorizontalAlignment("right").setFontSize(12);
   sheet.getRange("H6:L6").merge().setValue(
     expiry ? artifactFormatJapaneseLongDate_(expiry) + "　まで有効" : ""
-  ).setHorizontalAlignment("right");
+  ).setHorizontalAlignment("right").setFontSize(12);
   sheet.getRange("A8:L8").merge().setValue(
     artifactRecordName_(record) + (artifactRecordName_(record) ? "　殿" : "")
-  ).setHorizontalAlignment("center").setFontSize(18).setFontWeight("bold");
-  sheet.getRange("A10:L10").merge().setValue(
+  )
+    .setHorizontalAlignment("center")
+    .setFontSize(14)
+    .setFontWeight("normal");
+  sheet.getRange("C10:J10").merge().setValue(
     "技能証明申請者番号：" +
       personWorkbookOptionalIdentifier_(record.skillsApplicantNo)
-  ).setHorizontalAlignment("center");
-  sheet.getRange("A12:L13").merge().setValue(
+  ).setHorizontalAlignment("left").setFontSize(12);
+  sheet.getRange("B12:K13").merge().setValue(
     "航空法第132条の51の規定に関し、登録更新講習機関が行う無人航空機" +
     "更新講習を修了したことを証明する。"
-  ).setHorizontalAlignment("center").setVerticalAlignment("middle").setWrap(true);
+  )
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("middle")
+    .setWrap(true)
+    .setFontSize(12);
 
   sheet.getRange("B15:E16").merge().setValue("");
-  sheet.getRange("F15:K15").merge().setValue("区分");
-  sheet.getRange("F16:H16").merge().setValue("一等");
-  sheet.getRange("I16:K16").merge().setValue("二等");
+  sheet.getRange("F15:K15").merge().setValue("区分").setFontSize(11);
+  sheet.getRange("F16:H16").merge().setValue("一等").setFontSize(11);
+  sheet.getRange("I16:K16").merge().setValue("二等").setFontSize(11);
   sheet.getRange("B17:C22").merge()
     .setValue("限 定\n解 除\n事 項")
-    .setWrap(true);
+    .setWrap(true)
+    .setFontSize(12);
   sheet.getRange("D17:E18").merge()
     .setValue("回転翼航空機\n（マルチローター）")
-    .setWrap(true);
+    .setWrap(true)
+    .setFontSize(11);
   sheet.getRange("D19:E20").merge()
     .setValue("回転翼航空機\n（ヘリコプター）")
-    .setWrap(true);
-  sheet.getRange("D21:E22").merge().setValue("飛行機");
+    .setWrap(true)
+    .setFontSize(11);
+  sheet.getRange("D21:E22").merge().setValue("飛行機").setFontSize(11);
   sheet.getRange("F17:H18").merge().setValue(
     aircraftType === "回転翼航空機（マルチローター）" && classValue === 1
       ? "○" : ""
@@ -1533,36 +1910,61 @@ function personWorkbookRenderCertificate_(sheet, context) {
   sheet.getRange("B15:K22")
     .setBorder(
       true, true, true, true, true, true,
-      "#111827", SpreadsheetApp.BorderStyle.SOLID
+      "#000000", SpreadsheetApp.BorderStyle.SOLID
     )
     .setHorizontalAlignment("center")
-    .setVerticalAlignment("middle");
+    .setVerticalAlignment("middle")
+    .setWrap(true);
 
   sheet.getRange("G25:L25").merge().setValue(
-    "登録更新講習機関名　" + artifactText_(context.settings.issuerCompany)
-  );
-  sheet.getRange("G26:L26").merge().setValue(
-    "登録更新講習機関コード：" +
-      (context.sampleMode ? "SAMPLE" : RENEWAL_ARTIFACT.ORGANIZATION_CODE)
-  );
-  sheet.getRange("G27:L27").merge().setValue(
     "担当講師：" + artifactText_(record.certificateInstructor)
-  );
-  sheet.getRange("A30:L30").merge().setValue(
+  )
+    .setHorizontalAlignment("right")
+    .setFontLine("underline");
+  sheet.getRange("G27:L27").merge().setValue(
+    "登録更新講習機関名　" + artifactText_(context.settings.issuerCompany)
+  ).setHorizontalAlignment("right");
+  sheet.getRange("G28:L28").merge().setValue(
+    "登録更新講習機関コード：　" +
+      (context.sampleMode ? "SAMPLE" : RENEWAL_ARTIFACT.ORGANIZATION_CODE)
+  ).setHorizontalAlignment("right");
+  sheet.getRange("A30:L30").setNote(
     "印刷・交付前に、番号・氏名・日付・区分・担当講師を確認してください。"
-  ).setFontColor("#475569").setFontSize(8);
-  sheet.setColumnWidths(1, 12, 54);
-  sheet.setColumnWidths(2, 10, 64);
-  sheet.setRowHeight(2, 34);
-  sheet.setRowHeight(8, 40);
-  sheet.setRowHeights(12, 2, 34);
-  sheet.setRowHeights(15, 8, 28);
-  sheet.setRowHeights(17, 6, 34);
+  );
+  if (context.sampleMode) {
+    sheet.getRange("A34:L34").merge()
+      .setValue("【サンプル・正式使用禁止】")
+      .setFontColor("#b91c1c")
+      .setFontWeight("bold")
+      .setHorizontalAlignment("center");
+    sheet.setTabColor("#b91c1c");
+  }
+  sheet.setColumnWidth(1, 50);
+  sheet.setColumnWidths(2, 2, 44);
+  sheet.setColumnWidths(4, 2, 54);
+  sheet.setColumnWidths(6, 6, 68);
+  sheet.setColumnWidth(12, 50);
+  sheet.setRowHeight(1, 20);
+  sheet.setRowHeight(2, 30);
+  sheet.setRowHeight(3, 20);
+  sheet.setRowHeights(4, 3, 22);
+  sheet.setRowHeight(7, 20);
+  sheet.setRowHeight(8, 34);
+  sheet.setRowHeight(9, 20);
+  sheet.setRowHeight(10, 26);
+  sheet.setRowHeight(11, 22);
+  sheet.setRowHeights(12, 2, 30);
+  sheet.setRowHeights(15, 2, 24);
+  sheet.setRowHeights(17, 6, 36);
+  sheet.setRowHeights(23, 2, 20);
+  sheet.setRowHeight(25, 26);
+  sheet.setRowHeight(26, 20);
+  sheet.setRowHeights(27, 2, 24);
+  sheet.setRowHeight(34, 24);
 }
 
 function personWorkbookRenderDips_(sheet, context) {
-  personWorkbookApplyDocumentStyle_(sheet, 16, 11);
-  personWorkbookTitle_(sheet, "A1:K1", "CSVファイル　保管（DIPS提出11列）", context);
+  personWorkbookApplyDocumentStyle_(sheet, 2, 11);
   var record = context.record;
   var expiry = artifactValidIsoDateOrBlank_(record.certificateExpiry) ||
     (artifactValidIsoDateOrBlank_(record.courseDate)
@@ -1584,9 +1986,9 @@ function personWorkbookRenderDips_(sheet, context) {
   var applicationNumber = context.sampleMode
     ? "SAMPLE-PA"
     : "PA000000000000";
-  sheet.getRange(3, 1, 1, 11).setValues([artifactDipsCsvHeaders_()])
+  sheet.getRange(1, 1, 1, 11).setValues([artifactDipsCsvHeaders_()])
     .setBackground("#e5e7eb").setFontWeight("bold").setWrap(true);
-  sheet.getRange(4, 1, 1, 11).setValues(artifactSafeSheetMatrix_([[
+  sheet.getRange(2, 1, 1, 11).setValues(artifactSafeSheetMatrix_([[
     personWorkbookOptionalIdentifier_(record.dipsApplicantId),
     personWorkbookOptionalIdentifier_(record.skillsApplicantNo),
     organizationCode,
@@ -1600,20 +2002,23 @@ function personWorkbookRenderDips_(sheet, context) {
     expiry ? artifactSlashDate_(expiry) : "",
     stateFlag
   ]]));
-  sheet.getRange("A3:K4")
+  sheet.getRange("A1:K2")
     .setBorder(true, true, true, true, true, true)
     .setWrap(true);
-  sheet.setFrozenRows(3);
+  sheet.setFrozenRows(1);
   sheet.setColumnWidths(1, 11, 170);
   var confirmed = artifactText_(context.settings.dipsCsvTemplateHeaderHash) ===
     artifactHashHex_(artifactDipsCsvHeaders_());
-  sheet.getRange("A7:K7").merge().setValue(
-    confirmed
+  var note = confirmed
       ? "DIPS公式空CSV確認済み：" +
         artifactText_(context.settings.dipsCsvTemplateConfirmedDate) + " / " +
         artifactText_(context.settings.dipsCsvTemplateConfirmedBy)
-      : "DIPS公式空CSV未確認です。このシートをそのままアップロードせず、データ管理で最新11列を照合してください。"
-  ).setFontColor(confirmed ? "#166534" : "#b91c1c").setWrap(true);
+      : "DIPS公式空CSV未確認です。設定で最新11列を照合してください。";
+  if (context.sampleMode) {
+    note = "【サンプル・正式使用禁止】\n" + note;
+    sheet.setTabColor("#b91c1c");
+  }
+  sheet.getRange("A1").setNote(note);
 }
 
 function personWorkbookRenderPayment_(sheet, context) {

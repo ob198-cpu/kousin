@@ -331,6 +331,15 @@ assert.equal($(".app-header .tabs > button[data-screen='entry']").length, 0,
   "上部ナビゲーションに登録・編集ボタンを残してはいけません");
 assert.equal($(".app-header .tabs > button[data-screen='finance']").length, 0,
   "上部ナビゲーションに請求・入金ボタンを残してはいけません");
+assert.equal($("#reportsScreen .metric .definition").length, 4,
+  "集計カード4項目に数え方の注釈を表示してください");
+assert.equal($("#reportsScreen .report-definition").length, 2,
+  "区分別・受講機関別の表に集計方法の注釈を表示してください");
+assert($("#reportsScreen").text().includes("管理ID（なければ免許番号・氏名）で重複を除き") &&
+  $("#reportsScreen").text().includes("無効化済みを除く更新記録の件数") &&
+  $("#reportsScreen").text().includes("更新完了確認日") &&
+  $("#reportsScreen").text().includes("入金・値引・相殺等"),
+  "人数・更新案件・更新完了・未収金の定義を利用者が読める文章で表示してください");
 assert(html.includes("「設定」から再読込してください。"),
   "共有正本の再読込案内は現在の設定ボタン名と一致させてください");
 assert.equal($(".home-filter-bar #homeSearch").length, 1,

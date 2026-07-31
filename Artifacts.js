@@ -58,9 +58,9 @@ var RENEWAL_ARTIFACT = {
       label: "別添04 登録更新講習機関実施計画書参照元",
       id: "1igNBB5Ved91p-yUX4NhOUEWuW6KwIc-2jgOjReMp_Js",
       mimeType: "application/vnd.google-apps.spreadsheet",
-      revisionId: "53",
-      revisionModifiedTime: "2026-07-22T05:38:40.682Z",
-      modifiedTime: "2026-07-22T05:38:40.705Z",
+      revisionId: "54",
+      revisionModifiedTime: "2026-07-28T02:02:39.692Z",
+      modifiedTime: "2026-07-28T02:02:39.744Z",
       kinds: []
     },
     implementationStatusSource: {

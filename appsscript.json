@@ -11,6 +11,11 @@
         "userSymbol": "Docs",
         "serviceId": "docs",
         "version": "v1"
+      },
+      {
+        "userSymbol": "Sheets",
+        "serviceId": "sheets",
+        "version": "v4"
       }
     ]
   },
