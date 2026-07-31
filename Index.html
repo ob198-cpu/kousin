@@ -892,8 +892,7 @@
             <col style="width: 220px">
             <col style="width: 170px">
             <col style="width: 190px">
-            <col style="width: 250px">
-            <col style="width: 155px">
+            <col style="width: 405px">
             <col style="width: 280px">
           </colgroup>
           <thead>
@@ -903,11 +902,10 @@
               <th>免許・証明期限</th>
               <th>更新状況</th>
               <th>次にやること</th>
-              <th>請求・更新</th>
               <th>操作</th>
             </tr>
           </thead>
-          <tbody id="homeRecordBody"><tr><td colspan="7" class="empty">専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。</td></tr></tbody>
+          <tbody id="homeRecordBody"><tr><td colspan="6" class="empty">専用共有正本から対象者データを読み込んでいます。しばらくお待ちください。</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -4095,7 +4093,7 @@
           document.getElementById(id).textContent = "－";
         });
         document.getElementById("homeRecordBody").innerHTML =
-          recordListStatusRow(7, statusMessage);
+          recordListStatusRow(6, statusMessage);
         return;
       }
       const records = activeRecords();
@@ -4138,7 +4136,6 @@
       document.getElementById("homeRecordBody").innerHTML = rows.length ? rows.map(function (row) {
         const record = row.record;
         const result = row.result;
-        const finance = financeForRecord(record);
         const taskProgress = renewalTaskProgress(record);
         const canCreateWorkbook = canCreateOrUpdatePersonWorkbook(record);
         const dueClass = result.level === "danger" || result.level === "warning" ? "due" : "";
@@ -4168,10 +4165,6 @@
             taskProgress.totalCount + '</div></div>' +
             '<button type="button" class="small-button status-button" data-status="' +
             escapeHtml(record.id) + '">一覧</button></div></td>' +
-          '<td><div class="compact-line"><span>請求</span><strong>' +
-            escapeHtml(finance.status) +
-            '</strong></div><div class="compact-line"><span>更新</span><strong>' +
-            escapeHtml(fmtDateTime(record.updatedAt)) + "</strong></div></td>" +
           '<td><div class="home-record-actions">' +
             '<button type="button" class="small-button primary workbook-action-button" data-artifacts="' +
               escapeHtml(record.id) + '"' +
@@ -4183,7 +4176,7 @@
             '<button type="button" class="small-button danger-button" data-archive="' +
               escapeHtml(record.id) + '">無効化</button>' +
           "</div></div></td></tr>";
-      }).join("") : '<tr><td colspan="7" class="empty">該当する記録はありません。</td></tr>';
+      }).join("") : '<tr><td colspan="6" class="empty">該当する記録はありません。</td></tr>';
       applyPublicReadOnlyUi();
     }
 

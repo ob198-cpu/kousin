@@ -361,7 +361,7 @@ assert(homeRenderSource.includes('class="home-task-cell"') &&
   homeRenderSource.indexOf('class="home-task-cell"') <
     homeRenderSource.indexOf("data-status") &&
   homeRenderSource.indexOf("data-status") <
-    homeRenderSource.indexOf("<span>請求</span>"),
+    homeRenderSource.indexOf('class="home-record-actions"'),
   "一覧ボタンは「次にやること」セル内へ配置してください");
 const homeOperationCellSource = homeRenderSource.slice(
   homeRenderSource.indexOf("'<td><div class=\"home-record-actions\">'"),
@@ -386,17 +386,17 @@ const homeHeaders = $("#homeScreen .home-record-table thead th")
   .map((_, element) => $(element).text().trim()).get();
 assert.deepEqual(homeHeaders, [
   "判定・対応期限", "登録者", "免許・証明期限", "更新状況",
-  "次にやること", "請求・更新", "操作"
-], "統合ホーム一覧は重複のない7列構成にしてください");
-assert.equal($("#homeRecordBody td.empty").attr("colspan"), "7",
-  "統合ホーム一覧の読込中表示は7列へ合わせてください");
+  "次にやること", "操作"
+], "統合ホーム一覧は重複のない6列構成にしてください");
+assert.equal($("#homeRecordBody td.empty").attr("colspan"), "6",
+  "統合ホーム一覧の読込中表示は6列へ合わせてください");
 const activeRecordsSource = extractFunction(scriptMatch[1], "activeRecords");
 assert(activeRecordsSource.includes("!record.archived") &&
   homeRenderSource.includes("const records = activeRecords();"),
   "無効化済み記録は統合ホーム一覧から除外する必要があります");
 [
-  "financeForRecord(record)", "canCreateOrUpdatePersonWorkbook(record)",
-  "result.licenseExpiry", "result.certificateExpiry", "fmtDateTime(record.updatedAt)",
+  "canCreateOrUpdatePersonWorkbook(record)",
+  "result.licenseExpiry", "result.certificateExpiry",
   "basisHtml(result)", "data-artifacts", "data-detail", "data-edit", "data-archive"
 ].forEach((marker) => assert(homeRenderSource.includes(marker),
   "統合ホーム一覧に受講者台帳の情報または操作が不足しています: " + marker));
