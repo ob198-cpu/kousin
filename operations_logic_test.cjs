@@ -363,6 +363,10 @@ assert(homeRenderSource.includes('class="home-task-cell"') &&
   homeRenderSource.indexOf("data-status") <
     homeRenderSource.indexOf('class="home-record-actions"'),
   "一覧ボタンは「次にやること」セル内へ配置してください");
+assert(
+  /\.home-task-cell\s*\{[^}]*justify-content:\s*flex-start/.test(html),
+  "一覧ボタンは「次にやること」の内容へ寄せて配置してください"
+);
 const homeOperationCellSource = homeRenderSource.slice(
   homeRenderSource.indexOf("'<td><div class=\"home-record-actions\">'"),
   homeRenderSource.indexOf('"</div></div></td></tr>"')
