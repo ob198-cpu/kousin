@@ -143,7 +143,7 @@ const pureNames = [
   "artifactSettingsForHash_", "artifactActiveActorEmail_",
   "artifactReferencePinKeysForKinds_", "artifactReferenceFingerprintForKind_",
   "artifactAssertBillingReferenceSource_", "artifactSparseDisplayCells_", "artifactColumnLetters_",
-  "artifactNormalizeAllowedEmails_", "artifactAssertAllowedOutputEmails_", "artifactResolveOutputAccessEmails_", "artifactAssertDriveItemAcl_", "artifactNormalizeSchedules_",
+  "artifactNormalizeAllowedEmails_", "artifactAssertAllowedOutputEmails_", "artifactResolveOutputAccessEmails_", "artifactAssertDriveItemAcl_", "artifactNormalizeSchedules_", "artifactNormalizeCourseVenues_",
   "artifactNormalizeIsoDateList_", "artifactValidateDipsCalendarSettings_", "artifactAddIsoDaysUtc_",
   "artifactParseCsvMatrixStrict_", "artifactParseDipsOfficialTemplateHeader_", "artifactValidateDipsCsvTemplateSettings_",
   "artifactParseOfficialHolidayCsv_", "artifactAssertImportedHolidayCalendarStore_",
@@ -1207,6 +1207,7 @@ let saveApiCurrent = {
   issuerEmail: "owner@example.com",
   invoiceRegistrationNo: "T1234567890123",
   outputFolderId: context.RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID,
+  pdfOutputFolderId: "1mEa7LjNYge-Nesu02-zoyycwEpaEh_qZ",
   outputFiscalYear: "2026",
   archivedOutputFolders: [],
   templateFolderId: "template-folder",
@@ -1223,7 +1224,8 @@ let saveApiCurrent = {
   numberingCutoverMonth: "",
   certificateSequenceSeed: "",
   dipsSequenceSeed: "",
-  schedules: []
+  schedules: [],
+  courseVenues: ["CDP北海道校"]
 };
 const saveApiWrites = [];
 const saveApiCommits = [];
@@ -1241,6 +1243,7 @@ const saveApiContext = {
   artifactResolveOutputAccessEmails_: () => ["owner@example.com"],
   artifactNormalizeIsoDateList_: (value) => String(value || "").split(/[\s,;]+/).filter(Boolean),
   artifactNormalizeSchedules_: (value) => Array.isArray(value) ? value : [],
+  artifactNormalizeCourseVenues_: (value) => Array.isArray(value) ? value : String(value || "").split(/[\n,、]+/).filter(Boolean),
   artifactNormalizeArchivedOutputFolders_: (value) => Array.isArray(value) ? value : [],
   artifactBoolean_: (value) => value === true,
   artifactIsEmail_: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "")),

@@ -323,8 +323,8 @@ assert(runtimeBannerBlock.includes("banner.hidden = true;") &&
   "Apps Script本番版では案内帯を隠し、公開Pages版では本番導線を表示する必要があります");
 const topNavigationLabels = $(".app-header .tabs > button").map((_, element) =>
   $(element).text().trim()).get();
-assert.deepEqual(topNavigationLabels, ["ホーム", "集計", "設定"],
-  "一覧統合後の上部ナビゲーションはホーム・集計・設定の3ボタンだけにしてください");
+assert.deepEqual(topNavigationLabels, ["ホーム", "監査", "集計", "設定"],
+  "上部ナビゲーションはホームの右に監査を置き、続けて集計・設定を表示してください");
 assert.equal($(".app-header .tabs > button[data-screen='ledger']").length, 0,
   "上部ナビゲーションに重複する登録者一覧ボタンを残してはいけません");
 assert.equal($(".app-header .tabs > button[data-screen='entry']").length, 0,

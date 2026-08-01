@@ -562,6 +562,7 @@ function apiSaveArtifactSettings(input) {
       issuerEmail: artifactText_(input.issuerEmail !== undefined ? input.issuerEmail : current.issuerEmail),
       invoiceRegistrationNo: artifactText_(input.invoiceRegistrationNo !== undefined ? input.invoiceRegistrationNo : current.invoiceRegistrationNo),
       outputFolderId: allowedOutputFolderId,
+      pdfOutputFolderId: artifactExtractDriveId_(current.pdfOutputFolderId),
       outputFiscalYear: currentOutputFiscalYear,
       archivedOutputFolders: artifactNormalizeArchivedOutputFolders_(current.archivedOutputFolders),
       templateFolderId: artifactExtractDriveId_(current.templateFolderId),
@@ -594,8 +595,14 @@ function apiSaveArtifactSettings(input) {
       dipsSequenceSeed: artifactText_(input.dipsSequenceSeed !== undefined
         ? input.dipsSequenceSeed
         : current.dipsSequenceSeed),
-      schedules: Array.isArray(input.schedules) ? artifactNormalizeSchedules_(input.schedules) : current.schedules
+      schedules: Array.isArray(input.schedules) ? artifactNormalizeSchedules_(input.schedules) : current.schedules,
+      courseVenues: input.courseVenues !== undefined
+        ? artifactNormalizeCourseVenues_(input.courseVenues)
+        : artifactNormalizeCourseVenues_(current.courseVenues)
     };
+    if (!next.courseVenues.length) {
+      throw new Error("講習会場の候補を1件以上登録してください。");
+    }
     if (next.issuerEmail && !artifactIsEmail_(next.issuerEmail)) throw new Error("申込先メールの形式が正しくありません。");
     artifactAssertNumberingSettings_(next);
     var resolvedOutputAccessEmails = artifactResolveOutputAccessEmails_();
@@ -5033,6 +5040,7 @@ function artifactSettingsDefaults_() {
     issuerEmail: "",
     invoiceRegistrationNo: "T9430001086920",
     outputFolderId: RENEWAL_ARTIFACT.PINNED_OUTPUT_PARENT_FOLDER_ID,
+    pdfOutputFolderId: "1mEa7LjNYge-Nesu02-zoyycwEpaEh_qZ",
     outputFiscalYear: RENEWAL_ARTIFACT.PINNED_OUTPUT_FISCAL_YEAR,
     archivedOutputFolders: [],
     templateFolderId: "",
@@ -5049,7 +5057,8 @@ function artifactSettingsDefaults_() {
     numberingCutoverMonth: "",
     certificateSequenceSeed: "",
     dipsSequenceSeed: "",
-    schedules: []
+    schedules: [],
+    courseVenues: ["CDP北海道校"]
   };
 }
 
@@ -5104,6 +5113,11 @@ function artifactNormalizeStoredSettings_(stored) {
   defaults.certificateSequenceSeed = artifactText_(defaults.certificateSequenceSeed);
   defaults.dipsSequenceSeed = artifactText_(defaults.dipsSequenceSeed);
   defaults.schedules = artifactNormalizeSchedules_(defaults.schedules);
+  defaults.pdfOutputFolderId = artifactExtractDriveId_(defaults.pdfOutputFolderId);
+  if (!defaults.pdfOutputFolderId) {
+    throw new Error("PDF保存先フォルダIDが不正です。設定を監査してください。");
+  }
+  defaults.courseVenues = artifactNormalizeCourseVenues_(defaults.courseVenues);
   return defaults;
 }
 
@@ -5818,6 +5832,8 @@ function artifactPublicSettings_(settings, includeAdminDetails) {
     issuerEmail: settings.issuerEmail,
     invoiceRegistrationNo: settings.invoiceRegistrationNo,
     outputFolderId: publicOutputFolderId,
+    pdfOutputFolderId: artifactText_(settings.pdfOutputFolderId),
+    pdfOutputFolderUrl: artifactFolderUrl_(settings.pdfOutputFolderId),
     outputFiscalYear: outputFiscalYear,
     outputFolderName: outputFiscalYear + "年度",
     outputFolderMigrationRequired: outputFolderMigrationRequired,
@@ -5855,7 +5871,8 @@ function artifactPublicSettings_(settings, includeAdminDetails) {
       };
     }),
     bankAccountConfigured: !!artifactText_(settings._bankAccountText),
-    schedules: artifactNormalizeSchedules_(settings.schedules)
+    schedules: artifactNormalizeSchedules_(settings.schedules),
+    courseVenues: artifactNormalizeCourseVenues_(settings.courseVenues)
   };
   if (includeAdminDetails === true) {
     result.legacyOutputFolderId = outputFolderMigrationRequired ? storedOutputFolderId : "";
@@ -6557,6 +6574,27 @@ function artifactNormalizeSchedules_(schedules) {
       evening: row.evening === true || row.evening === "true" || row.evening === 1
     };
   });
+}
+
+function artifactNormalizeCourseVenues_(values) {
+  var source = Array.isArray(values)
+    ? values
+    : artifactText_(values).split(/[\n,、]+/);
+  if (source.length > 100) {
+    throw new Error("講習会場の候補は100件以内で登録してください。");
+  }
+  var seen = {};
+  var normalized = [];
+  source.forEach(function(value) {
+    var venue = artifactText_(value);
+    if (!venue || seen[venue]) return;
+    if (venue.length > 100) {
+      throw new Error("講習会場名は100文字以内で登録してください。");
+    }
+    seen[venue] = true;
+    normalized.push(venue);
+  });
+  return normalized;
 }
 
 function artifactNormalizeKinds_(kinds) {

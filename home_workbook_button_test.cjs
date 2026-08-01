@@ -49,10 +49,11 @@ assert(
   "資料作成処理の入口でも権限検査が必要です"
 );
 assert(
-  runner.includes('"apiPreflightPersonWorkbook"') &&
+    runner.includes('"apiPreflightPersonWorkbook"') &&
     runner.includes('"apiCreateOrUpdatePersonWorkbookBatch"') &&
     runner.includes("batchIndex < batchCount") &&
-    runner.includes("const batchCount = 9"),
+    runner.includes("preflight.summary") &&
+    runner.includes("summary.sheetCount"),
   "既存の作成前検査と同一ファイル更新処理を使用する必要があります"
 );
 

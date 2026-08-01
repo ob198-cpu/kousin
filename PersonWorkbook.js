@@ -5,19 +5,15 @@
 var RENEWAL_PERSON_WORKBOOK = {
   FORMAT: "CDP_RENEWAL_PERSON_WORKBOOK_V1",
   GENERATOR_VERSION: 1,
-  LAYOUT_VERSION: "OFFICIAL_FORMS_V2",
+  LAYOUT_VERSION: "OFFICIAL_FORMS_V3_PERSON_ONLY",
   PROPERTY_PREFIX: "RENEWAL_PERSON_WORKBOOK_",
   SYSTEM_SHEET_NAME: "__SYSTEM",
   SHEETS: [
     { key: "overview", name: "00_概要" },
     { key: "training", name: "01_別添03_講習記録簿" },
-    { key: "plan", name: "02_別添04_実施計画書" },
-    { key: "status", name: "03_別添05_実施状況報告書" },
-    { key: "ledger", name: "04_別添13_発行台帳" },
     { key: "evidence", name: "05_申込・証憑保管" },
     { key: "certificate", name: "06_修了証明書" },
-    { key: "dips", name: "07_DIPS CSV" },
-    { key: "payment", name: "08_講習料金収納記録" }
+    { key: "dips", name: "07_DIPS CSV" }
   ]
 };
 
@@ -32,7 +28,6 @@ function apiPreflightPersonWorkbook(request) {
     var record = artifactNormalizeRecord_(canonicalRequest.request.record);
     var sampleMode = typeof complianceIsSyntheticSampleRecord_ === "function" &&
       complianceIsSyntheticSampleRecord_(record);
-    if (!sampleMode) complianceRequireTemplatesReady_();
     var fiscalYear = artifactText_(record.fiscalYear);
     artifactOutputFolderForFiscalYear_(settings, fiscalYear);
     if (!artifactRecordName_(record)) {
@@ -42,13 +37,14 @@ function apiPreflightPersonWorkbook(request) {
       "未入力項目は空欄で作成します。共有正本の値を推測・補完しません。",
       "同じ対象者はrecordIdで判定し、同じGoogleスプレッドシートの固定シートを更新します。",
       "従来の個別成果物は監査履歴として残し、自動移動・自動削除しません。",
-      "別添03・04・13は、承認済みの専用原本レイアウトを複製し、必要なセルだけを更新します。",
-      "発行台帳・別添04・別添05・修了証明書の専用原本は、固定した本文版との一致を、書込み前に再検査します。"
+      "別添03と修了証明書は、承認済みの専用原本レイアウトを複製し、必要なセルだけを更新します。",
+      "別添04・別添05・発行台帳・講習料金収納記録は個人資料へ重複作成せず、監査画面の年度別全体資料へ集計します。",
+      "完成した対象者資料ブックは、指定されたPDF保存先へ同じPDFファイルIDで更新保存します。"
     ];
     var financeState = personWorkbookFinanceSnapshot_(record.recordId, true);
     if (sampleMode) {
       warnings.push(
-        "合成サンプルは正式データと分離した「サンプル出力」配下へ保存し、別添04・05は固定した公開参照元を使います。"
+        "合成サンプルは正式データと分離した「サンプル出力」配下へ保存します。"
       );
     }
     if (!financeState) {
@@ -67,7 +63,7 @@ function apiPreflightPersonWorkbook(request) {
         sheetCount: RENEWAL_PERSON_WORKBOOK.SHEETS.length
       },
       warnings: warnings,
-      message: "1つのファイル内に9種類の資料シートを作成・更新できます。"
+      message: "1つの個人ファイル内に5種類の資料シートを作成・更新できます。全体資料4種類は監査画面で年度別に作成します。"
     };
   } catch (error) {
     var message = artifactErrorMessage_(error);
@@ -89,7 +85,7 @@ function apiCreateOrUpdatePersonWorkbook(request) {
   if (
     batchMode &&
     (!isFinite(batchIndex) || Math.floor(batchIndex) !== batchIndex ||
-      batchIndex < 0 || batchIndex > 8)
+      batchIndex < 0 || batchIndex >= RENEWAL_PERSON_WORKBOOK.SHEETS.length)
   ) {
     return personWorkbookErrorResult_(
       new Error("対象者資料ブックの作成段階が正しくありません。")
@@ -140,13 +136,7 @@ function apiCreateOrUpdatePersonWorkbook(request) {
     );
     settings = artifactClone_(settings);
     settings.outputFolderId = outputFolderId;
-    var complianceTemplates = sampleMode
-      ? {
-        planTemplateId: RENEWAL_COMPLIANCE_ARCHIVE.PLAN_SOURCE_ID,
-        statusTemplateId: RENEWAL_COMPLIANCE_ARCHIVE.STATUS_SOURCE_ID,
-        templateFolderId: ""
-      }
-      : complianceRequireTemplatesReady_();
+    var complianceTemplates = {};
     var autoRoot = artifactEnsureAutoRoot_(outputFolderId, allowedEmails);
     var workbookRoot = sampleMode
       ? complianceEnsureSampleFolder_(autoRoot, allowedEmails)
@@ -173,7 +163,7 @@ function apiCreateOrUpdatePersonWorkbook(request) {
     var updateResult = batchMode
       ? personWorkbookUpdate_(resolved, context, {
         specs: personWorkbookBatchSpecs_(batchIndex),
-        finalize: batchIndex === 8,
+        finalize: batchIndex === RENEWAL_PERSON_WORKBOOK.SHEETS.length - 1,
         batchIndex: batchIndex
       })
       : personWorkbookUpdate_(resolved, context);
@@ -206,11 +196,16 @@ function apiCreateOrUpdatePersonWorkbook(request) {
         fileName: resolved.file.getName(),
         warnings: updateResult.cleanupWarnings || [],
         message:
-          "全9シートのうち" +
+          "全" + RENEWAL_PERSON_WORKBOOK.SHEETS.length + "シートのうち" +
           personWorkbookCompletedSheetCount_(batchIndex) +
           "シートまで安全に更新しました。続けて残りを更新します。"
       };
     }
+    var pdf = renewalPdfExportAndSave_(
+      resolved.file,
+      "person-workbook:" + record.recordId,
+      settings
+    );
     var auditWarning = "";
     try {
       complianceEnsureServerAudit_({
@@ -218,7 +213,7 @@ function apiCreateOrUpdatePersonWorkbook(request) {
         scopeKey: "person-workbook:" + record.recordId,
         kind: "personWorkbook",
         hash: context.contentHash,
-        fileId: resolved.file.getId(),
+        fileId: resolved.file.getId() + ":" + pdf.fileId,
         action: context.sampleMode
           ? (resolved.created
             ? "COMPLIANCE_SAMPLE_PERSON_WORKBOOK_CREATE"
@@ -248,6 +243,9 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       url: resolved.file.getUrl(),
       fileUrl: resolved.file.getUrl(),
       fileName: resolved.file.getName(),
+      pdfFileId: pdf.fileId,
+      pdfUrl: pdf.url,
+      pdfFolderUrl: pdf.folderUrl,
       sheetNames: RENEWAL_PERSON_WORKBOOK.SHEETS.map(function(row) {
         return row.name;
       }),
@@ -256,8 +254,8 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       warnings: responseWarnings,
       message: auditWarning || (
         resolved.created
-          ? "対象者資料ブックを作成し、9種類の資料を別シートへ保存しました。"
-          : "既存の対象者資料ブックを同じファイルIDのまま上書き更新しました。"
+          ? "対象者資料ブックを作成し、5種類の個人資料を別シートへ保存し、PDFも自動保存しました。"
+          : "既存の対象者資料ブックとPDFを同じファイルIDのまま上書き更新しました。"
       )
     };
   } catch (error) {
@@ -290,14 +288,13 @@ function apiCreateOrUpdatePersonWorkbookBatch(request) {
 }
 
 function personWorkbookBatchSpecs_(batchIndex) {
-  var boundaries = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   var index = Number(batchIndex);
-  var start = index === 0 ? 0 : boundaries[index - 1];
-  return RENEWAL_PERSON_WORKBOOK.SHEETS.slice(start, boundaries[index]);
+  return RENEWAL_PERSON_WORKBOOK.SHEETS.slice(index, index + 1);
 }
 
 function personWorkbookCompletedSheetCount_(batchIndex) {
-  return [1, 2, 3, 4, 5, 6, 7, 8, 9][Number(batchIndex)] || 0;
+  var count = Number(batchIndex) + 1;
+  return count > 0 ? Math.min(count, RENEWAL_PERSON_WORKBOOK.SHEETS.length) : 0;
 }
 
 function personWorkbookCanonicalRequest_(request) {
@@ -703,6 +700,8 @@ function personWorkbookUpdate_(resolved, context, options) {
     }
     var updatedAt = artifactNowText_();
     if (finalize) {
+      var migratedGlobalWarnings = personWorkbookArchiveFormerGlobalSheets_(spreadsheet);
+      recoveryWarnings = recoveryWarnings.concat(migratedGlobalWarnings);
       for (
         var orderIndex = 0;
         orderIndex < RENEWAL_PERSON_WORKBOOK.SHEETS.length;
@@ -857,6 +856,31 @@ function personWorkbookQuarantineName_(spreadsheet, preparedName) {
   return candidate;
 }
 
+function personWorkbookArchiveFormerGlobalSheets_(spreadsheet) {
+  var former = [
+    "02_別添04_実施計画書",
+    "03_別添05_実施状況報告書",
+    "04_別添13_発行台帳",
+    "08_講習料金収納記録"
+  ];
+  var warnings = [];
+  former.forEach(function(name) {
+    var sheet = spreadsheet.getSheetByName(name);
+    if (!sheet) return;
+    var base = ("__旧_全体資料移行_" + name).slice(0, 90);
+    var next = base;
+    var suffix = 2;
+    while (spreadsheet.getSheetByName(next)) {
+      next = (base.slice(0, 86) + "_" + suffix).slice(0, 90);
+      suffix++;
+    }
+    sheet.setName(next);
+    try { sheet.hideSheet(); } catch (ignored) {}
+    warnings.push("旧個人ブックの「" + name + "」は削除せず、全体資料移行前の履歴として非表示保管しました。");
+  });
+  return warnings;
+}
+
 function personWorkbookEnsureSystemSheet_(spreadsheet, created, file, context) {
   var systemSheet = spreadsheet.getSheetByName(
     RENEWAL_PERSON_WORKBOOK.SYSTEM_SHEET_NAME
@@ -912,7 +936,7 @@ function personWorkbookAssertSystemSheet_(sheet, file, context) {
     map.format !== RENEWAL_PERSON_WORKBOOK.FORMAT ||
     Number(map.generatorVersion) !== RENEWAL_PERSON_WORKBOOK.GENERATOR_VERSION ||
     (map.layoutVersion &&
-      map.layoutVersion !== RENEWAL_PERSON_WORKBOOK.LAYOUT_VERSION) ||
+      ["OFFICIAL_FORMS_V2", RENEWAL_PERSON_WORKBOOK.LAYOUT_VERSION].indexOf(map.layoutVersion) < 0) ||
     map.recordId !== context.record.recordId ||
     map.autoRootId !== context.autoRoot.getId() ||
     map.fileId !== file.getId()

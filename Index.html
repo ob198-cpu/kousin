@@ -820,6 +820,7 @@
     <div class="brand">免許更新管理</div>
     <nav class="tabs" aria-label="画面切替">
       <button type="button" class="active" data-screen="home">ホーム</button>
+      <button type="button" data-screen="audit">監査</button>
       <button type="button" data-screen="reports">集計</button>
       <button type="button" data-screen="data">設定</button>
     </nav>
@@ -1049,7 +1050,9 @@
               </div>
               <div class="field wide">
                 <label for="courseVenue">講習会場</label>
-                <input id="courseVenue" placeholder="例：CDP北海道校">
+                <select id="courseVenue">
+                  <option value="">選択してください</option>
+                </select>
               </div>
               <div class="field">
                 <label for="renewalListAmount">更新者一覧の金額</label>
@@ -1562,6 +1565,30 @@
       </div>
     </section>
 
+    <section id="auditScreen" class="screen">
+      <div class="page-head">
+        <h1>監査</h1>
+      </div>
+      <section class="data-section">
+        <h2>全体監査資料</h2>
+        <p class="operation-note">
+          個人別資料とは分離し、選択年度の共有正本と正式会計台帳から全体資料を1つのGoogleスプレッドシートへ作成・更新します。
+          同じ年度は同じファイルIDのまま上書きし、PDFも指定フォルダへ同じ名前で更新保存します。
+        </p>
+        <div class="filter-bar">
+          <select id="auditFiscalYear" aria-label="監査対象年度"></select>
+          <button type="button" id="createOrUpdateAuditWorkspace" class="primary">全体監査資料を作成・更新</button>
+        </div>
+        <ul class="operation-note">
+          <li>登録更新講習機関実施計画書</li>
+          <li>登録更新講習機関実施状況報告書</li>
+          <li>別添13 修了証明書発行台帳</li>
+          <li>08_講習料金収納記録</li>
+        </ul>
+        <div id="auditWorkspaceResult" class="artifact-result" role="status"></div>
+      </section>
+    </section>
+
     <section id="reportsScreen" class="screen">
       <div class="page-head">
         <h1>業務集計（管理年度）</h1>
@@ -1760,6 +1787,16 @@
             <label for="artifactOutputFolderId" id="artifactOutputFolderLabel">成果物の現行保存先（2026年度）</label>
             <input id="artifactOutputFolderId" value="1XmQirjBrQR-uC_GuBVXAyRK5zfqtoQwN" readonly>
             <small id="artifactOutputFolderHelp">成果物は「年度 / 自動作成 / 対象者別フォルダ」へ保存します。通常の事業者設定保存では変更できません。</small>
+          </div>
+          <div class="field full">
+            <label for="artifactPdfOutputFolderId">PDF自動保存先</label>
+            <input id="artifactPdfOutputFolderId" value="1mEa7LjNYge-Nesu02-zoyycwEpaEh_qZ" readonly>
+            <small>個人別資料PDFと全体監査資料PDFを、指定された「更新講習」フォルダへ同じファイル名で更新保存します。</small>
+          </div>
+          <div class="field full">
+            <label for="artifactCourseVenues">講習会場のプルダウン候補 *</label>
+            <textarea id="artifactCourseVenues" rows="4" placeholder="1行に1会場"></textarea>
+            <small>1行に1会場を入力します。保存後、登録・編集画面の「講習会場」プルダウンへ反映されます。</small>
           </div>
           <div class="field full"><label>成果物のアクセス権限</label><small>メールアドレスの手入力は使用しません。共有正本の有効利用者とGoogle Driveの所有者・編集者・閲覧者を作成前に自動照合し、未知の共有先、リンク・ドメイン公開、編集者による再共有があれば停止します。</small></div>
           <div class="field full"><label for="artifactCertificateTemplateId">無個人情報の修了証明書テンプレートID *</label><input id="artifactCertificateTemplateId" placeholder="「ベース」1タブだけの専用Googleドキュメント"></div>
@@ -2185,6 +2222,7 @@
     let artifactPreflightState = null;
     let complianceArchiveBusy = false;
     let personWorkbookBusy = false;
+    let auditWorkspaceBusy = false;
     let artifactSettingsLoaded = false;
     let artifactRuntimeSettings = {};
     let artifactSettingsVersion = 0;
@@ -4000,6 +4038,7 @@
       if (name === "home") renderHome();
       if (name === "finance") renderFinance();
       if (name === "reports") renderReports();
+      if (name === "audit") renderAuditWorkspaceScreen();
       if (name === "data") {
         renderAudit();
         if (!artifactSettingsLoaded) loadArtifactSettings();
@@ -4022,6 +4061,22 @@
         select.appendChild(option);
       });
       if (values.includes(current)) select.value = current;
+    }
+
+    function renderCourseVenueOptions(currentValue) {
+      const select = document.getElementById("courseVenue");
+      if (!select) return;
+      const current = String(currentValue == null ? select.value : currentValue).trim();
+      const configured = Array.isArray(artifactRuntimeSettings.courseVenues)
+        ? artifactRuntimeSettings.courseVenues
+        : ["CDP北海道校"];
+      const venues = configured.map(function (value) { return String(value || "").trim(); })
+        .filter(function (value, index, rows) { return value && rows.indexOf(value) === index; });
+      if (current && venues.indexOf(current) < 0) venues.push(current);
+      select.innerHTML = '<option value="">選択してください</option>' + venues.map(function (venue) {
+        return '<option value="' + escapeHtml(venue) + '">' + escapeHtml(venue) + '</option>';
+      }).join("");
+      select.value = current;
     }
 
     function fiscalYears(records) {
@@ -5780,6 +5835,72 @@
         return "<tr><td>" + escapeHtml(name) + "</td><td>" + uniquePeople(rows) + "</td><td>" + rows.length +
           '</td><td class="amount">¥' + currency(total) + "</td></tr>";
       }).join("") || '<tr><td colspan="4" class="empty">集計対象がありません。</td></tr>';
+    }
+
+    function renderAuditWorkspaceScreen() {
+      const select = document.getElementById("auditFiscalYear");
+      if (!select) return;
+      const current = select.value;
+      const configuredYear = String(artifactRuntimeSettings.outputFiscalYear || "");
+      const years = fiscalYears(activeRecords());
+      if (configuredYear && years.indexOf(configuredYear) < 0) years.push(configuredYear);
+      years.sort().reverse();
+      select.innerHTML = years.map(function (year) {
+        return '<option value="' + escapeHtml(year) + '">' + escapeHtml(year) + '年度</option>';
+      }).join("");
+      select.value = years.indexOf(current) >= 0 ? current : (configuredYear || years[0] || "");
+      const button = document.getElementById("createOrUpdateAuditWorkspace");
+      button.disabled = auditWorkspaceBusy || AppData.mode !== "server" || AppData.role !== "admin" || !select.value;
+    }
+
+    function renderAuditWorkspaceResult(result) {
+      const container = document.getElementById("auditWorkspaceResult");
+      if (!result || result.success === false) {
+        container.innerHTML = artifactResultRow(
+          "error",
+          "全体監査資料",
+          messageList(result && (result.errors || result.message || result.error)),
+          result && result.url
+        );
+        return;
+      }
+      const messages = messageList(result.message).concat(messageList(result.warnings));
+      container.innerHTML = artifactResultRow("ready", "全体監査資料", messages, result.url);
+      if (/^https:\/\/drive\.google\.com\//.test(result.pdfUrl || "")) {
+        const anchor = document.createElement("a");
+        anchor.href = result.pdfUrl;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        anchor.textContent = " PDFを開く";
+        container.querySelector(".artifact-result-row").appendChild(anchor);
+      }
+    }
+
+    async function runAuditWorkspace() {
+      if (auditWorkspaceBusy) return;
+      const fiscalYear = document.getElementById("auditFiscalYear").value;
+      if (AppData.mode !== "server" || AppData.role !== "admin" || !/^20\d{2}$/.test(fiscalYear)) {
+        renderAuditWorkspaceResult({ success: false, message: "管理者が有効な対象年度を選択してください。" });
+        return;
+      }
+      auditWorkspaceBusy = true;
+      renderAuditWorkspaceScreen();
+      document.getElementById("auditWorkspaceResult").innerHTML = artifactResultRow(
+        "warning", "全体監査資料", "共有正本と正式会計台帳を集計し、Google DriveとPDFを更新しています。"
+      );
+      try {
+        const result = await serverCall("apiCreateOrUpdateAuditWorkspace", {
+          fiscalYear: fiscalYear,
+          idempotencyKey: makeId("audit-workspace")
+        });
+        renderAuditWorkspaceResult(result || {});
+        showToast(result && result.success !== false ? "全体監査資料とPDFを更新しました。" : "全体監査資料を更新できませんでした。");
+      } catch (error) {
+        renderAuditWorkspaceResult({ success: false, message: error.message });
+      } finally {
+        auditWorkspaceBusy = false;
+        renderAuditWorkspaceScreen();
+      }
     }
 
     function renderAudit() {
@@ -8367,6 +8488,11 @@
       });
       document.getElementById("artifactOutputFolderId").value =
         data.outputFolderId || PINNED_ARTIFACT_OUTPUT_FOLDER_ID;
+      document.getElementById("artifactPdfOutputFolderId").value =
+        data.pdfOutputFolderId || "1mEa7LjNYge-Nesu02-zoyycwEpaEh_qZ";
+      document.getElementById("artifactCourseVenues").value =
+        Array.isArray(data.courseVenues) ? data.courseVenues.join("\n") : "";
+      renderCourseVenueOptions(document.getElementById("courseVenue").value);
       document.getElementById("artifactOutputFolderLabel").textContent =
         "成果物の現行保存先（" + (data.outputFiscalYear || "2026") + "年度）";
       const outputFolderHelp = document.getElementById("artifactOutputFolderHelp");
@@ -8571,6 +8697,7 @@
         issuerEmail: document.getElementById("artifactIssuerEmail").value.trim(),
         invoiceRegistrationNo: document.getElementById("artifactInvoiceRegistrationNo").value.trim(),
         outputFolderId: document.getElementById("artifactOutputFolderId").value.trim(),
+        courseVenues: document.getElementById("artifactCourseVenues").value,
         certificateTemplateId: document.getElementById("artifactCertificateTemplateId").value.trim(),
         ledgerTemplateId: document.getElementById("artifactLedgerTemplateId").value.trim(),
         dipsAdditionalClosedDates: document.getElementById("artifactDipsAdditionalClosedDates").value.trim(),
@@ -8589,6 +8716,10 @@
       };
       if (payload.outputFolderId !== String(artifactRuntimeSettings.outputFolderId || PINNED_ARTIFACT_OUTPUT_FOLDER_ID)) {
         setArtifactSettingsStatus("通常保存では成果物の年度保存先を変更できません。画面を再読み込みしてください。", true);
+        return;
+      }
+      if (!splitSettingList(payload.courseVenues).length) {
+        setArtifactSettingsStatus("講習会場の候補を1件以上入力してください。", true);
         return;
       }
       if (!payload.certificateTemplateId || !payload.ledgerTemplateId) {
@@ -8859,7 +8990,7 @@
         const messages = [
           "対象者: " + (summary.targetName || "名称未設定") +
             "／管理ID: " + (summary.managementId || "未設定"),
-          "同じファイル内の固定" + Number(summary.sheetCount || 9) +
+          "同じファイル内の固定" + Number(summary.sheetCount || 5) +
             "シートを作成・更新します。未入力項目は空欄にします。"
         ].concat(warnings);
         container.innerHTML = artifactResultRow(
@@ -8881,6 +9012,14 @@
         messages,
         url
       );
+      if (result && /^https:\/\/drive\.google\.com\//.test(result.pdfUrl || "")) {
+        const anchor = document.createElement("a");
+        anchor.href = result.pdfUrl;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        anchor.textContent = " PDFを開く";
+        container.querySelector(".artifact-result-row").appendChild(anchor);
+      }
     }
 
     async function runPersonWorkbook(record) {
@@ -8923,7 +9062,7 @@
           return;
         }
         let result = null;
-        const batchCount = 9;
+        const batchCount = Math.max(1, Number(preflight.summary && preflight.summary.sheetCount || 5));
         const appsScriptLocation = await new Promise((resolve) => {
           if (
             typeof google !== "undefined" &&
@@ -8959,7 +9098,7 @@
             artifactResultRow(
               "warning",
               "対象者資料一式",
-              "全9シートを1シートずつ安全に更新しています。" +
+              "全" + batchCount + "シートを1シートずつ安全に更新しています。" +
               " 現在 " + (batchIndex + 1) + " / " + batchCount + " 回目です。"
             );
           for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -9529,6 +9668,7 @@
     }
 
     function fillForm(record) {
+      renderCourseVenueOptions(record && record.courseVenue);
       FIELD_IDS.forEach(function (id) {
         const element = document.getElementById(id);
         if (!element) return;
@@ -9544,6 +9684,7 @@
 
     function clearForm() {
       form.reset();
+      renderCourseVenueOptions("");
       document.getElementById("recordId").value = "";
       document.getElementById("personId").value = makePersonId();
       document.getElementById("fiscalYear").value = fiscalYearOf(new Date());
@@ -10273,6 +10414,7 @@
     document.getElementById("createOrUpdatePersonWorkbook").addEventListener("click", function () {
       runPersonWorkbook(findRecord(artifactRecordId));
     });
+    document.getElementById("createOrUpdateAuditWorkspace").addEventListener("click", runAuditWorkspace);
     document.querySelectorAll("[data-existing-compliance-kind]").forEach(function (button) {
       button.addEventListener("click", function () {
         runExistingComplianceArchive(button.getAttribute("data-existing-compliance-kind"));

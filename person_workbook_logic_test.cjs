@@ -39,13 +39,9 @@ assert($.root().text().includes("個別ファイル作成（従来方式・必�
 const expectedSheets = [
   "00_概要",
   "01_別添03_講習記録簿",
-  "02_別添04_実施計画書",
-  "03_別添05_実施状況報告書",
-  "04_別添13_発行台帳",
   "05_申込・証憑保管",
   "06_修了証明書",
-  "07_DIPS CSV",
-  "08_講習料金収納記録"
+  "07_DIPS CSV"
 ];
 expectedSheets.forEach((name) => {
   assert(source.includes('name: "' + name + '"'), name + "が固定シートにありません");
@@ -108,10 +104,10 @@ const personWorkbookPreflight = source.slice(
 );
 assert(!personWorkbookPreflight.includes("artifactAssertLedgerTemplateClean_"),
   "作成前検査でDrive原本の完全検査を重複実行してはいけません");
-assert(personWorkbookPreflight.includes("固定した本文版との一致"),
-  "作成時の版固定照合を説明する必要があります");
-assert(personWorkbookPreflight.includes("if (!sampleMode) complianceRequireTemplatesReady_();"),
-  "合成サンプルだけは未準備の正式用専用原本で停止させてはいけません");
+assert(personWorkbookPreflight.includes("別添04・別添05・発行台帳・講習料金収納記録は個人資料へ重複作成せず"),
+  "全体資料4種類を個人資料から分離する説明が必要です");
+assert(!personWorkbookPreflight.includes("complianceRequireTemplatesReady_();"),
+  "個人資料作成を全体資料用原本の準備状態で停止させてはいけません");
 
 const planRenderer = source.slice(
   source.indexOf("function personWorkbookRenderPlan_("),
@@ -202,7 +198,7 @@ assert((manifest.dependencies &&
   service.serviceId === "sheets" &&
   service.version === "v4"
 ), "原本レイアウトの一括検査用にAdvanced Sheets API v4が必要です");
-assert(source.includes('LAYOUT_VERSION: "OFFICIAL_FORMS_V2"'),
+assert(source.includes('LAYOUT_VERSION: "OFFICIAL_FORMS_V3_PERSON_ONLY"'),
   "対象者資料ブックの帳票レイアウト版がありません");
 
 const dipsRenderer = source.slice(
@@ -222,16 +218,16 @@ const updateSource = source.slice(updateStart, updateEnd);
 assert(updateSource.includes("artifactAssertDedicatedTemplatePin_") &&
   updateSource.indexOf("artifactAssertDedicatedTemplatePin_") <
     updateSource.indexOf("spreadsheet.setSpreadsheetTimeZone"),
-  "発行台帳専用原本は対象者ブックへ書き込む前に固定本文版を照合する必要があります");
+  "個人資料の専用原本は対象者ブックへ書き込む前に固定本文版を照合する必要があります");
 assert(updateSource.includes('"certificate", context.settings.certificateTemplateId') &&
   updateSource.includes("complianceAssertPlanTemplateClean_") &&
   updateSource.includes("complianceAssertStatusTemplateClean_") &&
   updateSource.includes('artifactAssertPinnedReferenceSource_("implementationPlanSource")') &&
   updateSource.includes('artifactAssertPinnedReferenceSource_("implementationStatusSource")'),
   "別添04・05・修了証明書の専用原本も書込み前に固定版を検査する必要があります");
-assert(source.includes("RENEWAL_COMPLIANCE_ARCHIVE.PLAN_SOURCE_ID") &&
-  source.includes("RENEWAL_COMPLIANCE_ARCHIVE.STATUS_SOURCE_ID"),
-  "合成サンプルは固定した公開参照元から別添04・05を作成する必要があります");
+assert(source.includes("personWorkbookArchiveFormerGlobalSheets_") &&
+  source.includes("__旧_全体資料移行_"),
+  "旧個人ブックの全体資料は削除せず非表示履歴へ移行する必要があります");
 const systemVerifyPosition = updateSource.indexOf(
   "personWorkbookAssertSystemSheet_("
 );
@@ -275,11 +271,11 @@ assert(scriptMatch[1].includes('serverCall(\n          "apiPreflightPersonWorkbo
   "画面は資料一式の作成前検査APIを呼ぶ必要があります");
 assert(scriptMatch[1].includes('"apiCreateOrUpdatePersonWorkbookBatch"') &&
   scriptMatch[1].includes("batchIndex < batchCount") &&
-  scriptMatch[1].includes("const batchCount = 9") &&
-  source.includes("var boundaries = [1, 2, 3, 4, 5, 6, 7, 8, 9]") &&
-  source.includes("batchIndex > 8") &&
-  source.includes("finalize: batchIndex === 8"),
-  "画面は9帳票を1シートずつ分けて作成・更新する必要があります");
+  scriptMatch[1].includes("preflight.summary") &&
+  source.includes("RENEWAL_PERSON_WORKBOOK.SHEETS.slice(index, index + 1)") &&
+  source.includes("batchIndex >= RENEWAL_PERSON_WORKBOOK.SHEETS.length") &&
+  source.includes("finalize: batchIndex === RENEWAL_PERSON_WORKBOOK.SHEETS.length - 1"),
+  "画面は個人資料5帳票を1シートずつ分けて作成・更新する必要があります");
 assert(scriptMatch[1].includes("google.script.url.getLocation") &&
   scriptMatch[1].includes('get("resumeBatch")') &&
   scriptMatch[1].includes("isSyntheticSampleRecord(currentRecord)") &&
