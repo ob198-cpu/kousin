@@ -4,6 +4,7 @@ const acorn = require("acorn");
 const cheerio = require("cheerio");
 
 const auditSource = fs.readFileSync("AuditWorkspace.js", "utf8");
+const editorSource = fs.readFileSync("AuditWorkspaceEditor.js", "utf8");
 const pdfSource = fs.readFileSync("PdfExports.js", "utf8");
 const personSource = fs.readFileSync("PersonWorkbook.js", "utf8");
 const artifactsSource = fs.readFileSync("Artifacts.js", "utf8");
@@ -11,7 +12,7 @@ const html = fs.readFileSync("Index.html", "utf8");
 const scriptMatch = html.match(/<script>\s*([\s\S]*?)\s*<\/script>/);
 
 assert(scriptMatch, "Index.htmlのscript要素がありません");
-[auditSource, pdfSource, personSource, artifactsSource, scriptMatch[1]].forEach((source) => {
+[auditSource, editorSource, pdfSource, personSource, artifactsSource, scriptMatch[1]].forEach((source) => {
   acorn.parse(source, { ecmaVersion: "latest", sourceType: "script" });
 });
 
@@ -22,6 +23,12 @@ assert.deepEqual(nav, ["ホーム", "監査", "集計", "設定"],
 assert.equal($("#auditScreen").length, 1, "監査画面がありません");
 assert.equal($("#createOrUpdateAuditWorkspace").length, 1,
   "全体監査資料の作成・更新ボタンがありません");
+assert.equal($("[data-audit-edit]").length, 4,
+  "監査画面には4資料それぞれの編集ボタンが必要です");
+assert.equal($("#auditEditorModal").length, 1,
+  "監査資料の編集画面がありません");
+assert.equal($("#auditEditorReason").length, 1,
+  "監査資料の変更理由入力がありません");
 assert.equal($("#courseVenue").is("select"), true,
   "講習会場はプルダウンにしてください");
 assert.equal($("#artifactCourseVenues").length, 1,
@@ -43,6 +50,24 @@ assert(auditSource.includes("storeListRecords_({ includeDeleted: false })") &&
 assert(auditSource.includes('"audit-workspace:" + fiscalYear') &&
   auditSource.includes("renewalPdfExportAndSave_("),
   "全体監査資料の同一年度更新とPDF保存が必要です");
+assert(editorSource.includes("function apiGetAuditWorkspaceEditor") &&
+  editorSource.includes("function apiSaveAuditWorkspaceDocument") &&
+  editorSource.includes("function apiResetAuditWorkspaceDocument"),
+  "監査資料の読込・補正保存・自動集計復帰APIが必要です");
+assert(editorSource.includes("expectedManualVersion") &&
+  editorSource.includes("別の担当者が先に監査資料を変更しました"),
+  "監査資料の同時更新は版競合で停止してください");
+assert(editorSource.includes("reason.length < 2") &&
+  editorSource.includes("AUDIT_WORKSPACE_MANUAL_SAVE") &&
+  editorSource.includes("AUDIT_WORKSPACE_MANUAL_RESET"),
+  "補正の変更理由とサーバー監査を必須にしてください");
+assert(editorSource.includes('SHEET: "__MANUAL_INPUT"') &&
+  editorSource.includes("auditWorkspaceManualWrite_") &&
+  auditSource.includes('name === RENEWAL_AUDIT_MANUAL.SHEET'),
+  "補正データは生成シートと分離して保持してください");
+assert(editorSource.includes("renewalPdfExportAndSave_(") &&
+  auditSource.includes("auditWorkspaceSelectRows_"),
+  "補正保存後は同じ監査シートとPDFへ反映してください");
 assert(personSource.includes('"person-workbook:" + record.recordId') &&
   personSource.includes("pdfUrl: pdf.url"),
   "個人資料ブックもPDFへ自動保存してください");

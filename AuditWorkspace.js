@@ -66,14 +66,16 @@ function apiCreateOrUpdateAuditWorkspace(request) {
     resolved = auditWorkspaceResolve_(
       archiveFolder, fiscalYear, allowedEmails
     );
-    auditWorkspaceUpdate_(resolved, {
+    var context = {
       fiscalYear: fiscalYear,
       records: records,
       finance: finance,
       settings: settings,
       contentHash: contentHash,
       authorization: authorization
-    });
+    };
+    context.manualState = auditWorkspaceManualLoad_(resolved.spreadsheet, fiscalYear);
+    auditWorkspaceUpdate_(resolved, context);
     updateCompleted = true;
     var pdf = renewalPdfExportAndSave_(
       resolved.file,
@@ -246,11 +248,12 @@ function auditWorkspaceUpdate_(resolved, context) {
     var system = spreadsheet.getSheetByName(RENEWAL_AUDIT_WORKSPACE.SYSTEM_SHEET);
     if (!system) system = spreadsheet.insertSheet(RENEWAL_AUDIT_WORKSPACE.SYSTEM_SHEET);
     system.clear();
-    system.getRange(1, 1, 6, 2).setValues([
+    system.getRange(1, 1, 7, 2).setValues([
       ["format", RENEWAL_AUDIT_WORKSPACE.FORMAT],
       ["fiscalYear", context.fiscalYear],
       ["contentHash", context.contentHash],
       ["recordCount", context.records.length],
+      ["manualVersion", context.manualState ? context.manualState.version : 0],
       ["updatedAt", artifactNowText_()],
       ["updatedBy", context.authorization.email]
     ]);
@@ -265,6 +268,7 @@ function auditWorkspaceUpdate_(resolved, context) {
       spreadsheet.getSheets().forEach(function(sheet) {
         var name = sheet.getName();
         var managed = name === RENEWAL_AUDIT_WORKSPACE.SYSTEM_SHEET ||
+          name === RENEWAL_AUDIT_MANUAL.SHEET ||
           RENEWAL_AUDIT_WORKSPACE.SHEETS.some(function(spec) { return spec.name === name; });
         if (!managed && spreadsheet.getSheets().length > 5) {
           try { spreadsheet.deleteSheet(sheet); } catch (ignoredDelete) {}
@@ -327,7 +331,15 @@ function auditWorkspaceSortRecords_(records) {
   });
 }
 
-function auditWorkspaceRenderPlan_(sheet, context) {
+function auditWorkspaceAutoRows_(key, context) {
+  if (key === "plan") return auditWorkspacePlanRows_(context);
+  if (key === "status") return auditWorkspaceStatusRows_(context);
+  if (key === "ledger") return auditWorkspaceLedgerRows_(context);
+  if (key === "payment") return auditWorkspacePaymentRows_(context);
+  throw new Error("未対応の全体監査シートです。");
+}
+
+function auditWorkspacePlanRows_(context) {
   var groups = {};
   auditWorkspaceSortRecords_(context.records).forEach(function(record) {
     var date = artifactValidIsoDateOrBlank_(record.courseScheduledDate) ||
@@ -337,17 +349,13 @@ function auditWorkspaceRenderPlan_(sheet, context) {
     if (!groups[key]) groups[key] = { date: date, licenseClass: record.licenseClass, venue: record.courseVenue, count: 0 };
     groups[key].count++;
   });
-  var rows = Object.keys(groups).sort().map(function(key) {
+  return Object.keys(groups).sort().map(function(key) {
     var row = groups[key];
     return [row.date.slice(0, 7), row.date, row.licenseClass, row.venue, row.count, row.count, "共有正本から自動集計"];
   });
-  auditWorkspaceBase_(sheet,
-    "登録更新講習機関実施計画書（" + context.fiscalYear + "年度・全体）",
-    ["対象月", "実施予定日", "区分", "講習会場", "開始予定人数", "修了予定人数", "集計根拠"],
-    [110, 120, 90, 240, 120, 120, 230], rows);
 }
 
-function auditWorkspaceRenderStatus_(sheet, context) {
+function auditWorkspaceStatusRows_(context) {
   var groups = {};
   auditWorkspaceSortRecords_(context.records).forEach(function(record) {
     var date = artifactValidIsoDateOrBlank_(record.courseDate);
@@ -356,18 +364,14 @@ function auditWorkspaceRenderStatus_(sheet, context) {
     if (!groups[key]) groups[key] = { date: date, licenseClass: record.licenseClass, venue: record.courseVenue, count: 0 };
     groups[key].count++;
   });
-  var rows = Object.keys(groups).sort().map(function(key) {
+  return Object.keys(groups).sort().map(function(key) {
     var row = groups[key];
     return [row.date, row.licenseClass, row.venue, row.count, "共有正本の講習修了日から自動集計"];
   });
-  auditWorkspaceBase_(sheet,
-    "登録更新講習機関実施状況報告書（" + context.fiscalYear + "年度・全体）",
-    ["講習実施日", "区分", "実施場所", "修了人数", "集計根拠"],
-    [130, 100, 260, 110, 300], rows);
 }
 
-function auditWorkspaceRenderLedger_(sheet, context) {
-  var rows = auditWorkspaceSortRecords_(context.records).filter(function(record) {
+function auditWorkspaceLedgerRows_(context) {
+  return auditWorkspaceSortRecords_(context.records).filter(function(record) {
     return artifactText_(record.certificateNo) || artifactValidIsoDateOrBlank_(record.certificateIssuedDate);
   }).map(function(record) {
     var delivered = artifactText_(record.certificateDelivered) === "有り" ||
@@ -383,13 +387,9 @@ function auditWorkspaceRenderLedger_(sheet, context) {
       record.certificateLedgerMemo
     ];
   });
-  auditWorkspaceBase_(sheet,
-    "別添13 無人航空機更新講習修了証明書発行台帳（" + context.fiscalYear + "年度・全体）",
-    ["更新講習修了証明書番号", "受講者氏名", "修了証明書種別", "講習日", "交付の有無", "交付年月日", "有効年月日", "備考"],
-    [220, 180, 140, 120, 120, 130, 130, 260], rows);
 }
 
-function auditWorkspaceRenderPayment_(sheet, context) {
+function auditWorkspacePaymentRows_(context) {
   var finance = context.finance;
   var recordMap = {};
   context.records.forEach(function(record) { recordMap[record.recordId || record.id] = record; });
@@ -417,12 +417,45 @@ function auditWorkspaceRenderPayment_(sheet, context) {
     });
   }
   rows.sort(function(a, b) { return artifactText_(a[1]).localeCompare(artifactText_(b[1])) || artifactText_(a[2]).localeCompare(artifactText_(b[2])); });
+  return rows;
+}
+
+function auditWorkspaceRenderPlan_(sheet, context) {
+  var rows = auditWorkspaceSelectRows_("plan", auditWorkspacePlanRows_(context), context);
+  auditWorkspaceBase_(sheet,
+    "登録更新講習機関実施計画書（" + context.fiscalYear + "年度・全体）",
+    ["対象月", "実施予定日", "区分", "講習会場", "開始予定人数", "修了予定人数", "集計根拠"],
+    [110, 120, 90, 240, 120, 120, 230], rows);
+  sheet.getRange("A2").setValue(auditWorkspaceSourceNote_("plan", context, "共有正本から自動集計"));
+}
+
+function auditWorkspaceRenderStatus_(sheet, context) {
+  var rows = auditWorkspaceSelectRows_("status", auditWorkspaceStatusRows_(context), context);
+  auditWorkspaceBase_(sheet,
+    "登録更新講習機関実施状況報告書（" + context.fiscalYear + "年度・全体）",
+    ["講習実施日", "区分", "実施場所", "修了人数", "集計根拠"],
+    [130, 100, 260, 110, 300], rows);
+  sheet.getRange("A2").setValue(auditWorkspaceSourceNote_("status", context, "共有正本の講習修了日から自動集計"));
+}
+
+function auditWorkspaceRenderLedger_(sheet, context) {
+  var rows = auditWorkspaceSelectRows_("ledger", auditWorkspaceLedgerRows_(context), context);
+  auditWorkspaceBase_(sheet,
+    "別添13 無人航空機更新講習修了証明書発行台帳（" + context.fiscalYear + "年度・全体）",
+    ["更新講習修了証明書番号", "受講者氏名", "修了証明書種別", "講習日", "交付の有無", "交付年月日", "有効年月日", "備考"],
+    [220, 180, 140, 120, 120, 130, 130, 260], rows);
+  sheet.getRange("A2").setValue(auditWorkspaceSourceNote_("ledger", context, "共有正本の修了証明書情報から自動集計"));
+}
+
+function auditWorkspaceRenderPayment_(sheet, context) {
+  var finance = context.finance;
+  var rows = auditWorkspaceSelectRows_("payment", auditWorkspacePaymentRows_(context), context);
   auditWorkspaceBase_(sheet,
     "08_講習料金収納記録（" + context.fiscalYear + "年度・全体）",
     ["記録区分", "取引日", "対象者", "請求書番号", "税抜額", "消費税", "税込額", "取引種別", "入出金額", "請求残高", "状態・方法", "正本ID"],
     [100, 120, 180, 160, 110, 100, 110, 140, 110, 110, 150, 220], rows);
   if (rows.length) sheet.getRange(4, 5, rows.length, 6).setNumberFormat("#,##0");
-  sheet.getRange("A2").setValue(finance
+  sheet.getRange("A2").setValue(auditWorkspaceSourceNote_("payment", context, finance
     ? "正式会計台帳 revision " + finance.revision + " / stateHash " + finance.stateHash
-    : "正式会計台帳未設定のため明細なし");
+    : "正式会計台帳未設定のため明細なし"));
 }

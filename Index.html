@@ -552,6 +552,36 @@
     .artifact-result-row.error { border-color: #fecdca; background: #fff1f0; }
     .artifact-result-row.ready { border-color: #abefc6; background: #f0fdf4; }
     .artifact-result-row.warning { border-color: #fedf89; background: #fff7e6; }
+    .audit-document-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .audit-document-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+    }
+    .audit-document-card strong { display: block; color: var(--navy); }
+    .audit-document-status { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .audit-document-status.manual { color: #b54708; font-weight: 900; }
+    .audit-editor-card { width: min(1500px, 100%); }
+    .audit-editor-table { min-width: 980px; }
+    .audit-editor-table th { white-space: nowrap; }
+    .audit-editor-table td { min-width: 130px; padding: 5px; }
+    .audit-editor-table td:last-child { min-width: 76px; text-align: center; }
+    .audit-editor-table input,
+    .audit-editor-table select { width: 100%; min-width: 115px; }
+    .audit-editor-table .audit-delete-row { white-space: nowrap; }
+    .audit-editor-reason { margin-top: 12px; }
+    .audit-editor-reason label { display: block; margin-bottom: 5px; font-weight: 900; }
+    .audit-editor-reason input { width: 100%; }
     .finance-command-summary {
       display: block;
       max-width: 520px;
@@ -683,6 +713,9 @@
       justify-content: flex-end;
       gap: 8px;
       margin-top: 12px;
+    }
+    @media (max-width: 760px) {
+      .audit-document-grid { grid-template-columns: 1fr; }
     }
     .import-summary {
       margin-bottom: 10px;
@@ -1579,12 +1612,27 @@
           <select id="auditFiscalYear" aria-label="監査対象年度"></select>
           <button type="button" id="createOrUpdateAuditWorkspace" class="primary">全体監査資料を作成・更新</button>
         </div>
-        <ul class="operation-note">
-          <li>登録更新講習機関実施計画書</li>
-          <li>登録更新講習機関実施状況報告書</li>
-          <li>別添13 修了証明書発行台帳</li>
-          <li>08_講習料金収納記録</li>
-        </ul>
+        <p class="operation-note">
+          「編集」は監査資料だけを補正します。登録者の共有正本と正式会計台帳は変更しません。変更理由・操作者・版を保存し、次回の作成・更新でも補正内容を保持します。
+        </p>
+        <div class="audit-document-grid">
+          <article class="audit-document-card">
+            <div><strong>登録更新講習機関実施計画書</strong><span id="auditDocumentStatusPlan" class="audit-document-status">未読込</span></div>
+            <button type="button" data-audit-edit="plan" disabled>編集</button>
+          </article>
+          <article class="audit-document-card">
+            <div><strong>登録更新講習機関実施状況報告書</strong><span id="auditDocumentStatusStatus" class="audit-document-status">未読込</span></div>
+            <button type="button" data-audit-edit="status" disabled>編集</button>
+          </article>
+          <article class="audit-document-card">
+            <div><strong>別添13 修了証明書発行台帳</strong><span id="auditDocumentStatusLedger" class="audit-document-status">未読込</span></div>
+            <button type="button" data-audit-edit="ledger" disabled>編集</button>
+          </article>
+          <article class="audit-document-card">
+            <div><strong>08_講習料金収納記録</strong><span id="auditDocumentStatusPayment" class="audit-document-status">未読込</span></div>
+            <button type="button" data-audit-edit="payment" disabled>編集</button>
+          </article>
+        </div>
         <div id="auditWorkspaceResult" class="artifact-result" role="status"></div>
       </section>
     </section>
@@ -1923,6 +1971,37 @@
     </div>
   </div>
 
+  <div id="auditEditorModal" class="modal" aria-hidden="true">
+    <div class="modal-card audit-editor-card" role="dialog" aria-modal="true" aria-labelledby="auditEditorTitle">
+      <div class="modal-head">
+        <h2 id="auditEditorTitle">監査資料を編集</h2>
+        <button type="button" data-close-modal="auditEditorModal">閉じる</button>
+      </div>
+      <div class="modal-body">
+        <p id="auditEditorSource" class="operation-note"></p>
+        <div class="table-wrap">
+          <table class="report-table audit-editor-table">
+            <thead id="auditEditorHead"></thead>
+            <tbody id="auditEditorBody"></tbody>
+          </table>
+        </div>
+        <div class="actions">
+          <button type="button" id="auditEditorAddRow">行を追加</button>
+        </div>
+        <div class="audit-editor-reason">
+          <label for="auditEditorReason">変更理由（必須）</label>
+          <input id="auditEditorReason" maxlength="500" placeholder="例：提出先確認により会場名を正式名称へ補正">
+        </div>
+        <div id="auditEditorResult" class="artifact-result" role="status"></div>
+        <div class="modal-actions">
+          <button type="button" id="auditEditorReset">共有正本の自動集計へ戻す</button>
+          <button type="button" id="auditEditorSave" class="primary">補正を保存してPDF更新</button>
+          <button type="button" data-close-modal="auditEditorModal">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="trainingSessionModal" class="modal" aria-hidden="true">
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="trainingSessionTitle">
       <div class="modal-head">
@@ -2223,6 +2302,8 @@
     let complianceArchiveBusy = false;
     let personWorkbookBusy = false;
     let auditWorkspaceBusy = false;
+    let auditEditorBusy = false;
+    let auditEditorState = { ready: false, fiscalYear: "", manualVersion: 0, documents: {}, currentKey: "" };
     let artifactSettingsLoaded = false;
     let artifactRuntimeSettings = {};
     let artifactSettingsVersion = 0;
@@ -4038,7 +4119,10 @@
       if (name === "home") renderHome();
       if (name === "finance") renderFinance();
       if (name === "reports") renderReports();
-      if (name === "audit") renderAuditWorkspaceScreen();
+      if (name === "audit") {
+        renderAuditWorkspaceScreen();
+        loadAuditWorkspaceEditor();
+      }
       if (name === "data") {
         renderAudit();
         if (!artifactSettingsLoaded) loadArtifactSettings();
@@ -5851,6 +5935,170 @@
       select.value = years.indexOf(current) >= 0 ? current : (configuredYear || years[0] || "");
       const button = document.getElementById("createOrUpdateAuditWorkspace");
       button.disabled = auditWorkspaceBusy || AppData.mode !== "server" || AppData.role !== "admin" || !select.value;
+      renderAuditDocumentCards();
+    }
+
+    function auditDocumentStatusId(key) {
+      return {
+        plan: "auditDocumentStatusPlan",
+        status: "auditDocumentStatusStatus",
+        ledger: "auditDocumentStatusLedger",
+        payment: "auditDocumentStatusPayment"
+      }[key] || "";
+    }
+
+    function renderAuditDocumentCards() {
+      const fiscalYear = document.getElementById("auditFiscalYear").value;
+      const ready = auditEditorState.ready && auditEditorState.fiscalYear === fiscalYear;
+      ["plan", "status", "ledger", "payment"].forEach(function (key) {
+        const status = document.getElementById(auditDocumentStatusId(key));
+        const button = document.querySelector('[data-audit-edit="' + key + '"]');
+        const documentState = ready ? auditEditorState.documents[key] : null;
+        if (status) {
+          status.classList.toggle("manual", !!(documentState && documentState.manual));
+          if (auditEditorBusy) status.textContent = "読込・更新中";
+          else if (!ready) status.textContent = "全体監査資料を作成後に編集できます";
+          else if (documentState.manual) {
+            status.textContent = "監査用補正中 / " + (documentState.updatedBy || "操作者不明") +
+              (documentState.updatedAt ? " / " + documentState.updatedAt : "");
+          } else status.textContent = "共有正本から自動集計";
+        }
+        if (button) {
+          button.disabled = auditEditorBusy || !ready || AppData.role !== "admin" || AppData.mode !== "server";
+        }
+      });
+    }
+
+    function applyAuditEditorResponse(result) {
+      auditEditorState = {
+        ready: !!(result && ((result.success !== false && result.ready === true) ||
+          (result.preservationRequired && result.documents))),
+        fiscalYear: String(result && result.fiscalYear || document.getElementById("auditFiscalYear").value || ""),
+        manualVersion: Number(result && result.manualVersion || 0),
+        documents: result && result.documents ? result.documents : {},
+        currentKey: auditEditorState.currentKey || ""
+      };
+      renderAuditDocumentCards();
+    }
+
+    async function loadAuditWorkspaceEditor() {
+      if (auditEditorBusy || AppData.mode !== "server" || AppData.role !== "admin") return;
+      const fiscalYear = document.getElementById("auditFiscalYear").value;
+      if (!/^20\d{2}$/.test(fiscalYear)) return;
+      auditEditorBusy = true;
+      auditEditorState = { ready: false, fiscalYear: fiscalYear, manualVersion: 0, documents: {}, currentKey: "" };
+      renderAuditDocumentCards();
+      try {
+        const result = await serverCall("apiGetAuditWorkspaceEditor", { fiscalYear: fiscalYear });
+        applyAuditEditorResponse(result || {});
+        if (result && result.success === false) renderAuditWorkspaceResult(result);
+      } catch (error) {
+        applyAuditEditorResponse({ success: false, fiscalYear: fiscalYear });
+        renderAuditWorkspaceResult({ success: false, message: error.message });
+      } finally {
+        auditEditorBusy = false;
+        renderAuditDocumentCards();
+      }
+    }
+
+    function auditEditorInputHtml(type, value) {
+      const text = String(value == null ? "" : value);
+      if (type === "licenseClass" || type === "delivered") {
+        const options = type === "licenseClass" ? ["", "一等", "二等"] : ["", "☑有り", "□有り"];
+        if (text && options.indexOf(text) < 0) options.push(text);
+        return '<select data-audit-cell>' + options.map(function (option) {
+          return '<option value="' + escapeHtml(option) + '"' + (option === text ? " selected" : "") + '>' +
+            escapeHtml(option || "選択") + '</option>';
+        }).join("") + '</select>';
+      }
+      const inputType = type === "date" || type === "month" || type === "number" ? type : "text";
+      return '<input data-audit-cell type="' + inputType + '" value="' + escapeHtml(text) + '"' +
+        (inputType === "number" ? ' step="1"' : '') + '>';
+    }
+
+    function auditEditorRowHtml(documentState, row) {
+      const values = Array.isArray(row) ? row : [];
+      return "<tr>" + documentState.headers.map(function (header, index) {
+        return "<td>" + auditEditorInputHtml(documentState.types[index], values[index]) + "</td>";
+      }).join("") + '<td><button type="button" class="danger-button audit-delete-row" data-audit-delete-row>削除</button></td></tr>';
+    }
+
+    function openAuditDocumentEditor(key) {
+      const documentState = auditEditorState.documents[key];
+      if (!auditEditorState.ready || !documentState) return;
+      auditEditorState.currentKey = key;
+      document.getElementById("auditEditorTitle").textContent = documentState.label + "を編集";
+      document.getElementById("auditEditorSource").textContent = documentState.manual
+        ? "現在は監査用補正を使用中です。共有正本・正式会計台帳は変更されていません。前回理由: " +
+          (documentState.reason || "-")
+        : "現在は共有正本・正式会計台帳の自動集計値です。保存すると、この資料だけ監査用補正へ切り替わります。";
+      document.getElementById("auditEditorHead").innerHTML = "<tr>" + documentState.headers.map(function (header) {
+        return "<th>" + escapeHtml(header) + "</th>";
+      }).join("") + "<th>行操作</th></tr>";
+      const rows = documentState.rows && documentState.rows.length ? documentState.rows : [documentState.headers.map(function () { return ""; })];
+      document.getElementById("auditEditorBody").innerHTML = rows.map(function (row) {
+        return auditEditorRowHtml(documentState, row);
+      }).join("");
+      document.getElementById("auditEditorReason").value = "";
+      document.getElementById("auditEditorResult").innerHTML = "";
+      document.getElementById("auditEditorReset").disabled = !documentState.manual;
+      document.getElementById("auditEditorSave").disabled = false;
+      openModal("auditEditorModal");
+    }
+
+    function collectAuditEditorRows() {
+      return Array.from(document.querySelectorAll("#auditEditorBody tr")).map(function (row) {
+        return Array.from(row.querySelectorAll("[data-audit-cell]")).map(function (input) { return input.value; });
+      });
+    }
+
+    function setAuditEditorBusy(busy) {
+      auditEditorBusy = busy;
+      document.getElementById("auditEditorAddRow").disabled = busy;
+      document.getElementById("auditEditorSave").disabled = busy;
+      document.getElementById("auditEditorReset").disabled = busy ||
+        !(auditEditorState.documents[auditEditorState.currentKey] || {}).manual;
+      renderAuditDocumentCards();
+    }
+
+    async function saveAuditDocumentEdit(reset) {
+      if (auditEditorBusy || !auditEditorState.ready) return;
+      const key = auditEditorState.currentKey;
+      const documentState = auditEditorState.documents[key];
+      const reason = document.getElementById("auditEditorReason").value.trim();
+      if (!documentState || reason.length < 2) {
+        document.getElementById("auditEditorResult").innerHTML = artifactResultRow("error", "変更理由", "変更理由を2文字以上で入力してください。");
+        return;
+      }
+      if (reset && !window.confirm("この資料の監査用補正を解除し、共有正本の自動集計値へ戻しますか？")) return;
+      setAuditEditorBusy(true);
+      document.getElementById("auditEditorResult").innerHTML = artifactResultRow(
+        "warning", documentState.label, "補正データ、Googleスプレッドシート、PDFを更新しています。"
+      );
+      try {
+        const request = {
+          fiscalYear: auditEditorState.fiscalYear,
+          documentKey: key,
+          reason: reason,
+          expectedManualVersion: auditEditorState.manualVersion,
+          idempotencyKey: makeId(reset ? "audit-reset" : "audit-save")
+        };
+        if (!reset) request.rows = collectAuditEditorRows();
+        const result = await serverCall(reset ? "apiResetAuditWorkspaceDocument" : "apiSaveAuditWorkspaceDocument", request);
+        if (!result || result.success === false) {
+          if (result && result.preservationRequired && result.documents) applyAuditEditorResponse(result);
+          document.getElementById("auditEditorResult").innerHTML = artifactResultRow("error", documentState.label, messageList(result && (result.errors || result.message || result.error)), result && result.url);
+          return;
+        }
+        applyAuditEditorResponse(result);
+        renderAuditWorkspaceResult(result);
+        closeModal("auditEditorModal");
+        showToast(reset ? "自動集計へ戻してPDFを更新しました。" : "監査資料の補正とPDFを更新しました。");
+      } catch (error) {
+        document.getElementById("auditEditorResult").innerHTML = artifactResultRow("error", documentState.label, error.message);
+      } finally {
+        setAuditEditorBusy(false);
+      }
     }
 
     function renderAuditWorkspaceResult(result) {
@@ -5894,6 +6142,7 @@
           idempotencyKey: makeId("audit-workspace")
         });
         renderAuditWorkspaceResult(result || {});
+        if (result && result.success !== false) await loadAuditWorkspaceEditor();
         showToast(result && result.success !== false ? "全体監査資料とPDFを更新しました。" : "全体監査資料を更新できませんでした。");
       } catch (error) {
         renderAuditWorkspaceResult({ success: false, message: error.message });
@@ -10275,6 +10524,11 @@
       if (target.dataset.rejectFinanceDisasterRestore) {
         rejectFinanceDisasterRestore(target.dataset.rejectFinanceDisasterRestore);
       }
+      if (target.dataset.auditEdit) openAuditDocumentEditor(target.dataset.auditEdit);
+      if (target.hasAttribute("data-audit-delete-row")) {
+        const row = target.closest("tr");
+        if (row) row.remove();
+      }
       if (target.dataset.archive) toggleArchive(target.dataset.archive);
     });
 
@@ -10415,6 +10669,24 @@
       runPersonWorkbook(findRecord(artifactRecordId));
     });
     document.getElementById("createOrUpdateAuditWorkspace").addEventListener("click", runAuditWorkspace);
+    document.getElementById("auditFiscalYear").addEventListener("change", function () {
+      auditEditorState = { ready: false, fiscalYear: this.value, manualVersion: 0, documents: {}, currentKey: "" };
+      renderAuditDocumentCards();
+      loadAuditWorkspaceEditor();
+    });
+    document.getElementById("auditEditorAddRow").addEventListener("click", function () {
+      const documentState = auditEditorState.documents[auditEditorState.currentKey];
+      if (!documentState || auditEditorBusy) return;
+      document.getElementById("auditEditorBody").insertAdjacentHTML(
+        "beforeend", auditEditorRowHtml(documentState, documentState.headers.map(function () { return ""; }))
+      );
+    });
+    document.getElementById("auditEditorSave").addEventListener("click", function () {
+      saveAuditDocumentEdit(false);
+    });
+    document.getElementById("auditEditorReset").addEventListener("click", function () {
+      saveAuditDocumentEdit(true);
+    });
     document.querySelectorAll("[data-existing-compliance-kind]").forEach(function (button) {
       button.addEventListener("click", function () {
         runExistingComplianceArchive(button.getAttribute("data-existing-compliance-kind"));
