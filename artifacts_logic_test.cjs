@@ -144,6 +144,7 @@ const pureNames = [
   "artifactReferencePinKeysForKinds_", "artifactReferenceFingerprintForKind_",
   "artifactAssertBillingReferenceSource_", "artifactSparseDisplayCells_", "artifactColumnLetters_",
   "artifactNormalizeAllowedEmails_", "artifactAssertAllowedOutputEmails_", "artifactResolveOutputAccessEmails_", "artifactAssertDriveItemAcl_", "artifactNormalizeSchedules_", "artifactNormalizeCourseVenues_",
+  "artifactHardenConfiguredOutputFolder_",
   "artifactNormalizeIsoDateList_", "artifactValidateDipsCalendarSettings_", "artifactAddIsoDaysUtc_",
   "artifactParseCsvMatrixStrict_", "artifactParseDipsOfficialTemplateHeader_", "artifactValidateDipsCsvTemplateSettings_",
   "artifactParseOfficialHolidayCsv_", "artifactAssertImportedHolidayCalendarStore_",
@@ -3076,6 +3077,21 @@ assert.throws(
   /固定/
 );
 assert.doesNotThrow(() => logic.artifactRequireSafeOutputFolder_(pinnedOutputFolderId, [], allowedOutputEmails));
+driveState.editorEmails = ["editor@example.com"];
+driveState.permissions = [
+  { type: "user", emailAddress: "owner@example.com", role: "owner" },
+  { type: "user", emailAddress: "editor@example.com", role: "writer" }
+];
+driveState.shareableByEditors = true;
+assert.doesNotThrow(
+  () => logic.artifactRequireSafeOutputFolder_(
+    pinnedOutputFolderId, [], "owner@example.com,editor@example.com"
+  ),
+  "登録済み利用者だけの出力フォルダは再共有設定を安全側へ自動補正してください"
+);
+driveState.editorEmails = [];
+driveState.permissions = [{ type: "user", emailAddress: "owner@example.com", role: "owner" }];
+driveState.shareableByEditors = false;
 driveState.actorEmail = "";
 assert.throws(() => logic.artifactRequireSafeOutputFolder_(pinnedOutputFolderId, [], allowedOutputEmails), /実行者メール/);
 driveState.actorEmail = "owner@example.com";
@@ -3277,6 +3293,8 @@ assert(driveAclBlock.includes("var requestOptions") &&
   "ACL列挙の要求オプションは関数引数と衝突しない変数で全ページへ適用する必要があります");
 assert(source.includes("item.isShareableByEditors()"), "編集者による再共有をfail-closed検査する必要があります");
 assert(source.includes("item.setShareableByEditors(false)"), "新規成果物で編集者再共有を無効化する必要があります");
+assert(source.includes("artifactHardenConfiguredOutputFolder_(folder)"),
+  "既存の出力フォルダも所有者権限で再共有を自動無効化する必要があります");
 const advancedManifest = JSON.parse(fs.readFileSync("appsscript.json", "utf8"));
 assert((advancedManifest.dependencies && advancedManifest.dependencies.enabledAdvancedServices || []).some((service) =>
   service.userSymbol === "Drive" && service.serviceId === "drive" && service.version === "v3"

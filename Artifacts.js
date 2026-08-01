@@ -6129,6 +6129,28 @@ function artifactHardenNewDriveItem_(item, label) {
   return item;
 }
 
+/**
+ * 管理者が指定した既存の出力フォルダは、Google Driveの既定値で編集者の
+ * 再共有が有効なことがある。公開範囲とACLを照合する前に、この設定だけを
+ * 所有者権限で安全側へ自動補正し、必ず読戻して確認する。
+ */
+function artifactHardenConfiguredOutputFolder_(folder) {
+  try {
+    if (!folder.isShareableByEditors()) return folder;
+    folder.setShareableByEditors(false);
+    if (folder.isShareableByEditors()) {
+      throw new Error("設定後も有効です。");
+    }
+    return folder;
+  } catch (error) {
+    throw new Error(
+      "出力先フォルダの「編集者による権限変更・共有」を自動で無効化できません。" +
+      "フォルダ所有者のGoogleアカウントで本番システムを1回実行するか、" +
+      "Driveの共有設定でこの項目を無効にしてください。"
+    );
+  }
+}
+
 function artifactAssertOwnerOnlyDriveItem_(item, expectedParentId, label) {
   var itemLabel = artifactText_(label) || "所有者専用Drive項目";
   var owner;
@@ -6421,6 +6443,7 @@ function artifactRequireSafeOutputFolder_(folderId, additionalTemplateIds, allow
     throw new Error("出力先フォルダの共有設定を確認できないため、個人情報を出力できません。");
   }
   artifactAssertPrivateSharingAccess_(sharingAccess, DriveApp.Access.PRIVATE);
+  artifactHardenConfiguredOutputFolder_(folder);
   artifactAssertDriveItemAcl_(folder, allowedOutputEmails, "出力先フォルダ");
 
   try {
