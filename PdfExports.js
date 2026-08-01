@@ -84,10 +84,26 @@ function renewalPdfExportBlob_(sourceFileId, fileName) {
   var id = artifactText_(sourceFileId);
   if (!id) throw new Error("PDF化するGoogleファイルIDがありません。");
   var blob;
+  var advancedError = null;
   try {
-    blob = Drive.Files.export(id, "application/pdf");
+    // Apps ScriptのAdvanced Drive v3でも、現在の実行環境ではダウンロード応答を
+    // 明示するalt=mediaが必要。省略するとメタデータ応答として扱われ失敗する。
+    blob = Drive.Files.export(id, "application/pdf", { alt: "media" });
   } catch (error) {
-    throw new Error("GoogleファイルをPDFへ変換できませんでした: " + artifactErrorMessage_(error));
+    advancedError = error;
+  }
+  // Advanced Driveサービスの配布差異がある環境でも、Googleネイティブファイルの
+  // 標準変換APIで同じPDFを取得できるようにする。保存・上書き処理は共通のまま。
+  if (!blob || typeof blob.getBytes !== "function") {
+    try {
+      blob = DriveApp.getFileById(id).getAs(MimeType.PDF);
+    } catch (fallbackError) {
+      throw new Error(
+        "GoogleファイルをPDFへ変換できませんでした: " +
+        artifactErrorMessage_(advancedError || fallbackError) +
+        " / 標準変換も失敗: " + artifactErrorMessage_(fallbackError)
+      );
+    }
   }
   if (!blob || typeof blob.getBytes !== "function" || !blob.getBytes().length) {
     throw new Error("PDF変換結果が空です。保存を停止しました。");

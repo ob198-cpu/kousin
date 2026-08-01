@@ -72,9 +72,10 @@ assert(personSource.includes('"person-workbook:" + record.recordId') &&
   personSource.includes("pdfUrl: pdf.url"),
   "個人資料ブックもPDFへ自動保存してください");
 assert(pdfSource.includes('OUTPUT_FOLDER_ID: "1mEa7LjNYge-Nesu02-zoyycwEpaEh_qZ"') &&
-  pdfSource.includes("Drive.Files.export") &&
+  pdfSource.includes('Drive.Files.export(id, "application/pdf", { alt: "media" })') &&
+  pdfSource.includes("DriveApp.getFileById(id).getAs(MimeType.PDF)") &&
   pdfSource.includes("artifactUpdateBlobFileContent_"),
-  "指定フォルダへのPDF変換・同一ファイル更新が必要です");
+  "alt=media付きPDF変換・標準変換フォールバック・同一ファイル更新が必要です");
 assert(artifactsSource.includes('courseVenues: ["CDP北海道校"]') &&
   artifactsSource.includes("artifactNormalizeCourseVenues_"),
   "会場候補を共有設定として正規化・保存してください");
