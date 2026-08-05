@@ -8,3 +8,5 @@ node_modules/**
 _clasp_create_tmp/**
 tmp/**
 output/**
+404.html
+.nojekyll
