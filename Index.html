@@ -2354,6 +2354,17 @@
       browserPurgeRecorded: false
     };
 
+    const PRODUCTION_WEB_APP_URL =
+      "https://script.google.com/macros/s/AKfycbyMf_7Sy10GmbfW7CBT7z5vkSccTo0wTHVy1ospLHhv7LDnlBGgHGTvEJagfkS7xnHq/exec";
+
+    function redirectPublicPagesToProduction() {
+      if (AppData.mode === "server" || window.location.hostname !== "ob198-cpu.github.io") {
+        return false;
+      }
+      window.location.replace(PRODUCTION_WEB_APP_URL);
+      return true;
+    }
+
     const ARTIFACT_LABELS = {
       ledger: "発行台帳",
       certificate: "講習修了証明書",
@@ -10712,6 +10723,7 @@
     });
 
     async function bootstrapApplication() {
+      if (redirectPublicPagesToProduction()) return;
       loadScheduleMaster();
       clearForm();
       applyRuntimeModeBanner();

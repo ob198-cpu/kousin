@@ -57,11 +57,21 @@ assert(
   "既存の作成前検査と同一ファイル更新処理を使用する必要があります"
 );
 
-const clickHandlerFragment =
-  "openArtifactModal(record);\n          runPersonWorkbook(record);";
 assert(
-  script.includes(clickHandlerFragment),
+  script.includes("if (target.dataset.artifacts)") &&
+    script.includes("openArtifactModal(record);") &&
+    script.includes("runPersonWorkbook(record);"),
   "操作欄のボタンは既存の安全な資料一式作成処理へ接続する必要があります"
+);
+const publicRedirect = functionSource("redirectPublicPagesToProduction");
+assert(
+  publicRedirect.includes('window.location.hostname !== "ob198-cpu.github.io"') &&
+    publicRedirect.includes("window.location.replace(PRODUCTION_WEB_APP_URL)"),
+  "公開Pages版から認証済み本番版へ自動転送する必要があります"
+);
+assert(
+  functionSource("bootstrapApplication").includes("if (redirectPublicPagesToProduction()) return;"),
+  "公開Pages版では共有正本の初期化より先に本番版へ転送する必要があります"
 );
 assert(
   functionSource("applyPublicReadOnlyUi").includes("[data-edit], [data-artifacts]"),
