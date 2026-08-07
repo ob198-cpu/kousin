@@ -491,7 +491,8 @@
       margin-top: 1px;
     }
     .schedule-table input[type="date"],
-    .schedule-table input[type="text"] { min-width: 140px; }
+    .schedule-table input[type="text"],
+    .schedule-table select { min-width: 140px; }
     .schedule-table input[type="checkbox"],
     .artifact-option input[type="checkbox"] { width: 18px; height: 18px; }
     .artifact-options {
@@ -1086,6 +1087,7 @@
                 <select id="courseVenue">
                   <option value="">選択してください</option>
                 </select>
+                <small>候補は「設定」→「講習会場のプルダウン候補」で追加・削除できます。</small>
               </div>
               <div class="field">
                 <label for="renewalListAmount">更新者一覧の金額</label>
@@ -1611,7 +1613,9 @@
         <div class="filter-bar">
           <select id="auditFiscalYear" aria-label="監査対象年度"></select>
           <button type="button" id="createOrUpdateAuditWorkspace" class="primary">全体監査資料を作成・更新</button>
+          <button type="button" id="testAuditWorkspaceSample">サンプル監査資料をテスト作成</button>
         </div>
+        <p class="operation-note">サンプル検査は一等・二等・請求・入金の合成データだけを「サンプル出力」へ保存します。共有正本、正式会計台帳、正式監査資料は変更しません。</p>
         <p class="operation-note">
           「編集」は監査資料だけを補正します。登録者の共有正本と正式会計台帳は変更しません。変更理由・操作者・版を保存し、次回の作成・更新でも補正内容を保持します。
         </p>
@@ -1922,15 +1926,15 @@
       </section>
       <section class="data-section">
         <h2>更新講習案内の日程マスタ</h2>
-        <p class="operation-note">案内テンプレートの4行へそのまま出力します。日付・会場・受付可能な時間帯を登録してください。受講可能期間外の日程は作成前検査で止めます。</p>
+        <p class="operation-note">案内テンプレートの4行へそのまま出力します。日付・会場・受付可能な時間帯を登録してください。会場候補は上の事業者設定で増やせます。受講可能期間外の日程は作成前検査で止めます。</p>
         <div class="table-wrap">
           <table class="schedule-table">
             <thead><tr><th>日付</th><th>会場</th><th>10:00–11:00</th><th>14:00–15:00</th><th>18:00–19:00</th></tr></thead>
             <tbody>
-              <tr><td><input id="scheduleDate1" type="date"></td><td><input id="scheduleVenue1"></td><td><input id="scheduleMorning1" type="checkbox"></td><td><input id="scheduleAfternoon1" type="checkbox"></td><td><input id="scheduleEvening1" type="checkbox"></td></tr>
-              <tr><td><input id="scheduleDate2" type="date"></td><td><input id="scheduleVenue2"></td><td><input id="scheduleMorning2" type="checkbox"></td><td><input id="scheduleAfternoon2" type="checkbox"></td><td><input id="scheduleEvening2" type="checkbox"></td></tr>
-              <tr><td><input id="scheduleDate3" type="date"></td><td><input id="scheduleVenue3"></td><td><input id="scheduleMorning3" type="checkbox"></td><td><input id="scheduleAfternoon3" type="checkbox"></td><td><input id="scheduleEvening3" type="checkbox"></td></tr>
-              <tr><td><input id="scheduleDate4" type="date"></td><td><input id="scheduleVenue4"></td><td><input id="scheduleMorning4" type="checkbox"></td><td><input id="scheduleAfternoon4" type="checkbox"></td><td><input id="scheduleEvening4" type="checkbox"></td></tr>
+              <tr><td><input id="scheduleDate1" type="date"></td><td><select id="scheduleVenue1"><option value="">選択してください</option></select></td><td><input id="scheduleMorning1" type="checkbox"></td><td><input id="scheduleAfternoon1" type="checkbox"></td><td><input id="scheduleEvening1" type="checkbox"></td></tr>
+              <tr><td><input id="scheduleDate2" type="date"></td><td><select id="scheduleVenue2"><option value="">選択してください</option></select></td><td><input id="scheduleMorning2" type="checkbox"></td><td><input id="scheduleAfternoon2" type="checkbox"></td><td><input id="scheduleEvening2" type="checkbox"></td></tr>
+              <tr><td><input id="scheduleDate3" type="date"></td><td><select id="scheduleVenue3"><option value="">選択してください</option></select></td><td><input id="scheduleMorning3" type="checkbox"></td><td><input id="scheduleAfternoon3" type="checkbox"></td><td><input id="scheduleEvening3" type="checkbox"></td></tr>
+              <tr><td><input id="scheduleDate4" type="date"></td><td><select id="scheduleVenue4"><option value="">選択してください</option></select></td><td><input id="scheduleMorning4" type="checkbox"></td><td><input id="scheduleAfternoon4" type="checkbox"></td><td><input id="scheduleEvening4" type="checkbox"></td></tr>
             </tbody>
           </table>
         </div>
@@ -4158,20 +4162,33 @@
       if (values.includes(current)) select.value = current;
     }
 
-    function renderCourseVenueOptions(currentValue) {
-      const select = document.getElementById("courseVenue");
-      if (!select) return;
-      const current = String(currentValue == null ? select.value : currentValue).trim();
+    function configuredCourseVenues(currentValue) {
       const configured = Array.isArray(artifactRuntimeSettings.courseVenues)
         ? artifactRuntimeSettings.courseVenues
         : ["CDP北海道校"];
       const venues = configured.map(function (value) { return String(value || "").trim(); })
         .filter(function (value, index, rows) { return value && rows.indexOf(value) === index; });
+      const current = String(currentValue == null ? "" : currentValue).trim();
       if (current && venues.indexOf(current) < 0) venues.push(current);
+      return venues;
+    }
+
+    function renderCourseVenueSelect(select, currentValue) {
+      if (!select) return;
+      const current = String(currentValue == null ? select.value : currentValue).trim();
+      const venues = configuredCourseVenues(current);
       select.innerHTML = '<option value="">選択してください</option>' + venues.map(function (venue) {
         return '<option value="' + escapeHtml(venue) + '">' + escapeHtml(venue) + '</option>';
       }).join("");
       select.value = current;
+    }
+
+    function renderCourseVenueOptions(currentValue) {
+      renderCourseVenueSelect(document.getElementById("courseVenue"), currentValue);
+      for (let index = 1; index <= 4; index += 1) {
+        const select = document.getElementById("scheduleVenue" + index);
+        renderCourseVenueSelect(select, select ? select.value : "");
+      }
     }
 
     function fiscalYears(records) {
@@ -5945,7 +5962,10 @@
       }).join("");
       select.value = years.indexOf(current) >= 0 ? current : (configuredYear || years[0] || "");
       const button = document.getElementById("createOrUpdateAuditWorkspace");
-      button.disabled = auditWorkspaceBusy || AppData.mode !== "server" || AppData.role !== "admin" || !select.value;
+      const sampleButton = document.getElementById("testAuditWorkspaceSample");
+      const disabled = auditWorkspaceBusy || AppData.mode !== "server" || AppData.role !== "admin" || !select.value;
+      button.disabled = disabled;
+      if (sampleButton) sampleButton.disabled = disabled;
       renderAuditDocumentCards();
     }
 
@@ -6114,17 +6134,23 @@
 
     function renderAuditWorkspaceResult(result) {
       const container = document.getElementById("auditWorkspaceResult");
+      const label = result && result.sampleMode ? "サンプル監査資料（正式使用禁止）" : "全体監査資料";
       if (!result || result.success === false) {
         container.innerHTML = artifactResultRow(
           "error",
-          "全体監査資料",
+          label,
           messageList(result && (result.errors || result.message || result.error)),
           result && result.url
         );
         return;
       }
-      const messages = messageList(result.message).concat(messageList(result.warnings));
-      container.innerHTML = artifactResultRow("ready", "全体監査資料", messages, result.url);
+      const counts = result.sheetRowCounts || {};
+      const countMessage = result.verification && result.verification.passed
+        ? "読戻し検査: 4シート合格（計画 " + Number(counts.plan || 0) + "件、実績 " + Number(counts.status || 0) +
+          "件、発行台帳 " + Number(counts.ledger || 0) + "件、収納記録 " + Number(counts.payment || 0) + "件）"
+        : "";
+      const messages = messageList(result.message).concat(messageList(countMessage)).concat(messageList(result.warnings));
+      container.innerHTML = artifactResultRow("ready", label, messages, result.url);
       if (/^https:\/\/drive\.google\.com\//.test(result.pdfUrl || "")) {
         const anchor = document.createElement("a");
         anchor.href = result.pdfUrl;
@@ -6135,28 +6161,35 @@
       }
     }
 
-    async function runAuditWorkspace() {
+    async function runAuditWorkspace(sampleMode) {
+      sampleMode = sampleMode === true;
       if (auditWorkspaceBusy) return;
       const fiscalYear = document.getElementById("auditFiscalYear").value;
       if (AppData.mode !== "server" || AppData.role !== "admin" || !/^20\d{2}$/.test(fiscalYear)) {
-        renderAuditWorkspaceResult({ success: false, message: "管理者が有効な対象年度を選択してください。" });
+        renderAuditWorkspaceResult({ success: false, sampleMode: sampleMode, message: "管理者が有効な対象年度を選択してください。" });
         return;
       }
       auditWorkspaceBusy = true;
       renderAuditWorkspaceScreen();
       document.getElementById("auditWorkspaceResult").innerHTML = artifactResultRow(
-        "warning", "全体監査資料", "共有正本と正式会計台帳を集計し、Google DriveとPDFを更新しています。"
+        "warning",
+        sampleMode ? "サンプル監査資料（正式使用禁止）" : "全体監査資料",
+        sampleMode
+          ? "合成サンプルで4シートとPDFを作成し、保存内容を読戻し検査しています。"
+          : "共有正本と正式会計台帳を集計し、Google DriveとPDFを更新しています。"
       );
       try {
-        const result = await serverCall("apiCreateOrUpdateAuditWorkspace", {
+        const result = await serverCall(sampleMode ? "apiCreateOrUpdateAuditWorkspaceSample" : "apiCreateOrUpdateAuditWorkspace", {
           fiscalYear: fiscalYear,
-          idempotencyKey: makeId("audit-workspace")
+          idempotencyKey: makeId(sampleMode ? "audit-workspace-sample" : "audit-workspace")
         });
         renderAuditWorkspaceResult(result || {});
-        if (result && result.success !== false) await loadAuditWorkspaceEditor();
-        showToast(result && result.success !== false ? "全体監査資料とPDFを更新しました。" : "全体監査資料を更新できませんでした。");
+        if (!sampleMode && result && result.success !== false) await loadAuditWorkspaceEditor();
+        showToast(result && result.success !== false
+          ? (sampleMode ? "サンプル監査資料の全出力検査が完了しました。" : "全体監査資料とPDFを更新しました。")
+          : (sampleMode ? "サンプル監査資料を検査できませんでした。" : "全体監査資料を更新できませんでした。"));
       } catch (error) {
-        renderAuditWorkspaceResult({ success: false, message: error.message });
+        renderAuditWorkspaceResult({ success: false, sampleMode: sampleMode, message: error.message });
       } finally {
         auditWorkspaceBusy = false;
         renderAuditWorkspaceScreen();
@@ -8640,7 +8673,10 @@
       for (let index = 1; index <= 4; index += 1) {
         const row = rows[index - 1] || {};
         document.getElementById("scheduleDate" + index).value = row.date || "";
-        document.getElementById("scheduleVenue" + index).value = row.venue || "";
+        renderCourseVenueSelect(
+          document.getElementById("scheduleVenue" + index),
+          row.venue || ""
+        );
         document.getElementById("scheduleMorning" + index).checked = Boolean(row.morning);
         document.getElementById("scheduleAfternoon" + index).checked = Boolean(row.afternoon);
         document.getElementById("scheduleEvening" + index).checked = Boolean(row.evening);
@@ -10686,8 +10722,8 @@
       }
     });
     document.getElementById("saveScheduleMaster").addEventListener("click", saveScheduleMaster);
-    document.querySelectorAll(".schedule-table input").forEach(function (input) {
-      input.addEventListener("change", function () {
+    document.querySelectorAll(".schedule-table input, .schedule-table select").forEach(function (control) {
+      control.addEventListener("change", function () {
         scheduleDirty = true;
         artifactPreflightState = null;
         document.getElementById("createArtifacts").disabled = true;
@@ -10698,7 +10734,12 @@
     document.getElementById("createOrUpdatePersonWorkbook").addEventListener("click", function () {
       runPersonWorkbook(findRecord(artifactRecordId));
     });
-    document.getElementById("createOrUpdateAuditWorkspace").addEventListener("click", runAuditWorkspace);
+    document.getElementById("createOrUpdateAuditWorkspace").addEventListener("click", function () {
+      runAuditWorkspace(false);
+    });
+    document.getElementById("testAuditWorkspaceSample").addEventListener("click", function () {
+      runAuditWorkspace(true);
+    });
     document.getElementById("auditFiscalYear").addEventListener("change", function () {
       auditEditorState = { ready: false, fiscalYear: this.value, manualVersion: 0, documents: {}, currentKey: "" };
       renderAuditDocumentCards();

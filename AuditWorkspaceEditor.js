@@ -378,6 +378,9 @@ function auditWorkspaceSelectRows_(key, autoRows, context) {
 }
 
 function auditWorkspaceSourceNote_(key, context, autoNote) {
+  if (context && context.sampleMode) {
+    return "合成サンプルから試験出力（正式使用禁止・共有正本と正式会計台帳は不変更） / " + autoNote;
+  }
   var state = context && context.manualState;
   var manual = state && state.documents && state.documents[key];
   if (!(manual && manual.active === true)) return autoNote;
