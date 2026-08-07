@@ -57,6 +57,15 @@ assert(
   runner.includes("canCreateOrUpdatePersonWorkbook(currentRecord)"),
   "資料作成処理の入口でも権限検査が必要です"
 );
+
+const certificatePdfRunner = functionSource("exportCertificatePdf");
+assert(
+  certificatePdfRunner.includes('"apiCreateOrUpdatePersonCertificatePdf"') &&
+    certificatePdfRunner.includes("certificatePdfRelevantFieldsMatch(record, readForm())") &&
+    certificatePdfRunner.includes('window.open("about:blank", "_blank")') &&
+    certificatePdfRunner.includes("pendingWindow.location.replace(pdfUrl)"),
+  "編集画面の証明書PDFボタンは未保存変更を検査し、専用APIのPDFを開く必要があります"
+);
 assert(
     runner.includes('"apiPreflightPersonWorkbook"') &&
     runner.includes('"apiCreateOrUpdatePersonWorkbookBatch"') &&

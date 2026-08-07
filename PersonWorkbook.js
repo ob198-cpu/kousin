@@ -81,6 +81,8 @@ function apiPreflightPersonWorkbook(request) {
 function apiCreateOrUpdatePersonWorkbook(request) {
   request = request || {};
   var batchMode = request.__personWorkbookBatch === true;
+  var certificatePdfOnly =
+    request.__personWorkbookCertificatePdfOnly === true && !batchMode;
   var batchIndex = Number(request.batchIndex);
   if (
     batchMode &&
@@ -160,13 +162,26 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       )
     };
     resolved = personWorkbookResolve_(context);
+    var certificateSpec = personWorkbookCertificateSpec_();
+    var hasCompleteWorkbook = !resolved.created &&
+      RENEWAL_PERSON_WORKBOOK.SHEETS.every(function(spec) {
+        return !!resolved.spreadsheet.getSheetByName(spec.name);
+      });
     var updateResult = batchMode
       ? personWorkbookUpdate_(resolved, context, {
         specs: personWorkbookBatchSpecs_(batchIndex),
         finalize: batchIndex === RENEWAL_PERSON_WORKBOOK.SHEETS.length - 1,
         batchIndex: batchIndex
       })
-      : personWorkbookUpdate_(resolved, context);
+      : (certificatePdfOnly
+        ? personWorkbookUpdate_(resolved, context, {
+          // 初回または不完全な既存ブックは固定5シートを復元してから証明書だけPDF化する。
+          specs: hasCompleteWorkbook
+            ? [certificateSpec]
+            : RENEWAL_PERSON_WORKBOOK.SHEETS,
+          finalize: true
+        })
+        : personWorkbookUpdate_(resolved, context));
     updateCompleted = true;
     resolved.file.setName(personWorkbookFileName_(record));
     if (resolved.file.getName() !== personWorkbookFileName_(record)) {
@@ -205,25 +220,33 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       resolved.file,
       "person-workbook:" + record.recordId,
       settings,
-      RENEWAL_PERSON_WORKBOOK.SHEETS
+      certificatePdfOnly ? [certificateSpec] : RENEWAL_PERSON_WORKBOOK.SHEETS
     );
     var auditWarning = "";
     try {
       complianceEnsureServerAudit_({
         actor: authorization.email,
         scopeKey: "person-workbook:" + record.recordId,
-        kind: "personWorkbook",
+        kind: certificatePdfOnly ? "personCertificatePdf" : "personWorkbook",
         hash: context.contentHash,
         fileId: resolved.file.getId() + ":" + pdf.files.map(function(row) {
           return row.fileId;
         }).join(":"),
-        action: context.sampleMode
-          ? (resolved.created
-            ? "COMPLIANCE_SAMPLE_PERSON_WORKBOOK_CREATE"
-            : "COMPLIANCE_SAMPLE_PERSON_WORKBOOK_UPDATE")
-          : (resolved.created
-            ? "PERSON_WORKBOOK_CREATE"
-            : "PERSON_WORKBOOK_UPDATE")
+        action: certificatePdfOnly
+          ? (context.sampleMode
+            ? (resolved.created
+              ? "COMPLIANCE_SAMPLE_PERSON_CERTIFICATE_PDF_CREATE"
+              : "COMPLIANCE_SAMPLE_PERSON_CERTIFICATE_PDF_UPDATE")
+            : (resolved.created
+              ? "PERSON_CERTIFICATE_PDF_CREATE"
+              : "PERSON_CERTIFICATE_PDF_UPDATE"))
+          : (context.sampleMode
+            ? (resolved.created
+              ? "COMPLIANCE_SAMPLE_PERSON_WORKBOOK_CREATE"
+              : "COMPLIANCE_SAMPLE_PERSON_WORKBOOK_UPDATE")
+            : (resolved.created
+              ? "PERSON_WORKBOOK_CREATE"
+              : "PERSON_WORKBOOK_UPDATE"))
       });
     } catch (auditError) {
       auditWarning =
@@ -250,17 +273,19 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       pdfUrl: pdf.url,
       pdfFiles: pdf.files,
       pdfFolderUrl: pdf.folderUrl,
-      sheetNames: RENEWAL_PERSON_WORKBOOK.SHEETS.map(function(row) {
+      sheetNames: (certificatePdfOnly
+        ? [certificateSpec]
+        : RENEWAL_PERSON_WORKBOOK.SHEETS).map(function(row) {
         return row.name;
       }),
       updatedAt: updateResult.updatedAt,
       complete: true,
       warnings: responseWarnings,
-      message: auditWarning || (
-        resolved.created
+      message: auditWarning || (certificatePdfOnly
+        ? "06_修了証明書を共有正本の保存値から更新し、縦向きPDFを同じファイルIDで保存しました。"
+        : (resolved.created
           ? "対象者資料ブックを作成し、5種類の個人資料を別シートへ保存しました。PDFはシート別に保存し、05と07だけ横向きにしました。"
-          : "既存の対象者資料ブックと5つのシート別PDFを同じファイルIDのまま上書き更新しました。05と07だけ横向きです。"
-      )
+          : "既存の対象者資料ブックと5つのシート別PDFを同じファイルIDのまま上書き更新しました。05と07だけ横向きです。"))
     };
   } catch (error) {
     if (resolved && resolved.created && resolved.file && !updateCompleted) {
@@ -289,6 +314,19 @@ function apiCreateOrUpdatePersonWorkbookBatch(request) {
   var input = artifactClone_(request || {});
   input.__personWorkbookBatch = true;
   return apiCreateOrUpdatePersonWorkbook(input);
+}
+
+/**
+ * 編集画面から06_修了証明書だけを安全に更新し、専用PDFを保存する。
+ * 入力値はクライアントから受け取らず、版検査済みの共有正本だけを使用する。
+ */
+function apiCreateOrUpdatePersonCertificatePdf(request) {
+  var input = artifactClone_(request || {});
+  input.__personWorkbookCertificatePdfOnly = true;
+  var result = apiCreateOrUpdatePersonWorkbook(input);
+  result = result || {};
+  result.label = "06_修了証明書 PDF";
+  return result;
 }
 
 /**
@@ -512,6 +550,15 @@ function personWorkbookExistingFile_(context) {
 function personWorkbookBatchSpecs_(batchIndex) {
   var index = Number(batchIndex);
   return RENEWAL_PERSON_WORKBOOK.SHEETS.slice(index, index + 1);
+}
+
+function personWorkbookCertificateSpec_() {
+  for (var i = 0; i < RENEWAL_PERSON_WORKBOOK.SHEETS.length; i++) {
+    if (RENEWAL_PERSON_WORKBOOK.SHEETS[i].key === "certificate") {
+      return RENEWAL_PERSON_WORKBOOK.SHEETS[i];
+    }
+  }
+  throw new Error("06_修了証明書の固定出力定義がありません。");
 }
 
 function personWorkbookCompletedSheetCount_(batchIndex) {

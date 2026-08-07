@@ -17,6 +17,10 @@ assert.equal($("#createOrUpdatePersonWorkbook").length, 1,
   "資料一式の作成・更新ボタンが必要です");
 assert.equal($("#personWorkbookResult").length, 1,
   "資料一式の処理結果表示欄が必要です");
+assert.equal($("#exportCertificatePdf").length, 1,
+  "編集画面に06_修了証明書PDF出力ボタンが必要です");
+assert.equal($("#certificatePdfResult").length, 1,
+  "06_修了証明書PDFの処理結果表示欄が必要です");
 assert($.root().text().includes("同じ対象者はrecordIdで判定"),
   "同一対象者をrecordIdで判定する説明が必要です");
 assert($.root().text().includes("未入力項目は空欄"),
@@ -29,6 +33,7 @@ assert($.root().text().includes("個別ファイル作成（従来方式・必�
 [
   "apiPreflightPersonWorkbook",
   "apiCreateOrUpdatePersonWorkbook",
+  "apiCreateOrUpdatePersonCertificatePdf",
   "apiGetPersonWorkbookLink",
   "personWorkbookResolve_",
   "personWorkbookUpdate_",
@@ -61,6 +66,17 @@ assert(source.includes('{ key: "evidence", name: "05_申込・証憑保管", pdf
 assert(source.includes("renewalPdfExportPersonWorkbookAndSave_(") &&
   source.includes("pdfFiles: pdf.files"),
   "対象者資料は固定5シートをシート別PDFとして保存・返却する必要があります");
+const certificatePdfApi = source.slice(
+  source.indexOf("function apiCreateOrUpdatePersonCertificatePdf("),
+  source.indexOf("function apiGetPersonWorkbookLink(")
+);
+assert(certificatePdfApi.includes("__personWorkbookCertificatePdfOnly") &&
+  source.includes("certificatePdfOnly ? [certificateSpec]") &&
+  source.includes('personWorkbookCertificateSpec_()'),
+  "証明書PDF専用APIは06シートだけを縦向きPDFへ保存する必要があります");
+assert(source.includes("hasCompleteWorkbook") &&
+  source.includes("RENEWAL_PERSON_WORKBOOK.SHEETS.every"),
+  "初回・不完全ブックでは固定5シートを安全に復元する必要があります");
 
 assert(source.includes("PropertiesService.getScriptProperties()"),
   "対象者ブックIDはサーバー側プロパティへ保存する必要があります");

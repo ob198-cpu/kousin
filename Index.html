@@ -378,6 +378,19 @@
       font-size: 17px;
       font-weight: 900;
     }
+    .legend-with-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      max-width: 100%;
+    }
+    .legend-with-action button {
+      flex: 0 0 auto;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1152,10 +1165,14 @@
           </fieldset>
 
           <fieldset>
-            <legend>修了証明書発行台帳</legend>
+            <legend class="legend-with-action">
+              <span>修了証明書発行台帳</span>
+              <button type="button" id="exportCertificatePdf">06_修了証明書 PDF出力</button>
+            </legend>
             <p class="operation-note field full">
               社内の修了証明書発行台帳の記入項目に対応します。原本リンクは個人情報保護のため公開画面へ表示しません。発行番号、証明書種別、講習日、交付年月日、有効年月日は、上の同名項目と資格区分を共通利用します。
             </p>
+            <div id="certificatePdfResult" class="artifact-result" role="status"></div>
             <div class="grid">
               <div class="field">
                 <label for="certificateDelivered">修了証明書の交付</label>
@@ -6826,6 +6843,8 @@
       }
       const submit = form.querySelector('button[type="submit"]');
       if (submit) submit.disabled = !canEditRecords;
+      const certificatePdfButton = document.getElementById("exportCertificatePdf");
+      if (certificatePdfButton) certificatePdfButton.disabled = !admin;
       const trainingSessionButton = document.getElementById("previewTrainingSessionBatch");
       if (trainingSessionButton) trainingSessionButton.disabled = !canEditRecords;
       renderSharedBackupRestoreUi();
@@ -9287,6 +9306,12 @@
       const workbookRecord = findRecord(artifactRecordId);
       workbookButton.disabled =
         disabled || !canCreateOrUpdatePersonWorkbook(workbookRecord);
+      const certificatePdfButton = document.getElementById("exportCertificatePdf");
+      const formRecord = findRecord(
+        String(document.getElementById("recordId").value || "")
+      );
+      certificatePdfButton.disabled =
+        disabled || !canCreateOrUpdatePersonWorkbook(formRecord);
     }
 
     function canCreateOrUpdatePersonWorkbook(record) {
@@ -9359,6 +9384,94 @@
         button,
         "保存済みの対象者資料ファイルはまだありません。"
       );
+    }
+
+    function certificatePdfRelevantFieldsMatch(savedRecord, formRecord) {
+      return [
+        "targetName", "certificateNo", "courseDate", "certificateExpiry",
+        "licenseClass", "skillsApplicantNo", "aircraftType", "certificateInstructor"
+      ].every(function (key) {
+        return String(savedRecord && savedRecord[key] || "").trim() ===
+          String(formRecord && formRecord[key] || "").trim();
+      });
+    }
+
+    async function exportCertificatePdf() {
+      const button = document.getElementById("exportCertificatePdf");
+      const container = document.getElementById("certificatePdfResult");
+      const recordId = String(document.getElementById("recordId").value || "");
+      const record = findRecord(recordId);
+      if (personWorkbookBusy || complianceArchiveBusy) return;
+      if (!record || !canCreateOrUpdatePersonWorkbook(record)) {
+        showToast("保存済みの有効な更新記録を管理者で開いてください。");
+        return;
+      }
+      if (!certificatePdfRelevantFieldsMatch(record, readForm())) {
+        container.innerHTML = artifactResultRow(
+          "warning",
+          "06_修了証明書 PDF",
+          "画面に未保存の変更があります。先に「保存」を押してから、編集画面を開き直してください。"
+        );
+        showToast("未保存の変更があるため、PDF出力を停止しました。");
+        return;
+      }
+      const request = personWorkbookRequest(record);
+      if (
+        request.expectedVersion < 1 ||
+        !/^[0-9a-f]{64}$/i.test(request.expectedPayloadHash)
+      ) {
+        showToast("共有正本の版を確認できません。一覧を再読込してください。");
+        return;
+      }
+      const pendingWindow = window.open("about:blank", "_blank");
+      personWorkbookBusy = true;
+      button.disabled = true;
+      container.innerHTML = artifactResultRow(
+        "warning",
+        "06_修了証明書 PDF",
+        "共有正本の保存値から証明書を更新し、PDFへ変換しています。"
+      );
+      try {
+        const result = await serverCall(
+          "apiCreateOrUpdatePersonCertificatePdf", request
+        );
+        const pdfUrl = String(
+          result && result.pdfFiles && result.pdfFiles[0] &&
+            result.pdfFiles[0].url || result && result.pdfUrl || ""
+        );
+        const usablePdf = /^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]+(?:\/|$)/
+          .test(pdfUrl);
+        const messages = messageList(
+          result && (result.message || result.errors || result.error)
+        );
+        container.innerHTML = artifactResultRow(
+          result && result.success !== false ? "ready" : "warning",
+          "06_修了証明書 PDF",
+          messages.length ? messages : "PDF出力結果を確認できませんでした。",
+          usablePdf ? pdfUrl : ""
+        );
+        if (!usablePdf) {
+          if (pendingWindow) pendingWindow.close();
+          showToast("06_修了証明書のPDFを開けませんでした。表示結果を確認してください。");
+          return;
+        }
+        if (pendingWindow) {
+          pendingWindow.opener = null;
+          pendingWindow.location.replace(pdfUrl);
+        }
+        showToast("06_修了証明書のPDFを保存しました。");
+      } catch (error) {
+        if (pendingWindow) pendingWindow.close();
+        container.innerHTML = artifactResultRow(
+          "error", "06_修了証明書 PDF", error.message
+        );
+        showToast("PDF出力を停止しました。既存データは変更していません。");
+      } finally {
+        personWorkbookBusy = false;
+        button.disabled = !canCreateOrUpdatePersonWorkbook(
+          findRecord(String(document.getElementById("recordId").value || ""))
+        );
+      }
     }
 
     function renderPersonWorkbookResponse(result, phase) {
@@ -10097,6 +10210,9 @@
       syncCoursePricingInputs();
       document.getElementById("formTitle").textContent = "更新記録を編集";
       document.getElementById("formErrors").classList.remove("active");
+      document.getElementById("certificatePdfResult").innerHTML = "";
+      document.getElementById("exportCertificatePdf").disabled =
+        !canCreateOrUpdatePersonWorkbook(record);
       showScreen("entry");
     }
 
@@ -10123,6 +10239,8 @@
       syncCoursePricingInputs();
       document.getElementById("formTitle").textContent = "更新記録を登録";
       document.getElementById("formErrors").classList.remove("active");
+      document.getElementById("certificatePdfResult").innerHTML = "";
+      document.getElementById("exportCertificatePdf").disabled = true;
     }
 
     function syncDerivedScheduleInputs() {
@@ -10841,6 +10959,9 @@
     document.getElementById("createOrUpdatePersonWorkbook").addEventListener("click", function () {
       runPersonWorkbook(findRecord(artifactRecordId));
     });
+    document.getElementById("exportCertificatePdf").addEventListener(
+      "click", exportCertificatePdf
+    );
     document.getElementById("createOrUpdateAuditWorkspace").addEventListener("click", function () {
       runAuditWorkspace(false);
     });
