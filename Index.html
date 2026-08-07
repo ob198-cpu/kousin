@@ -9272,13 +9272,32 @@
         messages,
         url
       );
-      if (result && /^https:\/\/drive\.google\.com\//.test(result.pdfUrl || "")) {
+      const pdfFiles = Array.isArray(result && result.pdfFiles)
+        ? result.pdfFiles
+        : [];
+      const resultRow = container.querySelector(".artifact-result-row");
+      if (resultRow && pdfFiles.length) {
+        pdfFiles.forEach(function (pdfFile) {
+          if (!/^https:\/\/drive\.google\.com\//.test(pdfFile && pdfFile.url || "")) return;
+          const anchor = document.createElement("a");
+          anchor.href = pdfFile.url;
+          anchor.target = "_blank";
+          anchor.rel = "noopener noreferrer";
+          anchor.textContent =
+            " " + (pdfFile.sheetName || "PDF") +
+            "（" + (pdfFile.orientation === "landscape" ? "横" : "縦") + "）";
+          resultRow.appendChild(anchor);
+        });
+      } else if (
+        resultRow &&
+        /^https:\/\/drive\.google\.com\//.test(result && result.pdfUrl || "")
+      ) {
         const anchor = document.createElement("a");
         anchor.href = result.pdfUrl;
         anchor.target = "_blank";
         anchor.rel = "noopener noreferrer";
         anchor.textContent = " PDFを開く";
-        container.querySelector(".artifact-result-row").appendChild(anchor);
+        resultRow.appendChild(anchor);
       }
     }
 

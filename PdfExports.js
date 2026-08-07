@@ -111,6 +111,59 @@ function renewalPdfExportBlob_(sourceFileId, fileName) {
   return blob.setName(fileName).setContentType("application/pdf");
 }
 
+function renewalPdfExportSheetBlob_(sourceFileId, sheet, fileName, landscape) {
+  var id = artifactText_(sourceFileId);
+  if (!id) throw new Error("PDF化するスプレッドシートIDがありません。");
+  if (!sheet || typeof sheet.getSheetId !== "function") {
+    throw new Error("PDF化するシートを確認できません。");
+  }
+  var query = [
+    "format=pdf",
+    "exportFormat=pdf",
+    "gid=" + encodeURIComponent(String(sheet.getSheetId())),
+    "size=A4",
+    "portrait=" + (landscape === true ? "false" : "true"),
+    "fitw=true",
+    "sheetnames=false",
+    "printtitle=false",
+    "pagenumbers=false",
+    "gridlines=false",
+    "fzr=false",
+    "attachment=true"
+  ].join("&");
+  var response;
+  try {
+    response = UrlFetchApp.fetch(
+      "https://docs.google.com/spreadsheets/d/" + encodeURIComponent(id) +
+        "/export?" + query,
+      {
+        headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
+        muteHttpExceptions: true,
+        followRedirects: true
+      }
+    );
+  } catch (error) {
+    throw new Error(
+      "シート別PDFを作成できませんでした（" + sheet.getName() + "）: " +
+      artifactErrorMessage_(error)
+    );
+  }
+  var status = response && response.getResponseCode
+    ? Number(response.getResponseCode())
+    : 0;
+  var blob = response && response.getBlob ? response.getBlob() : null;
+  var bytes = blob && typeof blob.getBytes === "function" ? blob.getBytes() : [];
+  var isPdf = bytes.length >= 4 &&
+    bytes[0] === 37 && bytes[1] === 80 && bytes[2] === 68 && bytes[3] === 70;
+  if (status !== 200 || !isPdf) {
+    throw new Error(
+      "シート別PDFの取得結果が不正です（" + sheet.getName() +
+      "／HTTP " + status + "）。保存を停止しました。"
+    );
+  }
+  return blob.setName(fileName).setContentType("application/pdf");
+}
+
 function renewalPdfFindExisting_(folder, fileName, identity, allowedEmails) {
   var matches = [];
   var iterator = folder.getFilesByName(fileName);
@@ -133,15 +186,9 @@ function renewalPdfFindExisting_(folder, fileName, identity, allowedEmails) {
   return file;
 }
 
-function renewalPdfExportAndSave_(sourceFile, scopeKey, settings) {
-  if (!sourceFile || typeof sourceFile.getId !== "function") {
-    throw new Error("PDF化するGoogleファイルがありません。");
-  }
-  var access = renewalPdfRequireOutputFolder_(settings || {});
+function renewalPdfSavePreparedBlob_(sourceFile, scopeKey, fileName, blob, access) {
   var sourceId = sourceFile.getId();
-  var fileName = artifactSafeName_(sourceFile.getName()) + ".pdf";
   var identity = renewalPdfIdentity_(scopeKey, sourceId);
-  var blob = renewalPdfExportBlob_(sourceId, fileName);
   var pdfFile = renewalPdfFindExisting_(
     access.folder, fileName, identity, access.allowedEmails
   );
@@ -199,6 +246,57 @@ function renewalPdfExportAndSave_(sourceFile, scopeKey, settings) {
     fileId: pdfFile.getId(),
     fileName: fileName,
     url: "https://drive.google.com/file/d/" + pdfFile.getId() + "/view",
+    folderUrl: artifactFolderUrl_(access.folder.getId())
+  };
+}
+
+function renewalPdfExportAndSave_(sourceFile, scopeKey, settings) {
+  if (!sourceFile || typeof sourceFile.getId !== "function") {
+    throw new Error("PDF化するGoogleファイルがありません。");
+  }
+  var access = renewalPdfRequireOutputFolder_(settings || {});
+  var fileName = artifactSafeName_(sourceFile.getName()) + ".pdf";
+  var blob = renewalPdfExportBlob_(sourceFile.getId(), fileName);
+  return renewalPdfSavePreparedBlob_(
+    sourceFile, scopeKey, fileName, blob, access
+  );
+}
+
+function renewalPdfExportPersonWorkbookAndSave_(sourceFile, scopeKey, settings, sheetSpecs) {
+  if (!sourceFile || typeof sourceFile.getId !== "function") {
+    throw new Error("PDF化する対象者資料ブックがありません。");
+  }
+  if (!Array.isArray(sheetSpecs) || !sheetSpecs.length) {
+    throw new Error("PDF化する対象者資料シートがありません。");
+  }
+  var access = renewalPdfRequireOutputFolder_(settings || {});
+  var spreadsheet = SpreadsheetApp.openById(sourceFile.getId());
+  var baseName = artifactSafeName_(sourceFile.getName());
+  var files = [];
+  sheetSpecs.forEach(function(spec) {
+    var sheetName = artifactText_(spec && spec.name);
+    var sheet = spreadsheet.getSheetByName(sheetName);
+    if (!sheet) {
+      throw new Error("PDF化する固定シートがありません: " + sheetName);
+    }
+    var landscape = !!(spec && spec.pdfLandscape === true);
+    var fileName = baseName + "_" + artifactSafeName_(sheetName) + ".pdf";
+    var sheetScopeKey = artifactText_(scopeKey) + ":sheet:" + artifactText_(spec.key);
+    var blob = renewalPdfExportSheetBlob_(
+      sourceFile.getId(), sheet, fileName, landscape
+    );
+    var saved = renewalPdfSavePreparedBlob_(
+      sourceFile, sheetScopeKey, fileName, blob, access
+    );
+    saved.key = artifactText_(spec.key);
+    saved.sheetName = sheetName;
+    saved.orientation = landscape ? "landscape" : "portrait";
+    files.push(saved);
+  });
+  return {
+    files: files,
+    fileId: files[0].fileId,
+    url: files[0].url,
     folderUrl: artifactFolderUrl_(access.folder.getId())
   };
 }

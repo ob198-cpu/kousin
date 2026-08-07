@@ -46,6 +46,20 @@ const expectedSheets = [
 expectedSheets.forEach((name) => {
   assert(source.includes('name: "' + name + '"'), name + "が固定シートにありません");
 });
+assert(source.includes('{ key: "evidence", name: "05_申込・証憑保管", pdfLandscape: true }') &&
+  source.includes('{ key: "dips", name: "07_DIPS CSV", pdfLandscape: true }'),
+  "05_申込・証憑保管と07_DIPS CSVは横向きPDF指定が必要です");
+[
+  "00_概要",
+  "01_別添03_講習記録簿",
+  "06_修了証明書"
+].forEach((name) => {
+  assert(source.includes('name: "' + name + '", pdfLandscape: false'),
+    name + "は縦向きPDF指定を維持する必要があります");
+});
+assert(source.includes("renewalPdfExportPersonWorkbookAndSave_(") &&
+  source.includes("pdfFiles: pdf.files"),
+  "対象者資料は固定5シートをシート別PDFとして保存・返却する必要があります");
 
 assert(source.includes("PropertiesService.getScriptProperties()"),
   "対象者ブックIDはサーバー側プロパティへ保存する必要があります");
@@ -198,6 +212,9 @@ assert((manifest.dependencies &&
   service.serviceId === "sheets" &&
   service.version === "v4"
 ), "原本レイアウトの一括検査用にAdvanced Sheets API v4が必要です");
+assert(manifest.oauthScopes.includes(
+  "https://www.googleapis.com/auth/script.external_request"
+), "シート別PDF取得に外部リクエスト権限が必要です");
 assert(source.includes('LAYOUT_VERSION: "OFFICIAL_FORMS_V3_PERSON_ONLY"'),
   "対象者資料ブックの帳票レイアウト版がありません");
 
@@ -267,7 +284,7 @@ assert(!updateSource.includes("前回の更新途中シート") ||
   !updateSource.includes("throw new Error(\\n        \"前回の更新途中シート"),
   "前回中断の準備シートだけを理由に再作成を停止してはいけません");
 
-assert(scriptMatch[1].includes('serverCall(\n          "apiPreflightPersonWorkbook"'),
+assert(/serverCall\(\r?\n\s*"apiPreflightPersonWorkbook"/.test(scriptMatch[1]),
   "画面は資料一式の作成前検査APIを呼ぶ必要があります");
 assert(scriptMatch[1].includes('"apiCreateOrUpdatePersonWorkbookBatch"') &&
   scriptMatch[1].includes("batchIndex < batchCount") &&
@@ -285,7 +302,7 @@ assert(scriptMatch[1].includes("Googleの一時エラーを検出しました") 
   scriptMatch[1].includes("preservationRequired !== true") &&
   scriptMatch[1].includes("attempt < 2"),
   "Google Sheetsの一時エラーだけを同じシートで1回再試行する必要があります");
-assert(scriptMatch[1].includes("openArtifactModal(record);\n          runPersonWorkbook(record);"),
+assert(/openArtifactModal\(record\);\r?\n\s*runPersonWorkbook\(record\);/.test(scriptMatch[1]),
   "詳細画面の資料作成ボタン1回で全資料の作成を開始する必要があります");
 
 function extractFunction(name) {

@@ -9,11 +9,11 @@ var RENEWAL_PERSON_WORKBOOK = {
   PROPERTY_PREFIX: "RENEWAL_PERSON_WORKBOOK_",
   SYSTEM_SHEET_NAME: "__SYSTEM",
   SHEETS: [
-    { key: "overview", name: "00_概要" },
-    { key: "training", name: "01_別添03_講習記録簿" },
-    { key: "evidence", name: "05_申込・証憑保管" },
-    { key: "certificate", name: "06_修了証明書" },
-    { key: "dips", name: "07_DIPS CSV" }
+    { key: "overview", name: "00_概要", pdfLandscape: false },
+    { key: "training", name: "01_別添03_講習記録簿", pdfLandscape: false },
+    { key: "evidence", name: "05_申込・証憑保管", pdfLandscape: true },
+    { key: "certificate", name: "06_修了証明書", pdfLandscape: false },
+    { key: "dips", name: "07_DIPS CSV", pdfLandscape: true }
   ]
 };
 
@@ -201,10 +201,11 @@ function apiCreateOrUpdatePersonWorkbook(request) {
           "シートまで安全に更新しました。続けて残りを更新します。"
       };
     }
-    var pdf = renewalPdfExportAndSave_(
+    var pdf = renewalPdfExportPersonWorkbookAndSave_(
       resolved.file,
       "person-workbook:" + record.recordId,
-      settings
+      settings,
+      RENEWAL_PERSON_WORKBOOK.SHEETS
     );
     var auditWarning = "";
     try {
@@ -213,7 +214,9 @@ function apiCreateOrUpdatePersonWorkbook(request) {
         scopeKey: "person-workbook:" + record.recordId,
         kind: "personWorkbook",
         hash: context.contentHash,
-        fileId: resolved.file.getId() + ":" + pdf.fileId,
+        fileId: resolved.file.getId() + ":" + pdf.files.map(function(row) {
+          return row.fileId;
+        }).join(":"),
         action: context.sampleMode
           ? (resolved.created
             ? "COMPLIANCE_SAMPLE_PERSON_WORKBOOK_CREATE"
@@ -245,6 +248,7 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       fileName: resolved.file.getName(),
       pdfFileId: pdf.fileId,
       pdfUrl: pdf.url,
+      pdfFiles: pdf.files,
       pdfFolderUrl: pdf.folderUrl,
       sheetNames: RENEWAL_PERSON_WORKBOOK.SHEETS.map(function(row) {
         return row.name;
@@ -254,8 +258,8 @@ function apiCreateOrUpdatePersonWorkbook(request) {
       warnings: responseWarnings,
       message: auditWarning || (
         resolved.created
-          ? "対象者資料ブックを作成し、5種類の個人資料を別シートへ保存し、PDFも自動保存しました。"
-          : "既存の対象者資料ブックとPDFを同じファイルIDのまま上書き更新しました。"
+          ? "対象者資料ブックを作成し、5種類の個人資料を別シートへ保存しました。PDFはシート別に保存し、05と07だけ横向きにしました。"
+          : "既存の対象者資料ブックと5つのシート別PDFを同じファイルIDのまま上書き更新しました。05と07だけ横向きです。"
       )
     };
   } catch (error) {
