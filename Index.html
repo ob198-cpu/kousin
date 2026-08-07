@@ -1614,6 +1614,7 @@
           <select id="auditFiscalYear" aria-label="監査対象年度"></select>
           <button type="button" id="createOrUpdateAuditWorkspace" class="primary">全体監査資料を作成・更新</button>
           <button type="button" id="testAuditWorkspaceSample">サンプル監査資料をテスト作成</button>
+          <button type="button" id="openAuditWorkspaceFile">保存先のファイルを開く</button>
         </div>
         <p class="operation-note">サンプル検査は一等・二等・請求・入金の合成データだけを「サンプル出力」へ保存します。共有正本、正式会計台帳、正式監査資料は変更しません。</p>
         <p class="operation-note">
@@ -2307,7 +2308,8 @@
     let personWorkbookBusy = false;
     let auditWorkspaceBusy = false;
     let auditEditorBusy = false;
-    let auditEditorState = { ready: false, fiscalYear: "", manualVersion: 0, documents: {}, currentKey: "" };
+    let auditEditorLoadSequence = 0;
+    let auditEditorState = { ready: false, fiscalYear: "", manualVersion: 0, documents: {}, currentKey: "", fileUrl: "" };
     let artifactSettingsLoaded = false;
     let artifactRuntimeSettings = {};
     let artifactSettingsVersion = 0;
@@ -5965,9 +5967,11 @@
       select.value = years.indexOf(current) >= 0 ? current : (configuredYear || years[0] || "");
       const button = document.getElementById("createOrUpdateAuditWorkspace");
       const sampleButton = document.getElementById("testAuditWorkspaceSample");
+      const openButton = document.getElementById("openAuditWorkspaceFile");
       const disabled = auditWorkspaceBusy || AppData.mode !== "server" || AppData.role !== "admin" || !select.value;
       button.disabled = disabled;
       if (sampleButton) sampleButton.disabled = disabled;
+      if (openButton) openButton.disabled = disabled;
       renderAuditDocumentCards();
     }
 
@@ -6009,28 +6013,34 @@
         fiscalYear: String(result && result.fiscalYear || document.getElementById("auditFiscalYear").value || ""),
         manualVersion: Number(result && result.manualVersion || 0),
         documents: result && result.documents ? result.documents : {},
-        currentKey: auditEditorState.currentKey || ""
+        currentKey: auditEditorState.currentKey || "",
+        fileUrl: String(result && (result.url || result.fileUrl) || "")
       };
       renderAuditDocumentCards();
     }
 
     async function loadAuditWorkspaceEditor() {
-      if (auditEditorBusy || AppData.mode !== "server" || AppData.role !== "admin") return;
+      if (AppData.mode !== "server" || AppData.role !== "admin") return;
       const fiscalYear = document.getElementById("auditFiscalYear").value;
       if (!/^20\d{2}$/.test(fiscalYear)) return;
+      const loadSequence = ++auditEditorLoadSequence;
       auditEditorBusy = true;
       auditEditorState = { ready: false, fiscalYear: fiscalYear, manualVersion: 0, documents: {}, currentKey: "" };
       renderAuditDocumentCards();
       try {
         const result = await serverCall("apiGetAuditWorkspaceEditor", { fiscalYear: fiscalYear });
+        if (loadSequence !== auditEditorLoadSequence) return;
         applyAuditEditorResponse(result || {});
         if (result && result.success === false) renderAuditWorkspaceResult(result);
       } catch (error) {
+        if (loadSequence !== auditEditorLoadSequence) return;
         applyAuditEditorResponse({ success: false, fiscalYear: fiscalYear });
         renderAuditWorkspaceResult({ success: false, message: error.message });
       } finally {
-        auditEditorBusy = false;
-        renderAuditDocumentCards();
+        if (loadSequence === auditEditorLoadSequence) {
+          auditEditorBusy = false;
+          renderAuditDocumentCards();
+        }
       }
     }
 
@@ -6186,7 +6196,12 @@
           idempotencyKey: makeId(sampleMode ? "audit-workspace-sample" : "audit-workspace")
         });
         renderAuditWorkspaceResult(result || {});
-        if (!sampleMode && result && result.success !== false) await loadAuditWorkspaceEditor();
+        if (!sampleMode && result && result.success !== false) {
+          auditEditorLoadSequence += 1;
+          auditEditorBusy = false;
+          if (result.documents) applyAuditEditorResponse(result);
+          else await loadAuditWorkspaceEditor();
+        }
         showToast(result && result.success !== false
           ? (sampleMode ? "サンプル監査資料の全出力検査が完了しました。" : "全体監査資料とPDFを更新しました。")
           : (sampleMode ? "サンプル監査資料を検査できませんでした。" : "全体監査資料を更新できませんでした。"));
@@ -6196,6 +6211,39 @@
         auditWorkspaceBusy = false;
         renderAuditWorkspaceScreen();
       }
+    }
+
+    async function openAuditWorkspaceFile(button) {
+      const fiscalYear = document.getElementById("auditFiscalYear").value;
+      if (
+        AppData.mode !== "server" ||
+        AppData.role !== "admin" ||
+        !/^20\d{2}$/.test(fiscalYear)
+      ) {
+        showToast("管理者が有効な監査対象年度を選択してください。");
+        return;
+      }
+      const cachedUrl = String(
+        auditEditorState.ready && auditEditorState.fiscalYear === fiscalYear
+          ? auditEditorState.fileUrl || ""
+          : ""
+      );
+      if (/^https:\/\/docs\.google\.com\/spreadsheets\/d\/[A-Za-z0-9_-]+(?:\/|$)/.test(cachedUrl)) {
+        const anchor = document.createElement("a");
+        anchor.href = cachedUrl;
+        anchor.target = "_blank";
+        anchor.rel = "noopener";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        return;
+      }
+      await openSavedGoogleSpreadsheet(
+        "apiGetAuditWorkspaceLink",
+        { fiscalYear: fiscalYear, sampleMode: false },
+        button,
+        "保存済みの全体監査資料はまだありません。"
+      );
     }
 
     function renderAudit() {
@@ -9260,17 +9308,7 @@
       };
     }
 
-    async function openPersonWorkbook(record, button) {
-      const request = personWorkbookRequest(record);
-      if (
-        !record ||
-        !canCreateOrUpdatePersonWorkbook(record) ||
-        request.expectedVersion < 1 ||
-        !/^[0-9a-f]{64}$/i.test(request.expectedPayloadHash)
-      ) {
-        showToast("保存済みファイルを確認できません。一覧を再読込してください。");
-        return;
-      }
+    async function openSavedGoogleSpreadsheet(apiName, request, button, unavailableMessage) {
       const pendingWindow = window.open("about:blank", "_blank");
       if (!pendingWindow) {
         showToast("新しいタブを開けません。ブラウザのポップアップを許可してください。");
@@ -9278,7 +9316,7 @@
       }
       if (button) button.disabled = true;
       try {
-        const result = await serverCall("apiGetPersonWorkbookLink", request);
+        const result = await serverCall(apiName, request);
         const url = String(result && (result.url || result.fileUrl) || "");
         if (
           !result ||
@@ -9290,7 +9328,7 @@
           pendingWindow.close();
           showToast(
             String(result && (result.message || result.error) ||
-              "保存済みの対象者資料ファイルはまだありません。")
+              unavailableMessage || "保存済みファイルはまだありません。")
           );
           return;
         }
@@ -9302,6 +9340,25 @@
       } finally {
         if (button) button.disabled = false;
       }
+    }
+
+    async function openPersonWorkbook(record, button) {
+      const request = personWorkbookRequest(record);
+      if (
+        !record ||
+        !canCreateOrUpdatePersonWorkbook(record) ||
+        request.expectedVersion < 1 ||
+        !/^[0-9a-f]{64}$/i.test(request.expectedPayloadHash)
+      ) {
+        showToast("保存済みファイルを確認できません。一覧を再読込してください。");
+        return;
+      }
+      await openSavedGoogleSpreadsheet(
+        "apiGetPersonWorkbookLink",
+        request,
+        button,
+        "保存済みの対象者資料ファイルはまだありません。"
+      );
     }
 
     function renderPersonWorkbookResponse(result, phase) {
@@ -10789,6 +10846,9 @@
     });
     document.getElementById("testAuditWorkspaceSample").addEventListener("click", function () {
       runAuditWorkspace(true);
+    });
+    document.getElementById("openAuditWorkspaceFile").addEventListener("click", function () {
+      openAuditWorkspaceFile(this);
     });
     document.getElementById("auditFiscalYear").addEventListener("change", function () {
       auditEditorState = { ready: false, fiscalYear: this.value, manualVersion: 0, documents: {}, currentKey: "" };

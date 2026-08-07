@@ -21,6 +21,51 @@ function apiCreateOrUpdateAuditWorkspaceSample(request) {
   return auditWorkspaceCreateOrUpdate_(request, true);
 }
 
+/** 保存済みの年度別監査資料だけを読み取り、開くためのURLを返す。 */
+function apiGetAuditWorkspaceLink(request) {
+  request = request || {};
+  var sampleMode = request.sampleMode === true;
+  try {
+    var authorization = artifactRequireCapability_("artifacts.admin");
+    var fiscalYear = artifactText_(request.fiscalYear);
+    if (!/^20\d{2}$/.test(fiscalYear)) {
+      throw new Error("監査対象年度が正しくありません。");
+    }
+    var settings = artifactLoadSettings_();
+    var allowedEmails = personWorkbookAssertAdminOnlyAcl_(authorization.email);
+    var outputFolderId = artifactOutputFolderForFiscalYear_(settings, fiscalYear);
+    var outputFolder = personWorkbookExistingOutputFolder_(
+      outputFolderId, fiscalYear, allowedEmails
+    );
+    var autoRoot = personWorkbookExistingAutoRoot_(outputFolder, allowedEmails);
+    if (!autoRoot) return auditWorkspaceLinkNotFoundResult_(sampleMode);
+    var targetFolder = auditWorkspaceExistingManagedFolder_(
+      autoRoot, allowedEmails, sampleMode
+    );
+    if (!targetFolder) return auditWorkspaceLinkNotFoundResult_(sampleMode);
+    var file = auditWorkspaceExistingFile_(
+      targetFolder, fiscalYear, allowedEmails, sampleMode
+    );
+    if (!file) return auditWorkspaceLinkNotFoundResult_(sampleMode);
+    return {
+      success: true,
+      ready: true,
+      exists: true,
+      sampleMode: sampleMode,
+      fiscalYear: fiscalYear,
+      fileId: file.getId(),
+      fileName: file.getName(),
+      url: file.getUrl(),
+      fileUrl: file.getUrl(),
+      message: "保存済みの監査資料ファイルを開きます。"
+    };
+  } catch (error) {
+    var result = auditWorkspaceError_(error);
+    result.sampleMode = sampleMode;
+    return result;
+  }
+}
+
 function auditWorkspaceCreateOrUpdate_(request, sampleMode) {
   request = request || {};
   sampleMode = sampleMode === true;
@@ -125,7 +170,7 @@ function auditWorkspaceCreateOrUpdate_(request, sampleMode) {
         ? (resolved.created ? "AUDIT_WORKSPACE_SAMPLE_CREATE" : "AUDIT_WORKSPACE_SAMPLE_UPDATE")
         : (resolved.created ? "AUDIT_WORKSPACE_CREATE" : "AUDIT_WORKSPACE_UPDATE")
     });
-    return {
+    var response = {
       success: true,
       ready: true,
       sampleMode: sampleMode,
@@ -148,6 +193,18 @@ function auditWorkspaceCreateOrUpdate_(request, sampleMode) {
         ? []
         : ["正式会計台帳が未設定のため、講習料金収納記録は見出しだけです。"]
     };
+    if (!sampleMode) {
+      var editorSnapshot = auditWorkspaceEditorResponse_({
+        fiscalYear: fiscalYear,
+        resolved: resolved,
+        manualState: context.manualState,
+        context: context
+      });
+      response.manualVersion = editorSnapshot.manualVersion;
+      response.manualUpdatedAt = editorSnapshot.manualUpdatedAt;
+      response.documents = editorSnapshot.documents;
+    }
+    return response;
   } catch (error) {
     var result = auditWorkspaceError_(error);
     result.sampleMode = sampleMode;
@@ -165,6 +222,109 @@ function auditWorkspaceCreateOrUpdate_(request, sampleMode) {
 function auditWorkspaceError_(error) {
   var message = artifactErrorMessage_(error);
   return { success: false, ready: false, error: message, message: message, errors: [message] };
+}
+
+function auditWorkspaceLinkNotFoundResult_(sampleMode) {
+  return {
+    success: true,
+    ready: false,
+    exists: false,
+    sampleMode: sampleMode === true,
+    message: sampleMode
+      ? "保存済みのサンプル監査資料はまだありません。先にテスト作成してください。"
+      : "保存済みの全体監査資料はまだありません。「全体監査資料を作成・更新」を先に実行してください。"
+  };
+}
+
+function auditWorkspaceExistingManagedFolder_(autoRoot, allowedEmails, sampleMode) {
+  sampleMode = sampleMode === true;
+  var parentId = autoRoot.getId();
+  var name = sampleMode
+    ? RENEWAL_COMPLIANCE_ARCHIVE.SAMPLE_FOLDER_NAME
+    : RENEWAL_COMPLIANCE_ARCHIVE.ARCHIVE_FOLDER_NAME;
+  var propertyPrefix = sampleMode
+    ? RENEWAL_COMPLIANCE_ARCHIVE.SAMPLE_FOLDER_PROPERTY_PREFIX
+    : RENEWAL_COMPLIANCE_ARCHIVE.ARCHIVE_FOLDER_PROPERTY_PREFIX;
+  var format = sampleMode
+    ? "CDP_RENEWAL_COMPLIANCE_SAMPLE_FOLDER_V1"
+    : "CDP_RENEWAL_COMPLIANCE_ARCHIVE_FOLDER_V1";
+  var label = sampleMode ? "サンプル出力フォルダ" : "監査保管フォルダ";
+  var storedId = artifactExtractDriveId_(
+    PropertiesService.getScriptProperties().getProperty(
+      propertyPrefix + artifactShortKey_(parentId)
+    )
+  );
+  if (!storedId) return null;
+  var folder;
+  try {
+    folder = DriveApp.getFolderById(storedId);
+  } catch (error) {
+    throw new Error("登録済みの" + label + "を取得できません。復元または設定の修復が必要です。");
+  }
+  var matches = artifactIteratorItems_(autoRoot.getFoldersByName(name), 2);
+  if (matches.length !== 1 || matches[0].getId() !== storedId) {
+    throw new Error("登録済みの" + label + "と保存先の構成が一致しません。");
+  }
+  artifactAssertReusableDriveItem_(folder, parentId, label, allowedEmails);
+  var identity = JSON.stringify({ format: format, parentId: parentId });
+  if (artifactText_(folder.getDescription()) !== identity) {
+    throw new Error(label + "の識別情報が一致しません。");
+  }
+  return folder;
+}
+
+function auditWorkspaceExistingFile_(folder, fiscalYear, allowedEmails, sampleMode) {
+  sampleMode = sampleMode === true;
+  var propertyKey = RENEWAL_AUDIT_WORKSPACE.PROPERTY_PREFIX +
+    (sampleMode ? "SAMPLE_" : "") + fiscalYear;
+  var storedId = artifactExtractDriveFileId_(
+    PropertiesService.getScriptProperties().getProperty(propertyKey)
+  );
+  var file = null;
+  if (storedId) {
+    try {
+      file = DriveApp.getFileById(storedId);
+    } catch (error) {
+      throw new Error("登録済みの監査資料ファイルを取得できません。削除・移動・権限を確認してください。");
+    }
+  } else {
+    var matches = [];
+    var iterator = folder.getFilesByName(
+      auditWorkspaceFileName_(fiscalYear, sampleMode)
+    );
+    while (iterator.hasNext()) {
+      var candidate = iterator.next();
+      if (
+        !candidate.isTrashed() &&
+        candidate.getMimeType() === MimeType.GOOGLE_SHEETS &&
+        artifactText_(candidate.getDescription()) ===
+          auditWorkspaceDescription_(fiscalYear, sampleMode)
+      ) {
+        matches.push(candidate);
+      }
+    }
+    if (matches.length > 1) {
+      throw new Error("同じ年度の監査資料ファイルが複数あります。重複を確認してください。");
+    }
+    if (matches.length === 1) file = matches[0];
+  }
+  if (!file) return null;
+  if (file.isTrashed() || file.getMimeType() !== MimeType.GOOGLE_SHEETS) {
+    throw new Error("保存済み監査資料のファイル種類または削除状態が一致しません。");
+  }
+  if (
+    artifactText_(file.getDescription()) !==
+      auditWorkspaceDescription_(fiscalYear, sampleMode)
+  ) {
+    throw new Error("保存済み監査資料の年度識別情報が一致しません。");
+  }
+  artifactAssertReusableDriveItem_(
+    file,
+    folder.getId(),
+    sampleMode ? "サンプル監査資料" : "全体監査資料",
+    allowedEmails
+  );
+  return file;
 }
 
 function auditWorkspaceFinanceSnapshot_() {

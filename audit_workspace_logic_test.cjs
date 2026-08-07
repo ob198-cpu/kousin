@@ -26,6 +26,10 @@ assert.equal($("#createOrUpdateAuditWorkspace").length, 1,
   "全体監査資料の作成・更新ボタンがありません");
 assert.equal($("#testAuditWorkspaceSample").length, 1,
   "正式資料と分離したサンプル監査資料のテストボタンがありません");
+assert.equal($("#openAuditWorkspaceFile").length, 1,
+  "保存済みの全体監査資料を開くボタンがありません");
+assert.equal($("#testAuditWorkspaceSample").next().attr("id"), "openAuditWorkspaceFile",
+  "保存先のファイルを開くボタンはサンプル監査資料テストボタンの右に配置してください");
 assert.equal($("[data-audit-edit]").length, 4,
   "監査画面には4資料それぞれの編集ボタンが必要です");
 assert.equal($("#auditEditorModal").length, 1,
@@ -65,11 +69,45 @@ assert(auditSource.includes("auditWorkspaceVerifyOutput_") &&
   auditSource.includes("AUDIT_WORKSPACE_SAMPLE_CREATE") &&
   auditSource.includes("AUDIT_WORKSPACE_SAMPLE_UPDATE"),
   "サンプル出力は4シートの読戻し検査と専用監査ログが必要です");
+const openApiSource = auditSource.slice(
+  auditSource.indexOf("function apiGetAuditWorkspaceLink("),
+  auditSource.indexOf("function auditWorkspaceCreateOrUpdate_(")
+);
+const existingLinkSource = auditSource.slice(
+  auditSource.indexOf("function auditWorkspaceLinkNotFoundResult_("),
+  auditSource.indexOf("function auditWorkspaceFinanceSnapshot_(")
+);
+assert(openApiSource.includes("personWorkbookAssertAdminOnlyAcl_") &&
+  openApiSource.includes("auditWorkspaceExistingFile_") &&
+  existingLinkSource.includes("artifactAssertReusableDriveItem_") &&
+  existingLinkSource.includes("auditWorkspaceDescription_(fiscalYear, sampleMode)"),
+  "保存済み監査資料は管理者権限・年度・保存先・識別情報を照合してください");
+assert(!openApiSource.includes("auditWorkspaceResolve_(") &&
+  !existingLinkSource.includes("setProperty(") &&
+  !existingLinkSource.includes("artifactCreateSpreadsheetInFolder_("),
+  "ファイルを開く操作で監査資料や固定IDを作成・更新してはいけません");
 assert(auditSource.includes("合成サンプル請求・入金（正式会計台帳は不使用）"),
   "サンプル収納記録の注記は正式会計明細と誤認しない表現にしてください");
 assert(scriptMatch[1].includes('serverCall(sampleMode ? "apiCreateOrUpdateAuditWorkspaceSample"') &&
   scriptMatch[1].includes("読戻し検査: 4シート合格"),
   "画面からサンプルAPIを呼び、4シートの検査件数を表示してください");
+assert(auditSource.includes("response.documents = editorSnapshot.documents") &&
+  scriptMatch[1].includes("if (result.documents) applyAuditEditorResponse(result)") &&
+  scriptMatch[1].includes("auditEditorLoadSequence += 1"),
+  "全体監査資料の更新完了後は確定済み編集データを直接反映して編集ボタンを再有効化してください");
+assert(scriptMatch[1].includes("const loadSequence = ++auditEditorLoadSequence") &&
+  scriptMatch[1].includes("loadSequence !== auditEditorLoadSequence") &&
+  scriptMatch[1].includes("loadSequence === auditEditorLoadSequence"),
+  "監査資料の古い読込応答で編集状態を上書きしない世代検査が必要です");
+assert(scriptMatch[1].includes('"apiGetAuditWorkspaceLink"') &&
+  scriptMatch[1].includes("openSavedGoogleSpreadsheet(") &&
+  scriptMatch[1].includes('getElementById("openAuditWorkspaceFile")'),
+  "保存先のファイルを開くボタンを読取専用APIへ接続してください");
+assert(scriptMatch[1].includes('fileUrl: String(result && (result.url || result.fileUrl) || "")') &&
+  scriptMatch[1].includes("auditEditorState.fileUrl") &&
+  scriptMatch[1].includes('anchor.target = "_blank"') &&
+  scriptMatch[1].includes('anchor.rel = "noopener"'),
+  "読込済みの監査資料URLは利用者のクリック内で安全に新しいタブへ開いてください");
 assert(auditSource.includes('"audit-workspace:") + fiscalYear') &&
   auditSource.includes("renewalPdfExportAndSave_("),
   "全体監査資料の同一年度更新とPDF保存が必要です");

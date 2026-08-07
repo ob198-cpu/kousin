@@ -73,11 +73,14 @@ assert(
   "操作欄のボタンは既存の安全な資料一式作成処理へ接続する必要があります"
 );
 const opener = functionSource("openPersonWorkbook");
+const savedSpreadsheetOpener = functionSource("openSavedGoogleSpreadsheet");
 assert(
-  opener.includes('serverCall("apiGetPersonWorkbookLink", request)') &&
-    opener.includes('window.open("about:blank", "_blank")') &&
-    opener.includes("pendingWindow.location.replace(url)") &&
-    opener.includes("pendingWindow.close()"),
+  opener.includes('"apiGetPersonWorkbookLink"') &&
+    opener.includes("openSavedGoogleSpreadsheet(") &&
+    savedSpreadsheetOpener.includes("serverCall(apiName, request)") &&
+    savedSpreadsheetOpener.includes('window.open("about:blank", "_blank")') &&
+    savedSpreadsheetOpener.includes("pendingWindow.location.replace(url)") &&
+    savedSpreadsheetOpener.includes("pendingWindow.close()"),
   "ファイルを開く処理は保存済みURLを検査して新しいタブへ開く必要があります"
 );
 assert(
