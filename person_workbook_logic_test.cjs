@@ -29,6 +29,7 @@ assert($.root().text().includes("個別ファイル作成（従来方式・必�
 [
   "apiPreflightPersonWorkbook",
   "apiCreateOrUpdatePersonWorkbook",
+  "apiGetPersonWorkbookLink",
   "personWorkbookResolve_",
   "personWorkbookUpdate_",
   "personWorkbookAssertAdminOnlyAcl_"
@@ -76,6 +77,30 @@ assert(source.includes("Google Sheetsはシート別の閲覧権限を設定で�
   "会計情報を同居させる場合は管理者限定検査が必要です");
 assert(source.includes("complianceEnsureSampleFolder_"),
   "合成サンプルは正式保存先から分離する必要があります");
+
+const openApi = source.slice(
+  source.indexOf("function apiGetPersonWorkbookLink("),
+  source.indexOf("function personWorkbookLinkNotFoundResult_(")
+);
+assert(openApi.includes("artifactLoadCanonicalArtifactRequest_") &&
+  openApi.includes("personWorkbookExistingFile_") &&
+  openApi.includes("personWorkbookAssertAdminOnlyAcl_"),
+  "保存済みファイル取得APIは共有正本の版・対象者・権限を照合する必要があります");
+assert(!openApi.includes("personWorkbookResolve_(") &&
+  !openApi.includes("artifactEnsureAutoRoot_(") &&
+  !openApi.includes("artifactEnsureRecordFolder_(") &&
+  !openApi.includes("complianceEnsureSampleFolder_(") &&
+  !openApi.includes("setProperty("),
+  "ファイルを開く操作でフォルダ・ファイル・登録IDを作成または更新してはいけません");
+const existingFileReader = source.slice(
+  source.indexOf("function personWorkbookExistingFile_("),
+  source.indexOf("function personWorkbookBatchSpecs_(")
+);
+assert(existingFileReader.includes("personWorkbookAssertFile_") &&
+  existingFileReader.includes("getFilesByType(MimeType.GOOGLE_SHEETS)") &&
+  !existingFileReader.includes("setProperty(") &&
+  !existingFileReader.includes("artifactCreateSpreadsheetInFolder_("),
+  "保存済みファイルは識別情報を検査し、読取専用で一意に解決する必要があります");
 const ledgerRenderer = source.slice(
   source.indexOf("function personWorkbookRenderLedger_("),
   source.indexOf("function personWorkbookRenderEvidence_(")

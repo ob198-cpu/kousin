@@ -4314,11 +4314,13 @@
               escapeHtml(record.id) + '"' +
               (canCreateWorkbook ? "" : ' disabled title="管理者が有効な更新記録で使用できます"') +
               '>資料一式を作成・更新</button><div class="row-actions">' +
+            '<button type="button" class="small-button" data-open-workbook="' +
+              escapeHtml(record.id) + '"' +
+              (canCreateWorkbook ? "" : ' disabled title="管理者が有効な更新記録で使用できます"') +
+              '>ファイルを開く</button>' +
             '<button type="button" class="small-button" data-detail="' +
               escapeHtml(record.id) + '">詳細</button>' +
             '<button type="button" class="small-button" data-edit="' + escapeHtml(record.id) + '">編集</button>' +
-            '<button type="button" class="small-button danger-button" data-archive="' +
-              escapeHtml(record.id) + '">無効化</button>' +
           "</div></div></td></tr>";
       }).join("") : '<tr><td colspan="6" class="empty">該当する記録はありません。</td></tr>';
       applyPublicReadOnlyUi();
@@ -6801,7 +6803,7 @@
         element.disabled = !allowed;
       });
       document.querySelectorAll(
-        "[data-edit], [data-artifacts], [data-finance], [data-archive], [data-new-record]"
+        "[data-edit], [data-artifacts], [data-open-workbook], [data-finance], [data-archive], [data-new-record]"
       ).forEach(function (element) {
         element.disabled = true;
       });
@@ -9258,6 +9260,50 @@
       };
     }
 
+    async function openPersonWorkbook(record, button) {
+      const request = personWorkbookRequest(record);
+      if (
+        !record ||
+        !canCreateOrUpdatePersonWorkbook(record) ||
+        request.expectedVersion < 1 ||
+        !/^[0-9a-f]{64}$/i.test(request.expectedPayloadHash)
+      ) {
+        showToast("保存済みファイルを確認できません。一覧を再読込してください。");
+        return;
+      }
+      const pendingWindow = window.open("about:blank", "_blank");
+      if (!pendingWindow) {
+        showToast("新しいタブを開けません。ブラウザのポップアップを許可してください。");
+        return;
+      }
+      if (button) button.disabled = true;
+      try {
+        const result = await serverCall("apiGetPersonWorkbookLink", request);
+        const url = String(result && (result.url || result.fileUrl) || "");
+        if (
+          !result ||
+          result.success === false ||
+          result.ready !== true ||
+          result.exists !== true ||
+          !/^https:\/\/docs\.google\.com\/spreadsheets\/d\/[A-Za-z0-9_-]+(?:\/|$)/.test(url)
+        ) {
+          pendingWindow.close();
+          showToast(
+            String(result && (result.message || result.error) ||
+              "保存済みの対象者資料ファイルはまだありません。")
+          );
+          return;
+        }
+        pendingWindow.opener = null;
+        pendingWindow.location.replace(url);
+      } catch (error) {
+        pendingWindow.close();
+        showToast(error.message || "保存済みファイルを開けませんでした。");
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
     function renderPersonWorkbookResponse(result, phase) {
       const container = document.getElementById("personWorkbookResult");
       const label = (result && result.label) || "対象者資料一式";
@@ -10569,6 +10615,10 @@
           openArtifactModal(record);
           runPersonWorkbook(record);
         }
+      }
+      if (target.dataset.openWorkbook) {
+        const record = findRecord(target.dataset.openWorkbook);
+        if (record) openPersonWorkbook(record, target);
       }
       if (target.dataset.finance) {
         const record = findRecord(target.dataset.finance);

@@ -375,6 +375,10 @@ assert.equal(homeOperationCellSource.includes("data-status"), false,
   "ホームの操作欄に一覧ボタンを残してはいけません");
 assert(homeOperationCellSource.includes("data-edit"),
   "一覧ボタン移動後も操作欄の編集ボタンを保持してください");
+assert(homeOperationCellSource.includes("data-open-workbook"),
+  "操作欄に保存済み資料ファイルを開くボタンが必要です");
+assert.equal(homeOperationCellSource.includes("data-archive"), false,
+  "操作欄に無効化ボタンを残してはいけません");
 assert.equal($("#showArchived").length, 0,
   "統合ホーム一覧に無効化済み表示チェックを残してはいけません");
 assert.equal(scriptMatch[1].includes("showArchived"), false,
@@ -401,7 +405,7 @@ assert(activeRecordsSource.includes("!record.archived") &&
 [
   "canCreateOrUpdatePersonWorkbook(record)",
   "result.licenseExpiry", "result.certificateExpiry",
-  "basisHtml(result)", "data-artifacts", "data-detail", "data-edit", "data-archive"
+  "basisHtml(result)", "data-artifacts", "data-open-workbook", "data-detail", "data-edit"
 ].forEach((marker) => assert(homeRenderSource.includes(marker),
   "統合ホーム一覧に受講者台帳の情報または操作が不足しています: " + marker));
 assert(scriptMatch[1].includes('const LEGACY_STORAGE_KEYS = ["cdp-renewal-license-records-v3"]'), "旧版ブラウザ保存データの移行元がありません");

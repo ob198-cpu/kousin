@@ -291,6 +291,224 @@ function apiCreateOrUpdatePersonWorkbookBatch(request) {
   return apiCreateOrUpdatePersonWorkbook(input);
 }
 
+/**
+ * 保存済みの対象者資料ブックだけを読み取り、開くためのURLを返す。
+ * このAPIはフォルダ・ファイル・Script Propertiesを作成または更新しない。
+ */
+function apiGetPersonWorkbookLink(request) {
+  try {
+    var authorization = artifactRequireCapability_("artifacts.admin");
+    var canonicalRequest = artifactLoadCanonicalArtifactRequest_(
+      personWorkbookCanonicalRequest_(request)
+    );
+    var settings = artifactLoadSettings_();
+    var allowedEmails = personWorkbookAssertAdminOnlyAcl_(authorization.email);
+    var record = artifactNormalizeRecord_(canonicalRequest.request.record);
+    record.id = canonicalRequest.canonical.recordId;
+    record.recordId = canonicalRequest.canonical.recordId;
+    var fiscalYear = artifactText_(record.fiscalYear);
+    var outputFolderId = artifactOutputFolderForFiscalYear_(settings, fiscalYear);
+    var outputFolder = personWorkbookExistingOutputFolder_(
+      outputFolderId, fiscalYear, allowedEmails
+    );
+    var autoRoot = personWorkbookExistingAutoRoot_(
+      outputFolder, allowedEmails
+    );
+    if (!autoRoot) return personWorkbookLinkNotFoundResult_();
+
+    var sampleMode = typeof complianceIsSyntheticSampleRecord_ === "function" &&
+      complianceIsSyntheticSampleRecord_(record);
+    var workbookRoot = sampleMode
+      ? personWorkbookExistingSampleFolder_(autoRoot, allowedEmails)
+      : autoRoot;
+    if (!workbookRoot) return personWorkbookLinkNotFoundResult_();
+
+    var recordFolder = personWorkbookExistingRecordFolder_(
+      workbookRoot, record, allowedEmails
+    );
+    if (!recordFolder) return personWorkbookLinkNotFoundResult_();
+
+    settings = artifactClone_(settings);
+    settings.allowedOutputEmails = allowedEmails;
+    var context = {
+      record: record,
+      settings: settings,
+      autoRoot: workbookRoot,
+      recordFolder: recordFolder
+    };
+    var file = personWorkbookExistingFile_(context);
+    if (!file) return personWorkbookLinkNotFoundResult_();
+    return {
+      success: true,
+      ready: true,
+      exists: true,
+      label: "対象者資料一式",
+      fileId: file.getId(),
+      url: file.getUrl(),
+      fileUrl: file.getUrl(),
+      fileName: file.getName(),
+      message: "保存済みの対象者資料ファイルを開きます。"
+    };
+  } catch (error) {
+    return personWorkbookErrorResult_(error);
+  }
+}
+
+function personWorkbookLinkNotFoundResult_() {
+  return {
+    success: true,
+    ready: false,
+    exists: false,
+    label: "対象者資料一式",
+    message:
+      "保存済みの対象者資料ファイルはまだありません。" +
+      "「資料一式を作成・更新」を先に実行してください。"
+  };
+}
+
+function personWorkbookExistingOutputFolder_(folderId, fiscalYear, allowedEmails) {
+  var id = artifactExtractDriveId_(folderId);
+  if (!id) throw new Error("対象者資料の保存先フォルダを確認できません。");
+  var folder;
+  try {
+    folder = DriveApp.getFolderById(id);
+  } catch (lookupError) {
+    throw new Error("対象者資料の保存先フォルダを取得できません。設定と権限を確認してください。");
+  }
+  if (artifactText_(folder.getName()) !== fiscalYear + "年度") {
+    throw new Error("対象者資料の保存先年度とフォルダ名が一致しません。");
+  }
+  if (folder.isTrashed()) {
+    throw new Error("対象者資料の保存先フォルダがゴミ箱にあります。");
+  }
+  if (folder.getSharingAccess() !== DriveApp.Access.PRIVATE) {
+    throw new Error("対象者資料の保存先フォルダが非公開ではありません。");
+  }
+  artifactAssertDriveItemAcl_(folder, allowedEmails, "対象者資料の保存先フォルダ");
+  return folder;
+}
+
+function personWorkbookExistingAutoRoot_(outputFolder, allowedEmails) {
+  var parentId = outputFolder.getId();
+  var props = PropertiesService.getScriptProperties();
+  var storedId = artifactExtractDriveId_(
+    props.getProperty("RENEWAL_ARTIFACT_AUTO_ROOT_" + parentId)
+  );
+  if (!storedId) return null;
+  var folder;
+  try {
+    folder = DriveApp.getFolderById(storedId);
+  } catch (lookupError) {
+    throw new Error("登録済みの自動作成フォルダを取得できません。復元または設定の修復が必要です。");
+  }
+  var matches = artifactIteratorItems_(
+    outputFolder.getFoldersByName(RENEWAL_ARTIFACT.AUTO_FOLDER_NAME), 2
+  );
+  if (matches.length !== 1 || matches[0].getId() !== storedId) {
+    throw new Error("登録済みの自動作成フォルダと保存先の構成が一致しません。");
+  }
+  artifactAssertReusableDriveItem_(
+    folder, parentId, "自動作成フォルダ", allowedEmails
+  );
+  artifactAssertGeneratedFileIdentity_(
+    folder,
+    RENEWAL_ARTIFACT.AUTO_FOLDER_NAME,
+    artifactGeneratedFileIdentity_("auto-root", parentId, ""),
+    "自動作成フォルダ"
+  );
+  return folder;
+}
+
+function personWorkbookExistingSampleFolder_(autoRoot, allowedEmails) {
+  var parentId = autoRoot.getId();
+  var props = PropertiesService.getScriptProperties();
+  var key = RENEWAL_COMPLIANCE_ARCHIVE.SAMPLE_FOLDER_PROPERTY_PREFIX +
+    artifactShortKey_(parentId);
+  var storedId = artifactExtractDriveId_(props.getProperty(key));
+  if (!storedId) return null;
+  var folder;
+  try {
+    folder = DriveApp.getFolderById(storedId);
+  } catch (lookupError) {
+    throw new Error("登録済みのサンプル出力フォルダを取得できません。復元または設定の修復が必要です。");
+  }
+  var matches = artifactIteratorItems_(
+    autoRoot.getFoldersByName(RENEWAL_COMPLIANCE_ARCHIVE.SAMPLE_FOLDER_NAME), 2
+  );
+  if (matches.length !== 1 || matches[0].getId() !== storedId) {
+    throw new Error("登録済みのサンプル出力フォルダと保存先の構成が一致しません。");
+  }
+  artifactAssertReusableDriveItem_(
+    folder, parentId, "サンプル出力フォルダ", allowedEmails
+  );
+  var identity = JSON.stringify({
+    format: "CDP_RENEWAL_COMPLIANCE_SAMPLE_FOLDER_V1",
+    parentId: parentId
+  });
+  if (artifactText_(folder.getDescription()) !== identity) {
+    throw new Error("サンプル出力フォルダの識別情報が一致しません。");
+  }
+  return folder;
+}
+
+function personWorkbookExistingRecordFolder_(workbookRoot, record, allowedEmails) {
+  var recordId = artifactText_(record.recordId);
+  var props = PropertiesService.getScriptProperties();
+  var key = "RENEWAL_ARTIFACT_RECORD_FOLDER_" +
+    artifactShortKey_(workbookRoot.getId() + "|" + recordId);
+  var storedId = artifactExtractDriveId_(props.getProperty(key));
+  if (!storedId) return null;
+  var folder;
+  try {
+    folder = DriveApp.getFolderById(storedId);
+  } catch (lookupError) {
+    throw new Error("登録済みの対象者フォルダを取得できません。復元または設定の修復が必要です。");
+  }
+  artifactAssertReusableDriveItem_(
+    folder, workbookRoot.getId(), "対象者フォルダ", allowedEmails
+  );
+  artifactAssertGeneratedFileIdentity_(
+    folder,
+    "",
+    artifactGeneratedFileIdentity_("record-folder", workbookRoot.getId(), recordId),
+    "対象者フォルダ"
+  );
+  return folder;
+}
+
+function personWorkbookExistingFile_(context) {
+  var props = PropertiesService.getScriptProperties();
+  var storedId = artifactExtractDriveFileId_(
+    props.getProperty(personWorkbookPropertyKey_(context))
+  );
+  var expectedDescription = personWorkbookIdentityDescription_(context);
+  if (storedId) {
+    var storedFile;
+    try {
+      storedFile = DriveApp.getFileById(storedId);
+    } catch (lookupError) {
+      throw new Error("登録済みの対象者資料ファイルを取得できません。削除・移動・権限を確認してください。");
+    }
+    personWorkbookAssertFile_(storedFile, context, expectedDescription);
+    return storedFile;
+  }
+  var candidates = artifactIteratorItems_(
+    context.recordFolder.getFilesByType(MimeType.GOOGLE_SHEETS), 501
+  );
+  if (candidates.length > 500) {
+    throw new Error("対象者フォルダ内のファイルが多すぎるため、保存済み資料を一意に確認できません。");
+  }
+  var matches = candidates.filter(function(file) {
+    return artifactText_(file.getDescription()) === expectedDescription;
+  });
+  if (matches.length > 1) {
+    throw new Error("同じ対象者IDの資料ファイルが複数あります。重複を確認してください。");
+  }
+  if (!matches.length) return null;
+  personWorkbookAssertFile_(matches[0], context, expectedDescription);
+  return matches[0];
+}
+
 function personWorkbookBatchSpecs_(batchIndex) {
   var index = Number(batchIndex);
   return RENEWAL_PERSON_WORKBOOK.SHEETS.slice(index, index + 1);

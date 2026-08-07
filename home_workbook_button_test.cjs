@@ -27,6 +27,15 @@ assert(
   "統合ホーム一覧の操作欄に資料一式を作成・更新ボタンが必要です"
 );
 assert(
+  home.includes('data-open-workbook="') &&
+    home.includes(">ファイルを開く</button>"),
+  "統合ホーム一覧の操作欄に保存済みファイルを開くボタンが必要です"
+);
+assert(
+  !home.includes('data-archive="') && !home.includes(">無効化</button>"),
+  "統合ホーム一覧の操作欄に無効化ボタンを表示してはいけません"
+);
+assert(
   home.includes("canCreateOrUpdatePersonWorkbook(record)") &&
     home.includes(" disabled title="),
   "管理者以外または無効化済み記録では資料作成ボタンを無効にする必要があります"
@@ -63,6 +72,19 @@ assert(
     script.includes("runPersonWorkbook(record);"),
   "操作欄のボタンは既存の安全な資料一式作成処理へ接続する必要があります"
 );
+const opener = functionSource("openPersonWorkbook");
+assert(
+  opener.includes('serverCall("apiGetPersonWorkbookLink", request)') &&
+    opener.includes('window.open("about:blank", "_blank")') &&
+    opener.includes("pendingWindow.location.replace(url)") &&
+    opener.includes("pendingWindow.close()"),
+  "ファイルを開く処理は保存済みURLを検査して新しいタブへ開く必要があります"
+);
+assert(
+  script.includes("if (target.dataset.openWorkbook)") &&
+    script.includes("openPersonWorkbook(record, target)"),
+  "ファイルを開くボタンを保存済みファイル取得処理へ接続する必要があります"
+);
 const publicRedirect = functionSource("redirectPublicPagesToProduction");
 assert(
   publicRedirect.includes('window.location.hostname !== "ob198-cpu.github.io"') &&
@@ -74,7 +96,7 @@ assert(
   "公開Pages版では共有正本の初期化より先に本番版へ転送する必要があります"
 );
 assert(
-  functionSource("applyPublicReadOnlyUi").includes("[data-edit], [data-artifacts]"),
+  functionSource("applyPublicReadOnlyUi").includes("[data-open-workbook]"),
   "公開Pages版では資料作成ボタンを無効にする必要があります"
 );
 assert(
